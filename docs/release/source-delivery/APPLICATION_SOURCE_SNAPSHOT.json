@@ -1,0 +1,706 @@
+{
+  "schema_version": 1,
+  "status": "application_git_inputs_not_complete_corresponding_source",
+  "checked_date": "2026-10-25",
+  "candidate_code_commit": "8b30990c17cbd33af72d04360b3dbe81c8461382",
+  "candidate_executable_sha256": "eb5f9273a81786cb3ce4d9e61c862dca0bafcc47c501d9b540c7f69ea43e3fff",
+  "git_input_files": [
+    {
+      "path": "GachaOps.spec",
+      "git_blob": "693c2ce439a13a0d8f1bd95ed658413eaa153145",
+      "sha256": "00500766ce019af2020ea528fc253a8177d8d798566c9f29827270e79686c9ed",
+      "bytes": 1527
+    },
+    {
+      "path": "config/assistants.example.json",
+      "git_blob": "31ea470406a28e4727eb509862dcdaf2ceed4101",
+      "sha256": "6918ce1a6be59ac5447883b82ce4e0fb39d3f4867993529cb7f7e5654c7b0bd6",
+      "bytes": 1597
+    },
+    {
+      "path": "config/failure-scenario.json",
+      "git_blob": "80417bf19b3501b10d10a4527655319329c11674",
+      "sha256": "e8ec3b27d2d0ff3997ec554a16017b8c8c4caa1afec51241737b3cddf328f429",
+      "bytes": 164
+    },
+    {
+      "path": "config/inventory.example.json",
+      "git_blob": "152468a839d342d9668d0fc7b08e45317c4a58f7",
+      "sha256": "8d215facccc17fed23909d26d8db80ce7359892c6d7f24c0219bac8d4fb5ad42",
+      "bytes": 5387
+    },
+    {
+      "path": "config/simulation.json",
+      "git_blob": "0853793c59cb2e200460b72bf59e34aa44b75ac9",
+      "sha256": "0deaf18969a724344e7e3c8f119e78b220e11641f6556364fd4699e685cf722e",
+      "bytes": 5363
+    },
+    {
+      "path": "gachaops/__init__.py",
+      "git_blob": "42f9b05aa252e3064550fb2cbe063a357cf1c009",
+      "sha256": "63bb6e19ae919007fc87bb083da9464174d9dbe3575c1bc59a1c8ea905e900d2",
+      "bytes": 88
+    },
+    {
+      "path": "gachaops/__main__.py",
+      "git_blob": "0b193ea32c5efa80eb066fd503f84821bbc6d21c",
+      "sha256": "3a407539da2ee09ae9326e68bb2d7d3fe8817c4cbe782ce0f9248933790ae363",
+      "bytes": 9734
+    },
+    {
+      "path": "gachaops/adapter_catalog.py",
+      "git_blob": "011e8324f91ce01b7868c84150a32cf19087fda3",
+      "sha256": "2f97247cef610c994b4d01a4cf881836df63cfe75e7d8b92f398d147113890e4",
+      "bytes": 3066
+    },
+    {
+      "path": "gachaops/app_paths.py",
+      "git_blob": "c554d96135b109df28a811c92b5d69d4e9635f80",
+      "sha256": "cdf581755171a779c6af83559af98b706fd3dc0eb55b992fc54585770a00985b",
+      "bytes": 6357
+    },
+    {
+      "path": "gachaops/assets/branding/candidates/candidate-1.svg",
+      "git_blob": "20602e2dffb05bd7d2c8770abf53069b357c7dc2",
+      "sha256": "9bd967f347a37aa081e31b4d942af533b36b961ef371abe88aa6fdf48695d40f",
+      "bytes": 1327
+    },
+    {
+      "path": "gachaops/assets/branding/candidates/candidate-2.svg",
+      "git_blob": "f9e62e474f7dff50c6c60350115a212f35c85d1a",
+      "sha256": "d5b1aaaaeafce2f3e29290b5c299c9f54a3dd3312bf9d26306ad8effff27b1b0",
+      "bytes": 1209
+    },
+    {
+      "path": "gachaops/assets/branding/candidates/candidate-3.svg",
+      "git_blob": "62e4710591a767e7712a891a0822a132417ec159",
+      "sha256": "ec0f9beacc61108d50dd9ea1c26ac81c8caf9388a2564b6157675cc9062cfa67",
+      "bytes": 1572
+    },
+    {
+      "path": "gachaops/assets/branding/candidates/comparison.png",
+      "git_blob": "fefffddfa9d1dd88ea951f31aba62bd8c81deb1f",
+      "sha256": "66ed5647863a6974a6604061f43fa6618093da7ca181d10a8cfa3880d2dbf1d8",
+      "bytes": 107151
+    },
+    {
+      "path": "gachaops/assets/branding/candidates/provenance.json",
+      "git_blob": "9a18ee07e4f67225c56d6e9cbfbbb03e09fe9bba",
+      "sha256": "12627adb56eb0a48b6df61e9b48bd75a2630e4ccf630df4f5c5283f201f7a94f",
+      "bytes": 591
+    },
+    {
+      "path": "gachaops/assets/branding/candidates/render.py",
+      "git_blob": "bd5f1accc50d75b186e21ead9d97186c96e7c603",
+      "sha256": "20a2c5c1d1ac249e471d7a24ec87084b5895ce02a2aaa5d346d6557d326cdf83",
+      "bytes": 4653
+    },
+    {
+      "path": "gachaops/assets/branding/manifest.json",
+      "git_blob": "e51ad82b48fa88f90dfab7c4d377811c02248687",
+      "sha256": "ad5ba16dd43f9d7de7a5dc297cbeda95044a88aa69531e009f7710fdb843f6dd",
+      "bytes": 1273
+    },
+    {
+      "path": "gachaops/assets/branding/program-1024.png",
+      "git_blob": "3322496bdb21b6f3aeb51dafec90cb79dc844255",
+      "sha256": "6a7e9a8e253d2dbfc3e51dcee898f7b1870aa85ac503790abd59862ffafd3a53",
+      "bytes": 145521
+    },
+    {
+      "path": "gachaops/assets/branding/program-128.png",
+      "git_blob": "f23dcf776b3528ffc0b7112e829913ca146f22f1",
+      "sha256": "c78798aacb2a38d52083514bc0fecc26db9701f5455c757e195ba1c1d1a9f5dc",
+      "bytes": 9541
+    },
+    {
+      "path": "gachaops/assets/branding/program-16.png",
+      "git_blob": "22fe8fd516d92b8c792595fbf14d0a97c1555e32",
+      "sha256": "d3ff7b28816fdb10d9d2d48b3702ee4a8311146db381b82572c2fbfbc3337ee5",
+      "bytes": 694
+    },
+    {
+      "path": "gachaops/assets/branding/program-24.png",
+      "git_blob": "8786e74a98e977da30fc1d30b943717524082d1f",
+      "sha256": "a407ffd61a306e798a925bcbf70630bb38d392d6b40cfa8fa6e285e3890b8a0d",
+      "bytes": 1178
+    },
+    {
+      "path": "gachaops/assets/branding/program-256.png",
+      "git_blob": "388e78c02853ae688ce7e6c430db56e370f60857",
+      "sha256": "feb122554049c74ecddf44d9d9f31e0f44092993adb6737fe5fc50bd909d5590",
+      "bytes": 22303
+    },
+    {
+      "path": "gachaops/assets/branding/program-32.png",
+      "git_blob": "5b8caf8fc36bf8a8f8b259e918730afa93a4e6f8",
+      "sha256": "279a50b1e7f748a21c922adc28cf0232d1b41e121bac0bff78d0b156c7196c17",
+      "bytes": 1722
+    },
+    {
+      "path": "gachaops/assets/branding/program-48.png",
+      "git_blob": "12701e61506e6f56b343f37b912cda3b7f201dc6",
+      "sha256": "2a29c25a5c9b56774ba39082d22ad28cb572d57e6deb3374f0291e516304c0eb",
+      "bytes": 2699
+    },
+    {
+      "path": "gachaops/assets/branding/program-512.png",
+      "git_blob": "f209a3d5d3f3b9a187f1433ba33057bec988cdba",
+      "sha256": "bc1aa59930329aa4f5daade02d28712dc0e3b5bc8f2c4fb012464d8e02733852",
+      "bytes": 52926
+    },
+    {
+      "path": "gachaops/assets/branding/program-64.png",
+      "git_blob": "7888fa6b8a95f47dad29f4219895f9cf4272f2a4",
+      "sha256": "cf6f7f98cca83d97078e0c1b9a620da9f3040602cade23abb30b5b2c19d8a97a",
+      "bytes": 4066
+    },
+    {
+      "path": "gachaops/assets/branding/program.ico",
+      "git_blob": "8a8da8debb40cdf55684a2918805f84653ba7e1c",
+      "sha256": "d222bbccbd2c4d6d8204b10dbe7e97c4bd86f9e2d5dbbe855251d2d912753246",
+      "bytes": 42321
+    },
+    {
+      "path": "gachaops/assets/branding/program.png",
+      "git_blob": "f209a3d5d3f3b9a187f1433ba33057bec988cdba",
+      "sha256": "bc1aa59930329aa4f5daade02d28712dc0e3b5bc8f2c4fb012464d8e02733852",
+      "bytes": 52926
+    },
+    {
+      "path": "gachaops/assets/branding/program.svg",
+      "git_blob": "62e4710591a767e7712a891a0822a132417ec159",
+      "sha256": "ec0f9beacc61108d50dd9ea1c26ac81c8caf9388a2564b6157675cc9062cfa67",
+      "bytes": 1572
+    },
+    {
+      "path": "gachaops/assets/support_matrix.json",
+      "git_blob": "7e7f366bb60d3c008590389b35791cd60dcde587",
+      "sha256": "d4d9cc7b48b9fc94aee4390360eef937e38d6a0246da4d63e050b0490f643ba6",
+      "bytes": 4153
+    },
+    {
+      "path": "gachaops/assistants.py",
+      "git_blob": "05e578790b24417783e3f6c384ad99183d631eb2",
+      "sha256": "7f34b0d233f405e15a83b4115d9791b3330076170f92edb5ffabc31d3bf0e539",
+      "bytes": 20100
+    },
+    {
+      "path": "gachaops/bettergi.py",
+      "git_blob": "3beca84505465145d75f4e26f631a5beb5741db4",
+      "sha256": "cbe6395973aacd93e8371200948f63fc4104bade54a2b33819deb74de739caae",
+      "bytes": 15714
+    },
+    {
+      "path": "gachaops/compatibility.py",
+      "git_blob": "0449399bfabae095c1c665996c06fd9bc8bf23e6",
+      "sha256": "607a37f2a35b8d0be8933646924ec0c13a65c22ece99f1637d914573a1b22fc8",
+      "bytes": 4242
+    },
+    {
+      "path": "gachaops/desktop.py",
+      "git_blob": "3c2fe264a84ba415625f3333e5aa0e709a9f3e63",
+      "sha256": "94dbc52e01fbd277cd1419136b9ecfefa64251c7f71f1bf720525c2f433b136e",
+      "bytes": 113224
+    },
+    {
+      "path": "gachaops/desktop_model.py",
+      "git_blob": "0baf60da13fc76e57e56bc25c9422a88aae0150d",
+      "sha256": "d60e6b635a30fc9a4a6a729997c51f58e2d1d50bb0fcdfb5f11675600abb039b",
+      "bytes": 3250
+    },
+    {
+      "path": "gachaops/diagnostics.py",
+      "git_blob": "c804e729986cb659f0e7133b0e1230c2b024fe71",
+      "sha256": "67d40568a3fcfb9307a5869792ae804c4e8e793738c348c43b6b1272573f694d",
+      "bytes": 5903
+    },
+    {
+      "path": "gachaops/execution_lock.py",
+      "git_blob": "70b83df1c136e526a22c49fc6a6c64121ff10be3",
+      "sha256": "bb75c35f2119534cd67fd308c6ea6071b50bf37eecb72d43977973058f91f6e9",
+      "bytes": 3702
+    },
+    {
+      "path": "gachaops/foreground.py",
+      "git_blob": "5a4ad976461a03b103d39032f08516286bd63238",
+      "sha256": "ebf26aa9873d08e1c36d5219498806da5bd66fa64491ed5ce3df2c9b2e0e4eda",
+      "bytes": 4078
+    },
+    {
+      "path": "gachaops/maaend.py",
+      "git_blob": "05f5289ed8872ae2d0c9f8218cd066239d7ab4d4",
+      "sha256": "aa36d5fc37933f7f4cc97b6246f815afa89e02402c14450ed37e79a4be0fd122",
+      "bytes": 15631
+    },
+    {
+      "path": "gachaops/maagf2.py",
+      "git_blob": "04627d4b32cb4ed7dbd5b248cb0d53a49254c131",
+      "sha256": "779cec35adbe3d002556caee35ae146a91e8d36e9087613cf0e1f728b14e31e1",
+      "bytes": 26298
+    },
+    {
+      "path": "gachaops/march7.py",
+      "git_blob": "eaf71f944a8e63b4e937c4c83299e3222f5a95c7",
+      "sha256": "bce5b8a30c74662cf9cabb6eb35369758af84fad021cf2beae8e5659da9b0518",
+      "bytes": 13691
+    },
+    {
+      "path": "gachaops/mfa_command.py",
+      "git_blob": "87584161bc4c0f4aca2328253addfe5273f28e25",
+      "sha256": "f5d5a371130e222f46da1eb693ce9445e60dab27691d4928703982e43f17917c",
+      "bytes": 5770
+    },
+    {
+      "path": "gachaops/mock_runner.py",
+      "git_blob": "5b5392ee9639468a37fcab8bc53c960173c82ed6",
+      "sha256": "3cf5d44249a4a3ec8220b7e0a329bfbf90af43f862d53330569537a8b88a5ba0",
+      "bytes": 964
+    },
+    {
+      "path": "gachaops/nte_completion.py",
+      "git_blob": "fb3f5a3afcde6a1007bca45258c7ab6d4c71f717",
+      "sha256": "ee6af3adbb4d77d984baf5c7f74e483f141f335dc677075fd7f8fb6b6b012112",
+      "bytes": 4135
+    },
+    {
+      "path": "gachaops/ok_adapter.py",
+      "git_blob": "0bb1c8516eee372f71baed1d938b32c9e5574c05",
+      "sha256": "b6e46e5281deae3daa82f1d6f0d1988bd1c2258509e353e382517a52fe9398c4",
+      "bytes": 6578
+    },
+    {
+      "path": "gachaops/ok_completion.py",
+      "git_blob": "571569657b3291d5ea0c3d20936d540e95acf671",
+      "sha256": "b1bdf4e1235f4a044a7c4b5ce216cad45d7afa8589b169415c08a33dd5d5609e",
+      "bytes": 9355
+    },
+    {
+      "path": "gachaops/ok_inventory.py",
+      "git_blob": "c82300f838d5762b82ca25f8ea092c5d5f220973",
+      "sha256": "c8018579c277303715168e13a7213cba8a35eb8ddaa1d768adefc4ca085ce07a",
+      "bytes": 3754
+    },
+    {
+      "path": "gachaops/ok_trial.py",
+      "git_blob": "938d3d29ee0a758b8980377d4294b44d5efac052",
+      "sha256": "dfd9f8ada6abbb70a9430e51120f150c273e9950a8a872749c2a05ece46e2e22",
+      "bytes": 20036
+    },
+    {
+      "path": "gachaops/onedragon.py",
+      "git_blob": "8ce1946164ce5db273b885b3a54b740dc5991fe8",
+      "sha256": "3e7da891769a56ab3f581990b08ce0a04ce99a777b0f10b39987ad115e21109d",
+      "bytes": 6905
+    },
+    {
+      "path": "gachaops/onedragon_bridge.py",
+      "git_blob": "8d9fa47bf2c8a7fb7ae56b852a8d95706156dd72",
+      "sha256": "9573a9be56cedf22fa48d74d7ca2c373110e49788e1eb55841d4889fb53cea64",
+      "bytes": 4171
+    },
+    {
+      "path": "gachaops/planner.py",
+      "git_blob": "ecd625a92ba264d7c14f8a099555e499d7da8d46",
+      "sha256": "5311e52d788a48df8ae27b71ee52c485fa818bcf44ad70bf19506c2d9558d851",
+      "bytes": 3899
+    },
+    {
+      "path": "gachaops/preflight.py",
+      "git_blob": "36fe4c04ab9c4d3f953080b9759333d90b2b52ce",
+      "sha256": "f8eac36249647f0f66c49da9de6f26f934aeafeb147fe3bff8c798d207e1a01b",
+      "bytes": 5571
+    },
+    {
+      "path": "gachaops/probe.py",
+      "git_blob": "35b4ed0f953caae251491fca06e85bb8bc1ebd8c",
+      "sha256": "399b256d5d178fd8f8c28338e75a2af67c315774c52cdb53f157be5ed02d2720",
+      "bytes": 2514
+    },
+    {
+      "path": "gachaops/profiles.py",
+      "git_blob": "697e26b32031c1d5222b1b4fa670ae8c139fbac2",
+      "sha256": "2b6264247953d24b584317f5ca4dbae1eac688dbd1fffb2894312f646db29321",
+      "bytes": 5930
+    },
+    {
+      "path": "gachaops/recovery.py",
+      "git_blob": "eb5fc9d02e709a814bdfc47f5234d3a9e5d8f0ba",
+      "sha256": "1e8f03b39acc6f2fd6da51b6761b46dca7881e95ccc3319ed559878a95ae7781",
+      "bytes": 5164
+    },
+    {
+      "path": "gachaops/recovery_check.py",
+      "git_blob": "690ae2d9ae15d57c5a28b741213c4725ea050d9c",
+      "sha256": "8f9ea5a0ddc0fe3c89252bb7da2270cb62ef7a63cdedf2605a37de6008cb4c3e",
+      "bytes": 9289
+    },
+    {
+      "path": "gachaops/registration.py",
+      "git_blob": "50583c8a4178dca0b41ac4935f8fcabf87a01fc5",
+      "sha256": "2c99e7c04feca8458bdf2ff1344e5f7fc24b68617feacc31a3ac55fd8891b5b0",
+      "bytes": 3501
+    },
+    {
+      "path": "gachaops/result_details.py",
+      "git_blob": "9856d36efc29f6df214b89ffb190c626f5285412",
+      "sha256": "829b9ace1bc5112b69e2454b5bce8e5a558e36ea9827304cbbd2c09f1793e10f",
+      "bytes": 6164
+    },
+    {
+      "path": "gachaops/runtime_probe.py",
+      "git_blob": "7dbc5c22d4870cc6de195aa3f80af3ac9051d12d",
+      "sha256": "b4a7105d2e2f4dbcfba90fb5b0f2a7f7f0441164ee053d244761e7fadc98f396",
+      "bytes": 992
+    },
+    {
+      "path": "gachaops/supervisor.py",
+      "git_blob": "6603e1ac1d38a6ea900e0b3614004dffaa1b7dc4",
+      "sha256": "fe9826b617b93de035bf7c42e84f13fd3da39ca472a887334e046bdefadd07e1",
+      "bytes": 6349
+    },
+    {
+      "path": "gachaops/windows_observation.py",
+      "git_blob": "da34701b0ad79f98b1b01914b847a57fd9ca30e1",
+      "sha256": "6cc27e391311b401a499dba09600e69e8f66c11e209522244859bdf17e2e6660",
+      "bytes": 11206
+    },
+    {
+      "path": "gachaops/windows_process.py",
+      "git_blob": "5c31553e1180ea37ff0b5fcf4872e6a60426446b",
+      "sha256": "7292bcd7f53310ecbe2164b0b68bfc561d890827caf6e3b5ef5cb2da3a313581",
+      "bytes": 11249
+    },
+    {
+      "path": "pyproject.toml",
+      "git_blob": "90a31cd57e41e0465adb16d3bcb2014198064482",
+      "sha256": "4109f71702d73a9867064f088421642f6907e4e13665fcf12268fdf44b23e60e",
+      "bytes": 364
+    },
+    {
+      "path": "requirements-desktop.txt",
+      "git_blob": "949578e5ab79e9fe7bd24a3c24101df7db539533",
+      "sha256": "5cf6924fbdfded749cd074ab16e8a3527c457540def0272e014d1c7cc42f30b8",
+      "bytes": 130
+    },
+    {
+      "path": "scripts/Build-Desktop.ps1",
+      "git_blob": "e1569325750b469e2c42a028a56ae3fa6c8e1d8f",
+      "sha256": "b9cfd40646a09827af9197c96532a359edd0eb87d6374e157beb0392c6bb6dfd",
+      "bytes": 3260
+    },
+    {
+      "path": "scripts/Run-Assistants.ps1",
+      "git_blob": "11da103fad51127b3077d99b72120593cd4d8565",
+      "sha256": "bc0ead48d07973d803bc1e5c02dbe82bb82dcb1a1955d60ab16b90b772e3ea4a",
+      "bytes": 1402
+    },
+    {
+      "path": "scripts/Run-OKWWTrial.ps1",
+      "git_blob": "fed19ec2abcc51117a4241e1d91e6b021a499bca",
+      "sha256": "2117edb2e4c8a607e21eb23c8979e8d2efcdbee6acfcc14a3489162d7114572f",
+      "bytes": 1731
+    },
+    {
+      "path": "scripts/Smoke-Desktop.ps1",
+      "git_blob": "c4668e549fa12db9c20bd0a2cd095a83baae027e",
+      "sha256": "c36cfee9ddfab88bebf9d6306c000ccc467575de6e0e0490395be0749eb64918",
+      "bytes": 2656
+    },
+    {
+      "path": "scripts/check_public_artifact.py",
+      "git_blob": "9a5e91eed35a20dce8b9d4617f7e0267d95036fd",
+      "sha256": "ab2866d3d58d7a17f1793c5dd92ecb5d246de511ddfe55ad7056bcdcc6b815f2",
+      "bytes": 3501
+    },
+    {
+      "path": "scripts/check_support_matrix.py",
+      "git_blob": "60df443a043214c1ffc6d537c040a6dfaae7b140",
+      "sha256": "123e833da8428a1399c051097302e5032188e7d1109112cd995223d193c6c265",
+      "bytes": 521
+    },
+    {
+      "path": "scripts/desktop_entry.py",
+      "git_blob": "79eb97d313b6dca419542a457819724b725051e1",
+      "sha256": "0e97d3d6cf8f4f168044c4f503d87d68717727066cd9b24fe41bca6df72dc018",
+      "bytes": 232
+    },
+    {
+      "path": "scripts/render_brand.py",
+      "git_blob": "c4823bacc3ee00877e91ca886880193da6fcea06",
+      "sha256": "d47b88dae4efe6c309e1c5cd1105a0a6783d3373579a959fcea244a3e741fb0a",
+      "bytes": 2325
+    },
+    {
+      "path": "scripts/stage_public_source.py",
+      "git_blob": "6b8397cff7b5e0dc0b9d3d10bbde535caf16deee",
+      "sha256": "ee85c97e279e36bfd3cd4de36bdd4ce157710245b087936f38981e052dbfb81d",
+      "bytes": 3456
+    },
+    {
+      "path": "scripts/stage_release.py",
+      "git_blob": "c0c245ce28500be6328086c97d6cbbb83dd1b9ef",
+      "sha256": "11be3b73d271379896701a8c450c802ce334577210a47e0cd44da3dbe16370e6",
+      "bytes": 2651
+    },
+    {
+      "path": "tests/adapter_contract/__init__.py",
+      "git_blob": "23e43a2b54de5a39dff6ee1af1510cb0c7b0e10d",
+      "sha256": "0cd0db3af39f502a5f6c597ac56901372a2bc43f168dfad8220df71cd7175f39",
+      "bytes": 50
+    },
+    {
+      "path": "tests/adapter_contract/test_synthetic.py",
+      "git_blob": "03ad7e5167cbbab42bc2af6f5e1f20131bd908b1",
+      "sha256": "0d60ad81ff877e730dc69282f5a2f8fa8b2c5ebc1787d4136d97359d14beb2fb",
+      "bytes": 2819
+    },
+    {
+      "path": "tests/fixtures/mfa_pipe.py",
+      "git_blob": "6c245b14a3ff772e0c52ba4af0d17415b283b917",
+      "sha256": "ae16f9107a61e0c04a5b849d8a05f7d0dc961fa2f14a382159459d4b02a9c7e5",
+      "bytes": 1406
+    },
+    {
+      "path": "tests/fixtures/process_tree.py",
+      "git_blob": "4531364a1083222eec2699435ae814b313f7b3eb",
+      "sha256": "e3a5b70046899778fe4832f0a5529db8cab59d81974597a181a9fca16f7b34b4",
+      "bytes": 360
+    },
+    {
+      "path": "tests/fixtures/synthetic_adapter.py",
+      "git_blob": "ba7951831e4637b81f72a82a1bda197fb1ea76d7",
+      "sha256": "682432dd6d4591f5bcf1b01f052b639bcde6b5fc58018b588d25cef1f6477254",
+      "bytes": 2158
+    },
+    {
+      "path": "tests/test_adapter_catalog.py",
+      "git_blob": "47a05b6bbc818f80a4b725c979c303e2903e93fc",
+      "sha256": "049d65944729b07e1606018401d2efbf7073fede775e1a5926332a228ce49a52",
+      "bytes": 2238
+    },
+    {
+      "path": "tests/test_app_paths.py",
+      "git_blob": "3b924b3db9a8811a6d2f76511044a3aa42b7b700",
+      "sha256": "55742b48c8a9b1e5846e40f23b6a039686b12a83b95709b28c36acff8a001567",
+      "bytes": 10417
+    },
+    {
+      "path": "tests/test_assistant_repeats.py",
+      "git_blob": "69f6f77c812cde0d4c8388bd52ae3797cd59b499",
+      "sha256": "e68f08b89c7f34350fac0ffbfc82451bf4dc992418a3610b18e517a85063e65a",
+      "bytes": 8803
+    },
+    {
+      "path": "tests/test_assistants.py",
+      "git_blob": "3a1a98b284cb82086c8d4bea68cf6e341cf7b735",
+      "sha256": "a40515b8edba5331c8a195befebaeb61945d6566d191d000bfa1be3a5087d0a4",
+      "bytes": 10964
+    },
+    {
+      "path": "tests/test_atomic_state.py",
+      "git_blob": "204dee6f9efbf445c3bf28fe7512a295a876a079",
+      "sha256": "6d0ad8737f569cada4d5c2b39f0f31b9e22ef79b3a05bbc074a3cc2af56d8408",
+      "bytes": 3771
+    },
+    {
+      "path": "tests/test_bettergi.py",
+      "git_blob": "9c6c25ba09e986e7b2faa19da6a32b854f4727b9",
+      "sha256": "a739713ac8c4cf45c90db970417f140faebb86edd257eb16d442744c5e99b275",
+      "bytes": 17650
+    },
+    {
+      "path": "tests/test_core.py",
+      "git_blob": "f892475de864cfd85a6ee94314a6d789c5a7b62b",
+      "sha256": "c254cd92a4b39bc4ca659118739f6fca62e7d52412268ffbc655ab0a5ab335e3",
+      "bytes": 6732
+    },
+    {
+      "path": "tests/test_desktop.py",
+      "git_blob": "af913bd769f0bd9d4fda8a79562c29e6b6207946",
+      "sha256": "f14c4e4036d18115cb7950ee4f70ed474cf9909fec9b2b27edbe0e58576c52c8",
+      "bytes": 13143
+    },
+    {
+      "path": "tests/test_desktop_ui.py",
+      "git_blob": "39e87f61b5a3dbbc63ff26391fbb6b81af818a1d",
+      "sha256": "62cfbe0720ff48c2413bf11c9eded3f7a8def49d09061e995d245178186ec4ca",
+      "bytes": 71046
+    },
+    {
+      "path": "tests/test_diagnostics.py",
+      "git_blob": "d653fd3e70b760dd6a5f1b57cbbe709770649533",
+      "sha256": "54d9d068f4c90b33fdba4e3cb1f2915e3028e1da193d783762fcd23afba9348a",
+      "bytes": 3334
+    },
+    {
+      "path": "tests/test_endfield_manual.py",
+      "git_blob": "19c2b9c9f91f7d1a8a5ee015207624314cca9e2a",
+      "sha256": "a76d3a3ba2ca49e1b0fcfcb51ebf364122e7e7a3493c7ba79adc3ddee990c9e9",
+      "bytes": 3554
+    },
+    {
+      "path": "tests/test_endfield_native_start.py",
+      "git_blob": "d04932d91dcdb1261a6ca65b39c1b83be28195d9",
+      "sha256": "71d56dbb285588552483c409ae845d7e21ff077c755bede039e87dad4b291e92",
+      "bytes": 5327
+    },
+    {
+      "path": "tests/test_execution_contract.py",
+      "git_blob": "b91a997c287e2e590d401eb9caca099cc49d0193",
+      "sha256": "0e98dceb7207280fb55796ded1716af93908f22eb6a7971984d8c24ceaa005d9",
+      "bytes": 16220
+    },
+    {
+      "path": "tests/test_exit_race.py",
+      "git_blob": "e74f0891938b04b5a70bba5065ee1c22bcc6662c",
+      "sha256": "4f4653e601b9b26c1bbeee8488fd5c9e47d9c464e02aca30cd1aa7912a4b5632",
+      "bytes": 9965
+    },
+    {
+      "path": "tests/test_foreground.py",
+      "git_blob": "3ba958c4ca50c935bbe506f1bc0c4513090ab264",
+      "sha256": "30733ca974c39e21aecafa6ec5388cdb3b71ff0c598afaac3f4cee3cf285fb69",
+      "bytes": 3961
+    },
+    {
+      "path": "tests/test_log_rotation.py",
+      "git_blob": "95db0da9c4e1a6c0fb8f5c2897fa249fe4d62c68",
+      "sha256": "2db2b7d12ba725dcda12dc5af6cf6fc806334a5b749a92f065c216055de1e1c6",
+      "bytes": 6451
+    },
+    {
+      "path": "tests/test_m1.py",
+      "git_blob": "cc3c8b10dd6a8ce8fde43a91b149ebedb85296dd",
+      "sha256": "c2d8b34bbdcb8676285525302d73d66d03c2b579993d545bc83dd023dbc5f4d2",
+      "bytes": 10430
+    },
+    {
+      "path": "tests/test_maaend.py",
+      "git_blob": "e222eb8327f42476c1aaec56383c1f454381d80a",
+      "sha256": "2fa9848668432a1128df27ea1fe3d91250b16653c278fb869ea43287ef70313b",
+      "bytes": 8397
+    },
+    {
+      "path": "tests/test_maagf2.py",
+      "git_blob": "6b9b04d387274fd8f42a0307254223d8ff75c358",
+      "sha256": "289a4360eaf3d11095b4f519da6c8115a9854328be041f489c8efcccfdb715fe",
+      "bytes": 26946
+    },
+    {
+      "path": "tests/test_maagf2_corrupt_logs.py",
+      "git_blob": "097af4be86f2dca71ed6fa9c0b2f41e8705c26ab",
+      "sha256": "041c054b556ec691b8bb025b7871a7ae00e46f4ded03a2d282551ec17b2c126b",
+      "bytes": 5583
+    },
+    {
+      "path": "tests/test_manual_game.py",
+      "git_blob": "ab8ec16e893a39fd42f58bbe549aa728b77e7d36",
+      "sha256": "7bbbed2a88c242bd5c933554548df229807b029b26a5c9e5c2309b624d2f2116",
+      "bytes": 8930
+    },
+    {
+      "path": "tests/test_march7.py",
+      "git_blob": "1599933e43dc0720d1a340193fabcfbd4b0e018b",
+      "sha256": "e00c89c45d1c8336f51c9c26448b25a13271ef6bcd6f06ad0cf66b45179cba44",
+      "bytes": 14682
+    },
+    {
+      "path": "tests/test_mfa_command.py",
+      "git_blob": "36d7592bcdb0cea15b70732a8dce76d24a5ae403",
+      "sha256": "a81c1d9080f7e5f5cd3bb34f9f538ca5dfa7a906c7ee7f9dfbdd45493663abcc",
+      "bytes": 2297
+    },
+    {
+      "path": "tests/test_nte.py",
+      "git_blob": "2a2ab2b59feffbbad70ae61a206505e4e9b2c409",
+      "sha256": "b14aad218bba61faa41834d04ca802daea7b3dc3414135f3a74bb9e9282ce99f",
+      "bytes": 7475
+    },
+    {
+      "path": "tests/test_onedragon.py",
+      "git_blob": "2780b5e6e2792f7b28ebe0112c230f7ad7d8d474",
+      "sha256": "2a7f05e1e2661c0a254b5bc7b10fe41a80707587a064b2c2fd8792f4c31cf69c",
+      "bytes": 12015
+    },
+    {
+      "path": "tests/test_process_query_race.py",
+      "git_blob": "209cbeda64fb2eb2fee950d01c49d0dea4a71f61",
+      "sha256": "84cbc6619397bde031e44b350d4143aff00ec32f5b6e5863c833b45b48477292",
+      "bytes": 8053
+    },
+    {
+      "path": "tests/test_profiles.py",
+      "git_blob": "f24908486627551730e1baee1e1831ed7bc13bb4",
+      "sha256": "f1085e96e798d5c0c501270c6087eb3717c0951362c1cc153418c1ed03c7379f",
+      "bytes": 4196
+    },
+    {
+      "path": "tests/test_public_artifact.py",
+      "git_blob": "ebfbcff07ce91c48c6176361db5ace8fdb7c9a3a",
+      "sha256": "8f14fd8109daea18b51c0e4875cbe928447892dbf87fc276a38ae916643dc4f9",
+      "bytes": 4457
+    },
+    {
+      "path": "tests/test_recovery_check.py",
+      "git_blob": "0c2d727e354de8805b6dc481c13c63f57cc596eb",
+      "sha256": "106191db04b7de1563ac9597f6a1d686f886df29fda0f378f48e0d301a947781",
+      "bytes": 8677
+    },
+    {
+      "path": "tests/test_registration.py",
+      "git_blob": "7e5e90446a8b606e217e22c2f947b6394228c222",
+      "sha256": "341990345c830c7ea12896656514b3ef13f25d40841548466a42c2a1bbe0f70c",
+      "bytes": 4698
+    },
+    {
+      "path": "tests/test_release_staging.py",
+      "git_blob": "c52d705b7c159179c44129ab566b966f54a002de",
+      "sha256": "1b4b7b0697744a163d40b6b947e81025d620192547317b8bb741509f6b04d44c",
+      "bytes": 2507
+    },
+    {
+      "path": "tests/test_result_details.py",
+      "git_blob": "1bc1d0938607bf173f4b533c71a7e0499bc53f45",
+      "sha256": "ec55373dfcb0d1f3f91b77be8de4428707b46506f64dcade35fdd7187c622198",
+      "bytes": 5929
+    },
+    {
+      "path": "tests/test_support_matrix.py",
+      "git_blob": "a24be4a0e94c1737433e31b5da7a41bd5b46b4cd",
+      "sha256": "e1349340898582b245f98c53cdbc460536039d158718a0d934d89654142e5073",
+      "bytes": 3929
+    },
+    {
+      "path": "tests/test_windows.py",
+      "git_blob": "50760e419c2ff9441ad6a14359e1ec67fa3cee47",
+      "sha256": "3d1dc75cd2350c58454a633b15c44b6c42a60dfaeac21a99cbe27f1b9e1d8f3b",
+      "bytes": 5822
+    }
+  ],
+  "supplements": [
+    {
+      "path": "LICENSE",
+      "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+      "origin": "later_maintainer_AGPL_decision"
+    },
+    {
+      "path": "README.md",
+      "sha256": "44c5a4a072eb33f3d2c398ef311937a1473487ce59eb2910c8aa0ad762292897",
+      "origin": "snapshot_explanation"
+    }
+  ],
+  "rebuilt": false,
+  "binary_source_equivalence_independently_proved": false,
+  "third_party_source_complete": false,
+  "distribution_approved": false,
+  "excluded_game_icon_count": 7,
+  "archive": {
+    "file": "gachaops-0.1.0-8b30990-application-inputs.zip",
+    "sha256": "00645015417b5a5d9210493e826e05018ba220dfda5183db3f346f274666f06c",
+    "bytes": 663606,
+    "availability": "private_local_preparation_only_not_published",
+    "public_url": null
+  },
+  "snapshot_manifest_sha256": "a8b2fdb16b1340475d6c7f18863736839abdf9eb47ce503b076cddc5ba7027a2"
+}

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "repeat_limit": 0,
+  "assistants": [
+    {
+      "id": "wuthering-waves",
+      "adapter": "ok-ww",
+      "installation_root": null,
+      "enabled": false,
+      "game_start": "assistant",
+      "timeout_seconds": 1800
+    },
+    {
+      "id": "zenless-zone-zero",
+      "adapter": "zzz-onedragon",
+      "installation_root": null,
+      "enabled": false,
+      "game_start": "assistant",
+      "timeout_seconds": 3600,
+      "game_path": null
+    },
+    {
+      "id": "endfield",
+      "adapter": "maa-end",
+      "installation_root": null,
+      "enabled": false,
+      "game_start": "assistant",
+      "timeout_seconds": 7200,
+      "entry_executable": null
+    },
+    {
+      "id": "girls-frontline-2",
+      "adapter": "maa-gf2",
+      "installation_root": null,
+      "enabled": false,
+      "game_start": "assistant",
+      "timeout_seconds": 3600,
+      "entry_executable": null
+    },
+    {
+      "id": "neverness-to-everness",
+      "adapter": "ok-nte",
+      "installation_root": null,
+      "enabled": false,
+      "game_start": "assistant",
+      "timeout_seconds": 1800,
+      "entry_executable": null
+    },
+    {
+      "id": "genshin",
+      "adapter": "bettergi",
+      "installation_root": null,
+      "enabled": false,
+      "game_start": "assistant",
+      "timeout_seconds": 1800,
+      "entry_executable": null
+    },
+    {
+      "id": "honkai-star-rail",
+      "adapter": "march7",
+      "installation_root": null,
+      "enabled": false,
+      "game_start": "assistant",
+      "timeout_seconds": 3600,
+      "entry_executable": null
+    }
+  ]
+}

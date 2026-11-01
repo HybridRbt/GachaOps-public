@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "runners": {
+    "bettergi": {
+      "game": "genshin",
+      "adapter": "bettergi",
+      "role": "primary",
+      "capabilities": [
+        "daily"
+      ],
+      "readiness": "inventory_pending",
+      "exe": null,
+      "cwd": null,
+      "task_index": null,
+      "runner_version": null,
+      "resource_version": null,
+      "patch_version": null,
+      "completion_contract": null,
+      "remote_disconnect": "unknown",
+      "health": {}
+    },
+    "zzz-onedragon": {
+      "game": "zzz",
+      "adapter": "onedragon",
+      "role": "primary",
+      "capabilities": [
+        "daily"
+      ],
+      "readiness": "inventory_pending",
+      "exe": null,
+      "cwd": null,
+      "task_index": null,
+      "runner_version": null,
+      "resource_version": null,
+      "patch_version": null,
+      "completion_contract": null,
+      "remote_disconnect": "unknown",
+      "health": {},
+      "assistant_self_exit": "user_reports_no"
+    },
+    "ok-ww": {
+      "game": "wuthering-waves",
+      "adapter": "ok",
+      "role": "primary",
+      "capabilities": [
+        "daily"
+      ],
+      "readiness": "inventory_pending",
+      "exe": null,
+      "cwd": null,
+      "task_index": 1,
+      "runner_version": null,
+      "resource_version": null,
+      "patch_version": null,
+      "completion_contract": null,
+      "remote_disconnect": "unknown",
+      "health": {},
+      "assistant_self_exit": "user_reports_yes"
+    },
+    "maaend": {
+      "game": "endfield",
+      "adapter": "maa",
+      "role": "primary",
+      "capabilities": [
+        "daily",
+        "navigation"
+      ],
+      "readiness": "inventory_pending",
+      "exe": null,
+      "cwd": null,
+      "task_index": null,
+      "runner_version": null,
+      "resource_version": null,
+      "patch_version": null,
+      "completion_contract": null,
+      "remote_disconnect": "user_reports_failure",
+      "health": {}
+    },
+    "ok-ef": {
+      "game": "endfield",
+      "adapter": "ok",
+      "role": "experimental",
+      "capabilities": [
+        "daily"
+      ],
+      "readiness": "inventory_pending",
+      "exe": null,
+      "cwd": null,
+      "task_index": 1,
+      "runner_version": null,
+      "resource_version": null,
+      "patch_version": null,
+      "completion_contract": null,
+      "remote_disconnect": "unknown",
+      "health": {}
+    },
+    "maagf2": {
+      "game": "gf2",
+      "adapter": "maa",
+      "role": "primary",
+      "capabilities": [
+        "daily",
+        "character_trial",
+        "peak"
+      ],
+      "readiness": "inventory_pending",
+      "exe": null,
+      "cwd": null,
+      "task_index": null,
+      "runner_version": null,
+      "resource_version": null,
+      "patch_version": null,
+      "completion_contract": null,
+      "remote_disconnect": "unknown",
+      "health": {},
+      "source": {
+        "upstream": "https://github.com/DarkLingYun/MaaGF2Exilium",
+        "fork": "https://github.com/HybridRbt/MaaGF2Exilium",
+        "branch": "codex/pc-dialog-fixes",
+        "local_commit_observed": "eebd21b",
+        "note": "本地checkout观察值；参考讨论所述后续提交尚未同步核实"
+      }
+    },
+    "ok-gf2": {
+      "game": "gf2",
+      "adapter": "ok",
+      "role": "backup",
+      "capabilities": [
+        "daily",
+        "background_daily"
+      ],
+      "readiness": "inventory_pending",
+      "exe": null,
+      "cwd": null,
+      "task_index": 1,
+      "runner_version": null,
+      "resource_version": null,
+      "patch_version": null,
+      "completion_contract": null,
+      "remote_disconnect": "unknown",
+      "health": {}
+    },
+    "ok-nte": {
+      "game": "nte",
+      "adapter": "ok",
+      "role": "primary",
+      "capabilities": [
+        "daily"
+      ],
+      "readiness": "inventory_pending",
+      "exe": null,
+      "cwd": null,
+      "task_index": 1,
+      "runner_version": null,
+      "resource_version": null,
+      "patch_version": null,
+      "completion_contract": null,
+      "remote_disconnect": "unknown",
+      "health": {}
+    }
+  },
+  "tasks": [
+    {
+      "id": "genshin-daily",
+      "game": "genshin",
+      "capability": "daily",
+      "runners": [
+        "bettergi"
+      ],
+      "timeout_seconds": 1800,
+      "retries": 0,
+      "replay_safe": false
+    },
+    {
+      "id": "zzz-daily",
+      "game": "zzz",
+      "capability": "daily",
+      "runners": [
+        "zzz-onedragon"
+      ],
+      "timeout_seconds": 1800,
+      "retries": 0,
+      "replay_safe": false
+    },
+    {
+      "id": "ww-daily",
+      "game": "wuthering-waves",
+      "capability": "daily",
+      "runners": [
+        "ok-ww"
+      ],
+      "timeout_seconds": 1800,
+      "retries": 0,
+      "replay_safe": false
+    },
+    {
+      "id": "endfield-daily",
+      "game": "endfield",
+      "capability": "daily",
+      "runners": [
+        "maaend"
+      ],
+      "timeout_seconds": 1800,
+      "retries": 0,
+      "replay_safe": false
+    },
+    {
+      "id": "gf2-daily",
+      "game": "gf2",
+      "capability": "daily",
+      "runners": [
+        "maagf2",
+        "ok-gf2"
+      ],
+      "timeout_seconds": 1800,
+      "retries": 0,
+      "replay_safe": false
+    },
+    {
+      "id": "nte-daily",
+      "game": "nte",
+      "capability": "daily",
+      "runners": [
+        "ok-nte"
+      ],
+      "timeout_seconds": 1800,
+      "retries": 0,
+      "replay_safe": false
+    }
+  ]
+}

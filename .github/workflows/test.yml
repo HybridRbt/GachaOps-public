@@ -1,0 +1,26 @@
+name: core-tests
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - if: runner.os == 'Windows'
+        run: python -m pip install --target build/gui-deps -r requirements-desktop.txt
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "PYTHONPATH=$((Resolve-Path build/gui-deps).Path)" >> $env:GITHUB_ENV
+          "QT_QPA_PLATFORM=offscreen" >> $env:GITHUB_ENV
+          "PYTHONUTF8=1" >> $env:GITHUB_ENV
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/check_support_matrix.py
+      - run: python -m gachaops plan --config config/inventory.example.json
+      - run: python -m gachaops simulate --config config/simulation.json

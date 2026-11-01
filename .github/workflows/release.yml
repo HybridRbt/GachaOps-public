@@ -1,0 +1,154 @@
+name: manual-release-candidate
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        type: choice
+        options: [build, materials, stage]
+        default: build
+        description: Build for review, prepare reviewed materials, or stage existing artifacts
+      build_run_id:
+        type: string
+        required: false
+        description: Explicit build run ID to consume in stage phase
+      materials_run_id:
+        type: string
+        required: false
+        description: Explicit reviewed material run ID to consume in stage phase
+      publish:
+        type: boolean
+        default: false
+        description: Publish only after maintainer approval and all release gates
+      tag:
+        type: string
+        required: false
+        description: Existing approved tag matching the reviewed build commit and version
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    if: ${{ inputs.phase == 'build' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - shell: pwsh
+        run: |
+          $env:PYTHONUTF8='1'
+          python -m pip install --target build/gui-deps -r requirements-desktop.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PYTHONPATH=(Resolve-Path build/gui-deps).Path
+          $env:QT_QPA_PLATFORM='offscreen'
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/check_support_matrix.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/Build-Desktop.ps1 -OutputDirectory "$env:RUNNER_TEMP/review-inputs/build" -DependenciesDirectory build/gui-deps -RequireClean
+          ./scripts/Smoke-Desktop.ps1 -AppDirectory "$env:RUNNER_TEMP/review-inputs/build/GachaOps" -EvidenceDirectory "$env:RUNNER_TEMP/frozen-smoke"
+          python scripts/release_candidate.py capture --app-dir "$env:RUNNER_TEMP/review-inputs/build/GachaOps" --output "$env:RUNNER_TEMP/review-inputs/review-input.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GachaOps-unreviewed-build
+          path: |
+            ${{ runner.temp }}/review-inputs/build/GachaOps/
+            ${{ runner.temp }}/review-inputs/review-input.json
+          if-no-files-found: error
+          retention-days: 30
+  materials:
+    if: ${{ inputs.phase == 'materials' }}
+    runs-on: windows-latest
+    environment: candidate-review
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare exact source archives and reviewed sidecars
+        shell: pwsh
+        run: |
+          $env:PYTHONUTF8='1'
+          # Maintainer supplies all declared archives in this reviewed material commit.
+          # Missing archives/hashes/approval fields stop here; this never approves or downloads them.
+          python scripts/prepare_release_materials.py --source . --output "$env:RUNNER_TEMP/materials" --archive-dir docs/release/source-delivery/archives
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GachaOps-reviewed-materials
+          path: ${{ runner.temp }}/materials/
+          if-no-files-found: error
+          retention-days: 30
+  stage:
+    if: ${{ inputs.phase == 'stage' }}
+    runs-on: windows-latest
+    environment: candidate-review
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require explicit source runs
+        shell: pwsh
+        env:
+          BUILD_RUN: ${{ inputs.build_run_id }}
+          MATERIALS_RUN: ${{ inputs.materials_run_id }}
+        run: |
+          if ($env:BUILD_RUN -notmatch '^[1-9][0-9]*$' -or $env:MATERIALS_RUN -notmatch '^[1-9][0-9]*$') { throw 'Explicit build and materials run IDs required' }
+      - uses: actions/download-artifact@v4
+        with:
+          name: GachaOps-unreviewed-build
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/review-inputs
+      - uses: actions/download-artifact@v4
+        with:
+          name: GachaOps-reviewed-materials
+          run-id: ${{ inputs.materials_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/reviewed-materials
+      - name: Finalize exact reviewed artifact without rebuilding
+        shell: pwsh
+        run: |
+          $env:PYTHONUTF8='1'
+          python scripts/release_candidate.py finalize --source "$env:RUNNER_TEMP/reviewed-materials" --app-dir "$env:RUNNER_TEMP/review-inputs/build/GachaOps" --review docs/release/CANDIDATE_REVIEW.json --output "$env:RUNNER_TEMP/finalized"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GachaOps-windows-candidate
+          path: |
+            ${{ runner.temp }}/finalized/GachaOps-candidate.zip
+            ${{ runner.temp }}/finalized/release-summary.json
+          if-no-files-found: error
+          retention-days: 30
+  publish:
+    if: ${{ inputs.phase == 'stage' && inputs.publish && inputs.tag != '' && vars.PUBLIC_RELEASE_ENABLED == 'true' }}
+    needs: stage
+    runs-on: ubuntu-latest
+    environment: public-release
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: GachaOps-windows-candidate
+      - name: Verify package, approved version and existing tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python scripts/release_candidate.py verify --zip GachaOps-candidate.zip --summary release-summary.json
+          python -c 'import json,os,tomllib; s=json.load(open("release-summary.json")); v=tomllib.load(open("pyproject.toml","rb"))["project"]["version"]; assert s["version"]==v and os.environ["RELEASE_TAG"]=="v"+v'
+          git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(python -c 'import json; print(json.load(open("release-summary.json"))["candidate_code_commit"])')"
+      - name: Publish approved release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release create "$RELEASE_TAG" GachaOps-candidate.zip --verify-tag --generate-notes

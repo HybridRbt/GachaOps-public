@@ -1,0 +1,28 @@
+{
+  "selection": "03",
+  "name": "星环编排（六节点圆环）",
+  "confirmed": "2026-10-23",
+  "ico_sizes": [
+    16,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256
+  ],
+  "sha256": {
+    "program.ico": "d222bbccbd2c4d6d8204b10dbe7e97c4bd86f9e2d5dbbe855251d2d912753246",
+    "program.png": "bc1aa59930329aa4f5daade02d28712dc0e3b5bc8f2c4fb012464d8e02733852",
+    "program.svg": "a82ab92aa0751002fbcc798d202a761e350a7708db30b322116a636f54003ec0",
+    "program-1024.png": "6a7e9a8e253d2dbfc3e51dcee898f7b1870aa85ac503790abd59862ffafd3a53",
+    "program-128.png": "c78798aacb2a38d52083514bc0fecc26db9701f5455c757e195ba1c1d1a9f5dc",
+    "program-16.png": "d3ff7b28816fdb10d9d2d48b3702ee4a8311146db381b82572c2fbfbc3337ee5",
+    "program-24.png": "a407ffd61a306e798a925bcbf70630bb38d392d6b40cfa8fa6e285e3890b8a0d",
+    "program-256.png": "feb122554049c74ecddf44d9d9f31e0f44092993adb6737fe5fc50bd909d5590",
+    "program-32.png": "279a50b1e7f748a21c922adc28cf0232d1b41e121bac0bff78d0b156c7196c17",
+    "program-48.png": "2a29c25a5c9b56774ba39082d22ad28cb572d57e6deb3374f0291e516304c0eb",
+    "program-512.png": "bc1aa59930329aa4f5daade02d28712dc0e3b5bc8f2c4fb012464d8e02733852",
+    "program-64.png": "cf6f7f98cca83d97078e0c1b9a620da9f3040602cade23abb30b5b2c19d8a97a"
+  }
+}

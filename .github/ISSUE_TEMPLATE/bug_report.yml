@@ -1,0 +1,22 @@
+name: Bug or compatibility report
+description: Report a reproducible GachaOps problem using sanitized evidence
+body:
+  - type: textarea
+    id: versions
+    attributes:
+      label: Environment
+      description: Windows version, GachaOps commit/version, assistant version and game start mode. No account identifiers or personal paths.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Expected and actual behavior
+      description: Steps, final status and cleanup outcome; identify offline fixture versus explicitly authorized live observation.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Preview the diagnostic ZIP before attaching it. Do not attach raw logs, native settings, screenshots containing accounts, or tokens.

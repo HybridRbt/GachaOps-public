@@ -1,0 +1,1161 @@
+{
+  "schema_version": 1,
+  "checked_date": "2026-10-27",
+  "scope": "Exact SDK source-commit attribution and collected notice coverage for the existing supplier projection; not complete application SBOM or distribution approval",
+  "supplier_sdk_only": true,
+  "wheel_build_equivalence_not_established": true,
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-bdf",
+      "name": "BundledFreetype_Attribution_freetype-bdf",
+      "versionInfo": "2.14.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (c) 2000 Computing Research Labs, New Mexico State University\nCopyright (c) 2001-2014 Francesco Zappa Nardelli",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/freetype/BDF-LICENSE.txt",
+          "sha256": "e4e792f29e66750f2e410fd7b50a567652c180f6ee15e1a4dfa0bb5cde524537",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/freetype/qt_attribution.json",
+      "attribution_id": "freetype-bdf",
+      "attribution_sha256": "2a8bc47b2db788b481665a618e9edfe14f155a7527fae80eca77b4f19ca70bdb",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-pcf",
+      "name": "BundledFreetype_Attribution_freetype-pcf",
+      "versionInfo": "2.14.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT AND MIT-open-group",
+      "copyrightText": "Copyright (c) 2001, 2012 David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2000-2014 Francesco Zappa Nardelli\nCopyright (c) 1990, 1994, 1998 The Open Group",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/freetype/PCF-LICENSE.txt",
+          "sha256": "6938597bfdeca0db191a8f9ede52eaf2482c2c71a0094c084747a1235f9958fe",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/freetype/qt_attribution.json",
+      "attribution_id": "freetype-pcf",
+      "attribution_sha256": "2a8bc47b2db788b481665a618e9edfe14f155a7527fae80eca77b4f19ca70bdb",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-zlib",
+      "name": "BundledFreetype_Attribution_freetype-zlib",
+      "versionInfo": "2.14.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Zlib",
+      "copyrightText": "Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/freetype/ZLIB-LICENSE.txt",
+          "sha256": "2b1f5d615382a151af3eb71462ad17d89e2efee8fa7664058d35d3d9237ebb19",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/freetype/qt_attribution.json",
+      "attribution_id": "freetype-zlib",
+      "attribution_sha256": "2a8bc47b2db788b481665a618e9edfe14f155a7527fae80eca77b4f19ca70bdb",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledPcre2-Attribution-pcre2-sljit",
+      "name": "BundledPcre2_Attribution_pcre2-sljit",
+      "versionInfo": "10.47",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-2-Clause",
+      "copyrightText": "Copyright Zoltan Herczeg",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/pcre2/LICENSE-SLJIT",
+          "sha256": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/pcre2/qt_attribution.json",
+      "attribution_id": "pcre2-sljit",
+      "attribution_sha256": "e009f73100ef4aed400257a095cdb25ee31980c4a290f1aca52d147cb3067abc",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-blake2",
+      "name": "Core_Attribution_blake2",
+      "versionInfo": "ed1974ea83433eba7b2d95c5dcd9ac33cb847913",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "CC0-1.0 OR Apache-2.0",
+      "copyrightText": "Copyright 2012, Samuel Neves <sneves@dei.uc.pt>",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/blake2/COPYING",
+          "sha256": "4103f471877ed0bae500752c5fcd7ecca409d4a4a8dc2ad40437daba60f1a2bc",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/blake2/qt_attribution.json",
+      "attribution_id": "blake2",
+      "attribution_sha256": "bab552307bdd03ed9a4cf7f8f1397c3d18d4dbee19ee576033284104785245be",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-doubleconversion",
+      "name": "Core_Attribution_doubleconversion",
+      "versionInfo": "3.3.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "Copyright 2006-2012, the V8 project authors",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/double-conversion/LICENSE",
+          "sha256": "4af93c12062c58058378de2397dc1c92bbff9ddfb1d583a01c84127557ce97ca",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/double-conversion/qt_attribution.json",
+      "attribution_id": "doubleconversion",
+      "attribution_sha256": "8f5ed6d1b5ac8afaccc086933fed09d701f0bf064b4a8ee30e746b8c933366a0",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-easing",
+      "name": "Core_Attribution_easing",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "Copyright (c) 2001 Robert Penner",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/easing/LICENSE",
+          "sha256": "92fac99458f1754b73edf50f9c9983e0efaa06ad96e2afd5e538c79f45b4b191",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/easing/qt_attribution.json",
+      "attribution_id": "easing",
+      "attribution_sha256": "77d67a1db5882bb0b9a1278b014885bee45a4c059d1da9f835b6da5bc4b9c93d",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-md4",
+      "name": "Core_Attribution_md4",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "CC0-1.0",
+      "copyrightText": "Written by Alexander Peslyak - better known as Solar Designer <solar@openwall.com> - in 2001, and placed in the public domain. There's absolutely no warranty.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/CC0-1.0.txt",
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/md4/qt_attribution.json",
+      "attribution_id": "md4",
+      "attribution_sha256": "34bda63a2fcc23c83f2e5364ccd394553b4baa505b1f79ded9cc2161c56a9b4c",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-md5",
+      "name": "Core_Attribution_md5",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "CC0-1.0",
+      "copyrightText": "Written by Colin Plumb in 1993, no copyright is claimed. Ian Jackson <ian@chiark.greenend.org.uk>.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/CC0-1.0.txt",
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/md5/qt_attribution.json",
+      "attribution_id": "md5",
+      "attribution_sha256": "20b0f1b17ccd1bd5e8d763b1cdca4b095b8f0c037644b5ee18154536b7d8425e",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-rfc6234",
+      "name": "Core_Attribution_rfc6234",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "Copyright (c) 2011 IETF Trust and the persons identified as authors of the code.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/rfc6234/LICENSE",
+          "sha256": "7ccebd514aaabc86192f957d773cebf06577c12fe9f25ecd419c6cac5da7a14c",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/rfc6234/qt_attribution.json",
+      "attribution_id": "rfc6234",
+      "attribution_sha256": "fa24413bdc5015fc7fc84297fa17d4c8a598f8f7c76b9495a6e6b26a77b4a324",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha1",
+      "name": "Core_Attribution_sha1",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "LicenseRef-SHA1-Public-Domain",
+      "copyrightText": "Copyright (C) Dominik Reichl <dominik.reichl@t-online.de>\nCopyright (C) 2016 The Qt Company Ltd",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/LicenseRef-SHA1-Public-Domain.txt",
+          "sha256": "65d86b8ec6b1cd8b8f6e64fd8710274ba00d6a3c520e00dfdcd1c3d2071f3305",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/sha1/qt_attribution.json",
+      "attribution_id": "sha1",
+      "attribution_sha256": "53cab2c771f7f7ffbf6a58ff759e5846b746e91d98dfe467d5145edf8cd7d306",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha3-endian",
+      "name": "Core_Attribution_sha3_endian",
+      "versionInfo": "1.0.0",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-2-Clause",
+      "copyrightText": "Copyright (c) 1998-2013, Brian Gladman, Worcester, UK. All rights reserved.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/sha3/BRG_ENDIAN_LICENSE",
+          "sha256": "2fed6f252ca4a7e813811de3cd3cd08183edd4138bdee909410ef6eee394e82c",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "allow_literal_control_characters_in_upstream_json",
+      "attribution_path": "src/3rdparty/sha3/qt_attribution.json",
+      "attribution_id": "sha3_endian",
+      "attribution_sha256": "d904a6c21c150d9cac693c0806a469480306cb4e5879cc13c994fbadba71a56e",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha3-keccak",
+      "name": "Core_Attribution_sha3_keccak",
+      "versionInfo": "3.2",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "CC0-1.0",
+      "copyrightText": "Guido Bertoni, Joan Daemen, Michaël Peeters and Gilles Van Assche.\nTo the extent possible under law, the implementers have waived all copyright\nand related or neighboring rights to the source code in this file.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/sha3/CC0_LICENSE",
+          "sha256": "1f2786e2c5befeb4dcba6638db6528bf96ef5d2cf24bc85ab5a81ef00abef59d",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "allow_literal_control_characters_in_upstream_json",
+      "attribution_path": "src/3rdparty/sha3/qt_attribution.json",
+      "attribution_id": "sha3_keccak",
+      "attribution_sha256": "d904a6c21c150d9cac693c0806a469480306cb4e5879cc13c994fbadba71a56e",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-siphash",
+      "name": "Core_Attribution_siphash",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "CC0-1.0",
+      "copyrightText": "Copyright (C) 2012-2014 Jean-Philippe Aumasson\nCopyright (C) 2012-2014 Daniel J. Bernstein <djb@cr.yp.to>\nCopyright (C) 2016 Intel Corporation",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/CC0-1.0.txt",
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/siphash/qt_attribution.json",
+      "attribution_id": "siphash",
+      "attribution_sha256": "8614947dfc0ca1d21aad2f88b4400598262ab8c08aa87c4f7acc0c2de6e5619e",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tika-mimetypes",
+      "name": "Core_Attribution_tika-mimetypes",
+      "versionInfo": "dbcbb368e0a913e1a74cca61347fd6ce24bc6d7e",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "Copyright 2025 The Apache Software Foundation",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/Apache-2.0.txt",
+          "sha256": "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/corelib/mimetypes/3rdparty/qt_attribution.json",
+      "attribution_id": "tika-mimetypes",
+      "attribution_sha256": "c17fe01508453369e75f624a71a17f5eda9f880f5ccb8629ffb82618e42744ff",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tinycbor",
+      "name": "Core_Attribution_tinycbor",
+      "versionInfo": "0.6.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (C) 2015-2021 Intel Corporation",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/tinycbor/LICENSE",
+          "sha256": "3c6ba0b5bfa7830505301ffb336a17b0748e0d61c4d34216e9dc98f10e40395e",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/tinycbor/qt_attribution.json",
+      "attribution_id": "tinycbor",
+      "attribution_sha256": "3cd7042c743868aa67d792b85cd1e113b02cfa5273ea727a5a40915c9163b377",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tlexpected",
+      "name": "Core_Attribution_tlexpected",
+      "versionInfo": "41d3e1f48d682992a2230b2a715bca38b848b269",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "CC0-1.0",
+      "copyrightText": "To the extent possible under law, Sy Brand has waived all copyright and related or neighboring rights to the expected library. This work is published from: United Kingdom.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/CC0-1.0.txt",
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/corelib/global/qt_attribution.json",
+      "attribution_id": "tlexpected",
+      "attribution_sha256": "64698063a65a1502b986bd61163b5eb9c6bde87f93feb28e4eab43ff07a4f10a",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-unicode-character-database",
+      "name": "Core_Attribution_unicode-character-database",
+      "versionInfo": "34",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Unicode-3.0",
+      "copyrightText": "Copyright (C) 1991-2022 Unicode, Inc.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/Unicode-3.0.txt",
+          "sha256": "80bb6294022d8764adb36a9d65ebb6bd94efb1865918a71e31e6c247607d7634",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "allow_literal_control_characters_in_upstream_json",
+      "attribution_path": "src/corelib/text/qt_attribution.json",
+      "attribution_id": "unicode-character-database",
+      "attribution_sha256": "0b13f8e076bdbf0451b9d9aa9d4b14791d819d9ae16fc705a8c65a1bd8f3b442",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-unicode-cldr",
+      "name": "Core_Attribution_unicode-cldr",
+      "versionInfo": "v48",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Unicode-3.0",
+      "copyrightText": "Copyright (C) 2004-2025 Unicode, Inc.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/Unicode-3.0.txt",
+          "sha256": "80bb6294022d8764adb36a9d65ebb6bd94efb1865918a71e31e6c247607d7634",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "allow_literal_control_characters_in_upstream_json",
+      "attribution_path": "src/corelib/text/qt_attribution.json",
+      "attribution_id": "unicode-cldr",
+      "attribution_sha256": "0b13f8e076bdbf0451b9d9aa9d4b14791d819d9ae16fc705a8c65a1bd8f3b442",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-aglfn",
+      "name": "Gui_Attribution_aglfn",
+      "versionInfo": "1.7",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "Copyright 2002, 2003, 2005, 2006, 2008, 2010, 2015 Adobe Systems",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/gui/text/LICENSE.AGLFN.txt",
+          "sha256": "40818155548ff41c67d3a40edf355e9658992b292c227f4c1147425cedc746c6",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/gui/text/qt_attribution.json",
+      "attribution_id": "aglfn",
+      "attribution_sha256": "73066a55ff52c6546753e1dc0802d8890d58e93e7efa394565cd8bdd0df0995b",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-d3d12memoryallocator",
+      "name": "Gui_Attribution_d3d12memoryallocator",
+      "versionInfo": "f128d39b7a95b4235bd228d231646278dc6c24b2",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (c) 2019-2022 Advanced Micro Devices, Inc. All rights reserved.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/D3D12MemoryAllocator/LICENSE.txt",
+          "sha256": "1b3941c52b26d42c510afbdf205a8b96a6d64f5a7b8ebff0287979fd91dfd52f",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/D3D12MemoryAllocator/qt_attribution.json",
+      "attribution_id": "d3d12memoryallocator",
+      "attribution_sha256": "182d7e5ed90dc592b01a50635c85f4039ca6f25f88ec4700b08faf6f07fda09e",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-emoji-segmenter",
+      "name": "Gui_Attribution_emoji-segmenter",
+      "versionInfo": "0.4.0",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "Copyright 2019 Google LLC",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/LICENSES/Apache-2.0.txt",
+          "sha256": "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/emoji-segmenter/qt_attribution.json",
+      "attribution_id": "emoji-segmenter",
+      "attribution_sha256": "9a980fc0f9e478d2a7e9a571d4cd234c259aaf8e2ea3fb60a0a7cf02cc3c3700",
+      "license_resolution": "exact_LicenseId_to_source_LICENSES_file_not_legal_approval",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-grayraster",
+      "name": "Gui_Attribution_grayraster",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "FTL OR GPL-2.0-only",
+      "copyrightText": "Copyright 2000-2016 by David Turner, Robert Wilhelm, and Werner Lemberg.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/freetype/LICENSE.txt",
+          "sha256": "bf543cdda11864477b8d2ca2aa9afc2aaa8f9133461b4d962ed6ec73646256a1",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/gui/painting/qt_attribution.json",
+      "attribution_id": "grayraster",
+      "attribution_sha256": "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-icc-srgb-color-profile",
+      "name": "Gui_Attribution_icc-srgb-color-profile",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "LicenseRef-ICC-License",
+      "copyrightText": "Copyright International Color Consortium, 2015",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/icc/LICENSE.txt",
+          "sha256": "9e34ff47b3a44814e183342e7e198d127a6740e29d20e8381fba7688dafc79dd",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/icc/qt_attribution.json",
+      "attribution_id": "icc-srgb-color-profile",
+      "attribution_sha256": "509da9bd2b3f769c730aa4627b1080d65f39b0ecd4130111c9e1122e13cd35b5",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-md4c",
+      "name": "Gui_Attribution_md4c",
+      "versionInfo": "0.5.2",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright © 2016-2024 Martin Mitáš",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/md4c/LICENSE.md",
+          "sha256": "d30937367d5413e7eaa218b1640b8946ff76fd34d97152f6979fd96169d5d0fc",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/md4c/qt_attribution.json",
+      "attribution_id": "md4c",
+      "attribution_sha256": "59098b9262ac268e73495cb1b1603b5c899d5c532db6ca96e69ffac7062445f5",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-opengl-es2-headers",
+      "name": "Gui_Attribution_opengl-es2-headers",
+      "versionInfo": "Revision 27673",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (c) 2013-2014 The Khronos Group Inc.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/gui/opengl/LICENSE.KHRONOS.txt",
+          "sha256": "2e484f3c26ff5008c704a3ca9dd809d43f24a004a1abb6c202660fbff0d19715",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/gui/opengl/qt_attribution.json",
+      "attribution_id": "opengl-es2-headers",
+      "attribution_sha256": "d05626e02386f22186b385b3ce2cd5a6431b84e2fc552c68f7133e38da552fc1",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-opengl-headers",
+      "name": "Gui_Attribution_opengl-headers",
+      "versionInfo": "Revision 27684",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (c) 2013-2014 The Khronos Group Inc.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/gui/opengl/LICENSE.KHRONOS.txt",
+          "sha256": "2e484f3c26ff5008c704a3ca9dd809d43f24a004a1abb6c202660fbff0d19715",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/gui/opengl/qt_attribution.json",
+      "attribution_id": "opengl-headers",
+      "attribution_sha256": "d05626e02386f22186b385b3ce2cd5a6431b84e2fc552c68f7133e38da552fc1",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-rhi-miniengine-d3d12-mipmap",
+      "name": "Gui_Attribution_rhi-miniengine-d3d12-mipmap",
+      "versionInfo": "0aa79bad78992da0b6a8279ddb9002c1753cb849",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (c) 2015 Microsoft",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/gui/rhi/LICENSE.MiniEngine.txt",
+          "sha256": "cf248820bf1178370bb4f1670a59f8748d46bc96d0f64080cd631511c6046409",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/gui/rhi/qt_attribution.json",
+      "attribution_id": "rhi-miniengine-d3d12-mipmap",
+      "attribution_sha256": "59df3efb041ed346aa797602a76ef8d284e84c3cc6ace30967d6704fc65dbb47",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-smooth-scaling-algorithm",
+      "name": "Gui_Attribution_smooth-scaling-algorithm",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-2-Clause AND Imlib2",
+      "copyrightText": "Copyright (C) 2004, 2005 Daniel M. Duley.\n(C) Carsten Haitzler and various contributors.\n(C) Willem Monsuwe <willem@stack.nl>",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/gui/painting/LICENSE.QIMAGETRANSFORM.txt",
+          "sha256": "46b3cbfa2f2946b93291506351e9be1dd0a28d2a53260f5aa488abd36fbeca9d",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/gui/painting/qt_attribution.json",
+      "attribution_id": "smooth-scaling-algorithm",
+      "attribution_sha256": "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-vulkan-xml-spec",
+      "name": "Gui_Attribution_vulkan-xml-spec",
+      "versionInfo": "1.4.308",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Apache-2.0 OR MIT",
+      "copyrightText": "Copyright (c) 2015-2025 The Khronos Group Inc.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/gui/vulkan/LICENSE.txt",
+          "sha256": "5f618873b0cdd1e84c611c5529212c2524bfc887bdfd7d1f3b568bad3c649612",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/gui/vulkan/qt_attribution.json",
+      "attribution_id": "vulkan-xml-spec",
+      "attribution_sha256": "b4beb6ac27b066a6a71408da116fea60131c06ac9799c9763fe9cef28a76e7b9",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-vulkanmemoryallocator",
+      "name": "Gui_Attribution_vulkanmemoryallocator",
+      "versionInfo": "3.2.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (c) 2017-2025 Advanced Micro Devices, Inc. All rights reserved.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/VulkanMemoryAllocator/LICENSE.txt",
+          "sha256": "846d97c8b74ccaa92b9ad031140a04363b3b3985f318094552f297b8bda1c68e",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/VulkanMemoryAllocator/qt_attribution.json",
+      "attribution_id": "vulkanmemoryallocator",
+      "attribution_sha256": "833626a9e955bdae274f076786ca2cc7c8b50f9e382dff566db89ec69f8178cf",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-webgradients",
+      "name": "Gui_Attribution_webgradients",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright (c) 2017 itmeo",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/util/gradientgen/LICENSE.WEBGRADIENTS.txt",
+          "sha256": "9be732e45b638c74f9c0e5248541dd54dc7e8e9a5545df96b5c4b7c9ac0c68ba",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "util/gradientgen/qt_attribution.json",
+      "attribution_id": "webgradients",
+      "attribution_sha256": "6e87ac5d79ab92110e6e517b2c74e4f4fd15878540e93eea0300e529d3318572",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-xserverhelper",
+      "name": "Gui_Attribution_xserverhelper",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "X11 AND HPND",
+      "copyrightText": "Copyright (c) 1987, 1988 X Consortium\nCopyright 1987, 1988 by Digital Equipment Corporation, Maynard, Massachusetts.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/gui/painting/LICENSE.XCONSORTIUM.txt",
+          "sha256": "a216b01291eb38fc1af93cfccf1fc67b48d9923612e517c2a695e95b3f03c22c",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/gui/painting/qt_attribution.json",
+      "attribution_id": "xserverhelper",
+      "attribution_sha256": "8cddd6c73a885f697261c4d6d60e5cd814a2544fcd407504b52a5eb9b7cc3600",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-zlib",
+      "name": "Gui_Attribution_zlib",
+      "versionInfo": "1.3.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Zlib",
+      "copyrightText": "(C) 1995-2024 Jean-loup Gailly and Mark Adler",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/zlib/LICENSE",
+          "sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/zlib/qt_attribution.json",
+      "attribution_id": "zlib",
+      "attribution_sha256": "6a37eaf51d8ebb7bd19e01a9a2334da8557409acb520ef6d1813c6d742771030",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-libpsl",
+      "name": "Network_Attribution_libpsl",
+      "versionInfo": "664f3dc85259ec65e30248a61fa1c45b7b0e4c3f",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "Copyright 2014-2016 The Chromium Authors. All rights reserved.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/libpsl/src/LICENSE.chromium",
+          "sha256": "1d7f52747a9169751cdf2641a8299c0098e9ecdf9429296ffd55bdb14c9ed5b3",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "allow_literal_control_characters_in_upstream_json",
+      "attribution_path": "src/3rdparty/libpsl/qt_attribution.json",
+      "attribution_id": "libpsl",
+      "attribution_sha256": "e5457bb8434a58f7b2e1f151b68ff62325211828a51dad25bb4e5a4f1afb9c62",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-psl-data",
+      "name": "Network_Attribution_psl-data",
+      "versionInfo": "2025-06-16_09-45-02_UTC",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MPL-2.0",
+      "copyrightText": "The list was originally provided by Jo Hermans <jo.hermans@gmail.com>.\nIt is now maintained on github (https://github.com/publicsuffix/list).",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/libpsl/PSL-LICENSE.txt",
+          "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "allow_literal_control_characters_in_upstream_json",
+      "attribution_path": "src/3rdparty/libpsl/qt_attribution.json",
+      "attribution_id": "psl-data",
+      "attribution_sha256": "e5457bb8434a58f7b2e1f151b68ff62325211828a51dad25bb4e5a4f1afb9c62",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-zlib",
+      "name": "Network_Attribution_zlib",
+      "versionInfo": "1.3.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Zlib",
+      "copyrightText": "(C) 1995-2024 Jean-loup Gailly and Mark Adler",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/zlib/LICENSE",
+          "sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/zlib/qt_attribution.json",
+      "attribution_id": "zlib",
+      "attribution_sha256": "6a37eaf51d8ebb7bd19e01a9a2334da8557409acb520ef6d1813c6d742771030",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Platform-Attribution-extra-cmake-modules",
+      "name": "Platform_Attribution_extra-cmake-modules",
+      "versionInfo": "5.84.0",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "Copyright © 2011-2018 The KDE community",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/cmake/3rdparty/extra-cmake-modules/COPYING-CMAKE-SCRIPTS",
+          "sha256": "46cde7dc11e64c78d650b4851b88f6704b4665ff60f22a1caf68ceb15e217e5b",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "cmake/3rdparty/extra-cmake-modules/qt_attribution.json",
+      "attribution_id": "extra-cmake-modules",
+      "attribution_sha256": "f34f498d6c63a78a882b352fa38c9dd076a59b1696cd6a6f921151a61f2a02e0",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Platform-Attribution-kwin",
+      "name": "Platform_Attribution_kwin",
+      "versionInfo": "5.13.4",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "Copyright 2014 Alex Merry <alex.merry@kde.org>\nCopyright 2014 Martin Gräßlin <mgraesslin@kde.org>\nCopyright (c) 2006,2007 Laurent Montel, <montel@kde.org>",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/cmake/3rdparty/kwin/COPYING-CMAKE-SCRIPTS",
+          "sha256": "46cde7dc11e64c78d650b4851b88f6704b4665ff60f22a1caf68ceb15e217e5b",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "cmake/3rdparty/kwin/qt_attribution.json",
+      "attribution_id": "kwin",
+      "attribution_sha256": "bf3a3c09e99f1c9fab7553ebc4a7548b71dc23fcfdbe6e5df0fa0e7847c2efc3",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype",
+      "name": "BundledFreetype",
+      "versionInfo": "2.14.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "FTL OR GPL-2.0-only",
+      "copyrightText": "Copyright (c) 2007-2014 Adobe Systems Incorporated\nCopyright (c) 2004-2025 Albert Chin-A-Young\nCopyright (c) 2018-2025 Armin Hasitzka, David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2000 Computing Research Labs, New Mexico State University\nCopyright (c) 1996-2025 David Turner, Robert Wilhelm, Dominik Röttsches, and Werner Lemberg\nCopyright (c) 2004-2025 David Turner, Robert Wilhelm, Werner Lemberg and George Williams\nCopyright (c) 2022-2025 David Turner, Robert Wilhelm, Werner Lemberg, and Moazin Khatti\nCopyright (c) 2008-2025 David Turner, Robert Wilhelm, Werner Lemberg, and suzuki toshiya\nCopyright (c) 2003-2025 David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2005-2025 David Turner\nCopyright (c) 2007-2025 Derek Clegg and Michael Toftdal\nCopyright (c) 2007 Dmitry Timoshkov for Codeweavers\nCopyright (c) 2001-2015 Francesco Zappa Nardelli\nCopyright (c) 2005, 2007, 2008, 2013 George Williams\nCopyright (c) 2013-2025 Google, Inc. Google Author(s) Behdad Esfahbod and Stuart Gill\nCopyright (c) 2013-2022 Google, Inc.\nCopyright (c) 2003 Huw D M Davies for Codeweavers\nCopyright (c) 2010-2025 Joel Klinghed\nCopyright (c) 1996-2025 Just van Rossum, David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2003-2025 Masatake YAMATO and Redhat K.K.\nCopyright (c) 2004-2025 Masatake YAMATO, Redhat K.K, David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2019-2025 Nikhil Ramakrishnan, David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2009-2025 Oran Agra and Mickey Gabel\nCopyright (c) 2007-2025 Rahul Bhalerao <rahul.bhalerao@redhat.com>\nCopyright (c) 2002-2025 Roberto Alameda\nCopyright (c) 2015-2025 Werner Lemberg\nCopyright (c) 2004-2025 suzuki toshiya, Masatake YAMATO, Red Hat K.K., David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2019 nyorain\nCopyright (c) 2022-2025 David Turner, Robert Wilhelm, Werner Lemberg, George Williams, and Dominik Röttsches\nCopyright (C) 2009, 2023  Red Hat, Inc.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/freetype/LICENSE.txt",
+          "sha256": "bf543cdda11864477b8d2ca2aa9afc2aaa8f9133461b4d962ed6ec73646256a1",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/freetype/qt_attribution.json",
+      "attribution_id": "freetype",
+      "attribution_sha256": "2a8bc47b2db788b481665a618e9edfe14f155a7527fae80eca77b4f19ca70bdb",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledHarfbuzz",
+      "name": "BundledHarfbuzz",
+      "versionInfo": "12.3.0",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT",
+      "copyrightText": "Copyright © 2010-2022  Google, Inc.\nCopyright © 2015-2020  Ebrahim Byagowi\nCopyright © 2019,2020  Facebook, Inc.\nCopyright © 2012,2015  Mozilla Foundation\nCopyright © 2011  Codethink Limited\nCopyright © 2008,2010  Nokia Corporation and/or its subsidiary(-ies)\nCopyright © 2009  Keith Stribley\nCopyright © 2011  Martin Hosken and SIL International\nCopyright © 2007  Chris Wilson\nCopyright © 2005,2006,2020,2021,2022,2023  Behdad Esfahbod\nCopyright © 2004,2007,2008,2009,2010,2013,2021,2022,2023  Red Hat, Inc.\nCopyright © 1998-2005  David Turner and Werner Lemberg\nCopyright © 2016  Igalia S.L.\nCopyright © 2022  Matthias Clasen\nCopyright © 2018,2021  Khaled Hosny\nCopyright © 2018,2019,2020  Adobe, Inc\nCopyright © 2013-2015  Alexei Podtelezhnikov",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/harfbuzz-ng/COPYING",
+          "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/harfbuzz-ng/qt_attribution.json",
+      "attribution_id": "harfbuzz-ng",
+      "attribution_sha256": "e5b4e946aa9a34d947e3ab6c89a611720b39adcb1deb326a6ca2422f2db1543a",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledLibpng",
+      "name": "BundledLibpng",
+      "versionInfo": "1.6.54",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Libpng AND libpng-2.0",
+      "copyrightText": "Copyright (c) 1995-2026 The PNG Reference Library Authors\nCopyright (c) 2000-2026 Cosmin Truta\nCopyright (c) 1998-2018 Glenn Randers-Pehrson\nCopyright (c) 1996-1997 Andreas Dilger\nCopyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc.\nCopyright (c) 2000-2017 Simon-Pierre Cadieux\nCopyright (c) 2000-2017 Eric S. Raymond\nCopyright (c) 2000-2017 Mans Rullgard\nCopyright (c) 2000-2017 Gilles Vollant\nCopyright (c) 2000-2017 James Yu\nCopyright (c) 2000-2017 Mandar Sahastrabuddhe\nCopyright (c) 1998-2000 Tom Lane\nCopyright (c) 1998-2000 Willem van Schaik\nCopyright (c) 1996-1997 John Bowler\nCopyright (c) 1996-1997 Kevin Bracey\nCopyright (c) 1996-1997 Sam Bushell\nCopyright (c) 1996-1997 Magnus Holmgren\nCopyright (c) 1996-1997 Greg Roelofs\nCopyright (c) 1996-1997 Tom Tanner\nCopyright (c) 1995-1996 Dave Martindale\nCopyright (c) 1995-1996 Paul Schmidt\nCopyright (c) 1995-1996 Tim Wegner",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/libpng/LICENSE",
+          "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/libpng/qt_attribution.json",
+      "attribution_id": "libpng",
+      "attribution_sha256": "17b215f3e608fa4dd0b7194512cb2cc25d33987b6a1ace76b2433efab40f1f78",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledPcre2",
+      "name": "BundledPcre2",
+      "versionInfo": "10.47",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "LicenseRef-BSD-3-Clause-with-PCRE2-Binary-Like-Packages-Exception",
+      "copyrightText": "Copyright (c) 1997-2007 University of Cambridge\nCopyright (c) 2007-2024 Philip Hazel\nCopyright (c) 2010-2024 Zoltan Herczeg",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/pcre2/LICENCE.md",
+          "sha256": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/pcre2/qt_attribution.json",
+      "attribution_id": "pcre2",
+      "attribution_sha256": "e009f73100ef4aed400257a095cdb25ee31980c4a290f1aca52d147cb3067abc",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledZLIB",
+      "name": "BundledZLIB",
+      "versionInfo": "1.3.1",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "Zlib",
+      "copyrightText": "(C) 1995-2024 Jean-loup Gailly and Mark Adler",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtbase-v6.10.2/src/3rdparty/zlib/LICENSE",
+          "sha256": "d7e3139972874dc8abdbbfce27ec1e6f942b28279dd7d27453630a8b4610e080",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/3rdparty/zlib/qt_attribution.json",
+      "attribution_id": "zlib",
+      "attribution_sha256": "6a37eaf51d8ebb7bd19e01a9a2334da8557409acb520ef6d1813c6d742771030",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-module-Core",
+      "name": "Core",
+      "versionInfo": "6.10.2",
+      "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-module-GlobalConfigPrivate",
+      "name": "GlobalConfigPrivate",
+      "versionInfo": "6.10.2",
+      "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-module-Gui",
+      "name": "Gui",
+      "versionInfo": "6.10.2",
+      "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-module-Network",
+      "name": "Network",
+      "versionInfo": "6.10.2",
+      "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-module-Platform",
+      "name": "Platform",
+      "versionInfo": "6.10.2",
+      "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal",
+      "name": "PlatformModuleInternal",
+      "versionInfo": "6.10.2",
+      "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-qt-module-Widgets",
+      "name": "Widgets",
+      "versionInfo": "6.10.2",
+      "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors.",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtbase-system-3rdparty-WrapAtomic",
+      "name": "WrapAtomic",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "module": "qtbase",
+      "source_commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtsvg-qt-3rdparty-sources-Svg-Attribution-xsvg",
+      "name": "Svg_Attribution_xsvg",
+      "versionInfo": "unknown",
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "HPND-sell-variant",
+      "copyrightText": "Copyright 2002 USC/Information Sciences Institute",
+      "module": "qtsvg",
+      "source_commit": "b925029db51aff0b17a48f5939cb83c27932d0cb",
+      "notice_files": [
+        {
+          "path": "docs/release/dependency-licenses/upstream/qt-qtsvg-v6.10.2/src/svg/LICENSE.XSVG.txt",
+          "sha256": "3a946598a9f674d44df764279ca0b85b5d6faba08f3bc75d8e0fcf6cd729a9bd",
+          "collected_and_byte_identical": true
+        }
+      ],
+      "attribution_json_mode": "strict",
+      "attribution_path": "src/svg/qt_attribution.json",
+      "attribution_id": "xsvg",
+      "attribution_sha256": "c1b0472511c791561b89ee0d11c11d78a85fbdf5df5ad94c1a4653e192367759",
+      "license_resolution": "explicit_LicenseFile",
+      "notice_status": "covered"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-qtsvg-qt-module-Svg",
+      "name": "Svg",
+      "versionInfo": "6.10.2",
+      "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors.",
+      "module": "qtsvg",
+      "source_commit": "b925029db51aff0b17a48f5939cb83c27932d0cb",
+      "notice_files": [],
+      "notice_status": "module_or_system_target_without_attribution_entry"
+    }
+  ],
+  "counts": {
+    "packages": 54,
+    "attribution_entries": 45,
+    "covered_entries": 45,
+    "explicit_LicenseFile_entries": 36,
+    "LicenseId_fallback_entries": 9,
+    "missing_entries": 0
+  },
+  "distribution_approved": false
+}

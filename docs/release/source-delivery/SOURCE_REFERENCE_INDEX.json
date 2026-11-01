@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "status": "source_references_not_complete_corresponding_source_or_written_offer",
+  "checked_date": "2026-10-25",
+  "sources": [
+    {
+      "file": "astral-sh-python-build-standalone-20260825.tar.gz",
+      "url": "https://codeload.github.com/astral-sh/python-build-standalone/tar.gz/c0aa3bbdc2fff56a77ad1ecec68b1e47794d8779",
+      "sha256": "9a646c77c9d38bc675b87c3c425cc741faa548a069486c365b8b31be1ba66bbb",
+      "bytes": 438736,
+      "version_or_ref": "20260825",
+      "commit": "c0aa3bbdc2fff56a77ad1ecec68b1e47794d8779"
+    },
+    {
+      "file": "openssl-openssl-openssl-3.5.8.tar.gz",
+      "url": "https://codeload.github.com/openssl/openssl/tar.gz/f4dc4d58b48d346a8270183f89acf826d459b0ca",
+      "sha256": "14067f511684d80698ffe97b8ad7989b9271ef6eef1b4b115cb00966c13e89d3",
+      "bytes": 53401850,
+      "version_or_ref": "openssl-3.5.8",
+      "commit": "f4dc4d58b48d346a8270183f89acf826d459b0ca"
+    },
+    {
+      "file": "pyinstaller-pyinstaller-v6.22.0.tar.gz",
+      "url": "https://codeload.github.com/pyinstaller/pyinstaller/tar.gz/70fc17210920bce17f4ab09bbf8104b0dbd45338",
+      "sha256": "587eb41e1087aeaf2a879b04db35b68bbe44b85f9227e263c873396806103540",
+      "bytes": 3617860,
+      "version_or_ref": "v6.22.0",
+      "commit": "70fc17210920bce17f4ab09bbf8104b0dbd45338"
+    },
+    {
+      "file": "pyside-pyside-setup-v6.10.2.tar.gz",
+      "url": "https://codeload.github.com/pyside/pyside-setup/tar.gz/057cda38d369d042c59fd48544398cb917540718",
+      "sha256": "e87189dc0fbce16d0203774fb369d43dabc8eb999fd946e5cbe7308d7c85cc56",
+      "bytes": 20826876,
+      "version_or_ref": "v6.10.2",
+      "commit": "057cda38d369d042c59fd48544398cb917540718"
+    },
+    {
+      "file": "python-cpython-v3.12.14.tar.gz",
+      "url": "https://codeload.github.com/python/cpython/tar.gz/2abcf904b8dac8c999d2b3aac76681abb333798a",
+      "sha256": "72b4d8791b053a808f247e0de247a8b976868e705204e8fcab0812c823873766",
+      "bytes": 27792672,
+      "version_or_ref": "v3.12.14",
+      "commit": "2abcf904b8dac8c999d2b3aac76681abb333798a"
+    },
+    {
+      "file": "qt-qtbase-v6.10.2.tar.gz",
+      "url": "https://codeload.github.com/qt/qtbase/tar.gz/000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "sha256": "2bffe7325cd32454a7a03548a4afad0e31b9cc3087a37867cb6c9f6ad4024f37",
+      "bytes": 67281154,
+      "version_or_ref": "v6.10.2",
+      "commit": "000d6c62f7880bb8d3054724e8da0b8ae244130e"
+    },
+    {
+      "file": "qt-qtimageformats-v6.10.2.tar.gz",
+      "url": "https://codeload.github.com/qt/qtimageformats/tar.gz/076fb82c55321e42beeae62d9e3ca8c4bb71439c",
+      "sha256": "def2a34d170375276dc27d093383b9da03be7031cdb9b9f1e797c67e12c98f75",
+      "bytes": 2643810,
+      "version_or_ref": "v6.10.2",
+      "commit": "076fb82c55321e42beeae62d9e3ca8c4bb71439c"
+    },
+    {
+      "file": "qt-qtsvg-v6.10.2.tar.gz",
+      "url": "https://codeload.github.com/qt/qtsvg/tar.gz/b925029db51aff0b17a48f5939cb83c27932d0cb",
+      "sha256": "b77b5463d71f86f81dff940cfcabb0803d61a39019a08a3f9e3c680c885806b5",
+      "bytes": 2902702,
+      "version_or_ref": "v6.10.2",
+      "commit": "b925029db51aff0b17a48f5939cb83c27932d0cb"
+    },
+    {
+      "file": "qt-qttranslations-v6.10.2.tar.gz",
+      "url": "https://codeload.github.com/qt/qttranslations/tar.gz/198cf16a901055ddfd235d297da059de97b29257",
+      "sha256": "edb41ba2e25738504919ef278ab79ea6a0d243106ba86511aefbac30388e81ce",
+      "bytes": 3117197,
+      "version_or_ref": "v6.10.2",
+      "commit": "198cf16a901055ddfd235d297da059de97b29257"
+    },
+    {
+      "file": "supplier-bzip2-bzip2-1.0.8.tar.gz",
+      "url": "https://astral-sh.github.io/mirror/files/bzip2-1.0.8.tar.gz",
+      "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269",
+      "bytes": 810029,
+      "version_or_ref": "1.0.8"
+    },
+    {
+      "file": "supplier-cpython-3.12-Python-3.12.14.tar.xz",
+      "url": "https://www.python.org/ftp/python/3.12.14/Python-3.12.14.tar.xz",
+      "sha256": "5c8462af5790baf43a321a1559dbe0db06d1be4300fb85fb53c40060668e548a",
+      "bytes": 20820300,
+      "version_or_ref": "3.12.14"
+    },
+    {
+      "file": "supplier-libffi-libffi-3.4.8.tar.gz",
+      "url": "https://github.com/libffi/libffi/releases/download/v3.4.8/libffi-3.4.8.tar.gz",
+      "sha256": "bc9842a18898bfacb0ed1252c4febcc7e78fa139fd27fdc7a3e30d9d9356119b",
+      "bytes": 1397992,
+      "version_or_ref": "3.4.8"
+    },
+    {
+      "file": "supplier-mpdecimal-mpdecimal-4.0.0.tar.gz",
+      "url": "https://astral-sh.github.io/mirror/files/mpdecimal-4.0.0.tar.gz",
+      "sha256": "942445c3245b22730fd41a67a7c5c231d11cb1b9936b9c0f76334fb7d0b4468c",
+      "bytes": 315325,
+      "version_or_ref": "4.0.0"
+    },
+    {
+      "file": "supplier-openssl-3.5-openssl-3.5.8.tar.gz",
+      "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz",
+      "sha256": "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2",
+      "bytes": 53213818,
+      "version_or_ref": "3.5.8"
+    },
+    {
+      "file": "supplier-xz-xz-5.8.3.tar.gz",
+      "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.gz",
+      "sha256": "3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0",
+      "bytes": 2771455,
+      "version_or_ref": "5.8.3"
+    },
+    {
+      "file": "supplier-zlib-zlib-1.3.2.tar.gz",
+      "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
+      "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16",
+      "bytes": 1502830,
+      "version_or_ref": "1.3.2"
+    },
+    {
+      "file": "llvm-3.6.2.src.tar.xz",
+      "url": "https://releases.llvm.org/3.6.2/llvm-3.6.2.src.tar.xz",
+      "sha256": "f60dc158bfda6822de167e87275848969f0558b3134892ff54fced87e4667b94",
+      "bytes": 12802380
+    },
+    {
+      "file": "mesa-11.2.2.tar.xz",
+      "url": "https://archive.mesa3d.org/older-versions/11.x/11.2.2/mesa-11.2.2.tar.xz",
+      "sha256": "40e148812388ec7c6d7b6657d5a16e2e8dabba8b97ddfceea5197947647bdfb4",
+      "bytes": 7860932
+    }
+  ]
+}

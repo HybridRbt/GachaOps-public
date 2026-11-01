@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "adapters": [
+    {
+      "adapter_id": "ok-ww",
+      "upstream": "https://github.com/ok-oldking/ok-wuthering-waves",
+      "start_modes": [
+        "assistant",
+        "manual"
+      ],
+      "status": "offline_verified",
+      "verified_versions": [],
+      "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
+      "evidence_date": "2026-10-23",
+      "evidence": [
+        "docs/TEST_ASSISTANTS.md"
+      ],
+      "limitations": [
+        "Fatal startup workaround uses manual mode; cause unresolved."
+      ]
+    },
+    {
+      "adapter_id": "zzz-onedragon",
+      "upstream": "https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon",
+      "start_modes": [
+        "assistant"
+      ],
+      "status": "offline_verified",
+      "verified_versions": [],
+      "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
+      "evidence_date": "2026-10-23",
+      "evidence": [
+        "docs/ZZZ_ONEDRAGON.md"
+      ],
+      "limitations": [
+        "Version-specific public Windows evidence not yet promoted; old six-game acceptance is historical."
+      ]
+    },
+    {
+      "adapter_id": "maa-end",
+      "upstream": "https://github.com/MaaEnd/MaaEnd",
+      "start_modes": [
+        "assistant",
+        "manual"
+      ],
+      "status": "offline_verified",
+      "verified_versions": [
+        "v2.34.0"
+      ],
+      "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
+      "evidence_date": "2026-10-23",
+      "evidence": [
+        "docs/MAAEND.md"
+      ],
+      "limitations": [
+        "Global/Auto launcher default installation only; new lifecycle awaits live acceptance."
+      ]
+    },
+    {
+      "adapter_id": "maa-gf2",
+      "upstream": "https://github.com/DarkLingYun/MaaGF2Exilium",
+      "start_modes": [
+        "assistant"
+      ],
+      "status": "offline_verified",
+      "verified_versions": [
+        "v2.7.3 / MFAAvalonia v2.16.2"
+      ],
+      "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
+      "evidence_date": "2026-10-23",
+      "evidence": [
+        "docs/MAAGF2.md"
+      ],
+      "limitations": [
+        "Native task failures remain failures; damaged critical callbacks remain unconfirmed."
+      ]
+    },
+    {
+      "adapter_id": "ok-nte",
+      "upstream": "https://github.com/BnanZ0/ok-nte",
+      "start_modes": [
+        "assistant"
+      ],
+      "status": "offline_verified",
+      "verified_versions": [],
+      "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
+      "evidence_date": "2026-10-23",
+      "evidence": [
+        "docs/OK_NTE.md"
+      ],
+      "limitations": [
+        "Version-specific public Windows evidence not yet promoted; old six-game acceptance is historical."
+      ]
+    },
+    {
+      "adapter_id": "bettergi",
+      "upstream": "https://github.com/babalae/better-genshin-impact",
+      "start_modes": [
+        "assistant"
+      ],
+      "status": "offline_verified",
+      "verified_versions": [
+        "0.66.0.0"
+      ],
+      "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
+      "evidence_date": "2026-10-23",
+      "evidence": [
+        "docs/BETTERGI.md"
+      ],
+      "limitations": [
+        "Single-game and serial live acceptance pending HYB-66."
+      ]
+    },
+    {
+      "adapter_id": "march7",
+      "upstream": "https://github.com/moesnow/March7thAssistant",
+      "start_modes": [
+        "assistant"
+      ],
+      "status": "offline_verified",
+      "verified_versions": [
+        "v2026.9.30",
+        "v2026.10.16"
+      ],
+      "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
+      "evidence_date": "2026-10-23",
+      "evidence": [
+        "docs/MARCH7.md"
+      ],
+      "limitations": [
+        "Version-specific public Windows evidence not yet promoted; old six-game acceptance is historical."
+      ]
+    }
+  ]
+}

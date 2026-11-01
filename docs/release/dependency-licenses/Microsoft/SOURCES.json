@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "checked_date": "2026-10-27",
+  "references": [
+    "https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/",
+    "https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/",
+    "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution"
+  ],
+  "files": [
+    {
+      "path": "runtime-terms.docx",
+      "sha256": "f1e3d56ceb2ad68aae0711b910375009e651ac5530fa0760f0dea6e81e54fae1",
+      "bytes": 39644,
+      "representation": "original_supplier_document"
+    },
+    {
+      "path": "runtime-terms.txt",
+      "sha256": "76c6045b291b9fbd6049453142f8ca6f10e3d0e57b63aff6e57fe8398f04cef1",
+      "bytes": 6622,
+      "representation": "previously_extracted_plain_text"
+    },
+    {
+      "path": "community-terms.docx",
+      "sha256": "41a207b10c8ab91d0d2f10a854715f73dca54509581692d2fe179aa3ffcb8540",
+      "bytes": 62859,
+      "representation": "original_supplier_document"
+    },
+    {
+      "path": "community-terms.txt",
+      "sha256": "c35a5f57409a9d85d501cc4a98a6d3e7541c0c321ecf91e6484050656d895ea9",
+      "bytes": 19041,
+      "representation": "previously_extracted_plain_text"
+    }
+  ],
+  "individual_developer_confirmed": true,
+  "community_installation_verified": true,
+  "not_project_AGPL_relicensing": true
+}

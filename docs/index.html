@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GachaOps — Windows 游戏助手串行编排</title>
+<meta name="description" content="GachaOps：在 Windows 交互桌面统一编排已配置的游戏助手——选择助手与顺序、只读预检、串行运行、完成判定、失败收尾、汇总报告。">
+<style>
+  :root {
+    --bg: #f5f7fb; --card: #ffffff; --ink: #1e293b; --muted: #64748b;
+    --line: #e2e9f3; --brand: #2563eb; --brand-dark: #1d4ed8;
+    --ok: #177a3e; --warn: #b45309; --gold: #d9b545;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.75 "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 64px; }
+  header.hero { padding: 72px 0 40px; }
+  h1 { font-size: 44px; margin: 0 0 6px; letter-spacing: 1px; }
+  h1 .ring { color: var(--gold); }
+  .tagline { color: var(--muted); font-size: 18px; margin: 0 0 20px; }
+  .badges a {
+    display: inline-block; margin: 0 8px 8px 0; padding: 6px 14px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line); color: var(--brand);
+    text-decoration: none; font-size: 14px; font-weight: 600;
+  }
+  .badges a:hover { border-color: var(--brand); }
+  section { margin: 36px 0; }
+  h2 { font-size: 24px; border-left: 4px solid var(--brand); padding-left: 12px; }
+  h3 { font-size: 17px; margin: 18px 0 6px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 24px; margin: 14px 0;
+  }
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 0; }
+  .step {
+    background: #ecf3fe; border: 1px solid #d7e4fa; color: #1d4ed8;
+    padding: 6px 14px; border-radius: 8px; font-weight: 600; font-size: 15px;
+  }
+  .arrow { color: var(--muted); font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; background: var(--card);
+          border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { background: #f2f6fc; color: #51607a; font-size: 14px; }
+  tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .ok    { background: #e5f4ec; color: var(--ok); }
+  .warn  { background: #fdf0dd; color: var(--warn); }
+  .pend  { background: #eef1f5; color: #64748b; }
+  code, pre {
+    font-family: "Consolas", "SF Mono", Menlo, monospace; font-size: 14px;
+    background: #0e1730; color: #dbe7ff; border-radius: 8px;
+  }
+  code { padding: 2px 7px; }
+  pre { padding: 16px 18px; overflow-x: auto; line-height: 1.6; }
+  ul { padding-left: 22px; }
+  li { margin: 4px 0; }
+  a { color: var(--brand); }
+  .fine { color: var(--muted); font-size: 14px; }
+  footer { border-top: 1px solid var(--line); margin-top: 56px; padding-top: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <img src="images/program.svg" width="88" height="88" alt="GachaOps 星环编排：六节点圆环" />
+  <h1>Gacha<span class="ring">Ops</span></h1>
+  <p class="tagline">一次触发，串行编排家中 Windows 游戏机上的既有助手——任务仍由各助手 GUI 定义。</p>
+  <nav class="badges">
+    <a href="https://github.com/HybridRbt/GachaOps-public">GitHub 仓库</a>
+    <a href="QUICKSTART.md">Windows 界面</a>
+    <a href="PUBLIC_SOURCE.md">公开源码范围</a>
+    <a href="VALIDATION.md">发布验收状态</a>
+    <a href="QUICKSTART.md">快速开始</a> · <a href="SUPPORT_MATRIX.md">兼容矩阵</a> · <a href="ADDING_ADAPTER.md">参与贡献</a>
+  </nav>
+</header>
+
+<section aria-labelledby="usage-notice">
+  <h2 id="usage-notice">使用与风险声明</h2>
+  <div class="card">
+    <p>GachaOps 是独立开发的本地助手编排工具，供自动化技术学习、交流及个人重复任务管理，与游戏运营方及各助手团队没有官方隶属或背书关系。各游戏、助手名称与商标归各自权利人。</p>
+    <ul>
+      <li><strong>自动化存在账号风险。</strong> 第三方工具或模拟操作可能触及游戏协议并导致封禁；开源、视觉识别或未修改游戏文件不代表获得官方许可，也不保证免封。使用者须自行了解并承担使用 GachaOps 导致的账号问题及后果。</li>
+      <li><strong>开始前确认原生任务。</strong> 登记和检查不启动游戏；点击开始后将运行你在原助手中保存的预设，可能产生体力消耗、领取奖励、购买等账号与资源变更。停止不能撤销已经发生的操作。</li>
+      <li><strong>上游分别许可与负责。</strong> GachaOps 仅以 external 方式调用用户安装的助手，不捆绑助手安装包。被调用助手自身的采集、加密、遥测和服务商承诺归属于助手及其提供方，GachaOps 不代为承诺，也不承担连带责任。</li>
+      <li><strong>免责声明。</strong> 使用本软件产生的任何后果均与开发者无关。开发者拥有本项目的最终解释权。不承诺账号安全、特定收益或任务必然完成。</li>
+      <li><strong>本产品开源免费，对使用者的金钱损失不负责。</strong> 不对第三方商用或售卖行为作授权裁定，第三方收费渠道不自动代表项目授权。</li>
+    </ul>
+    <p class="fine">本项目采用 <a href="../LICENSE">GNU AGPLv3</a>（AGPL-3.0-only）；公开 v1 尚未发布。上述声明不改变许可证授予的权利，不排除法律不允许排除的责任。请先阅读 <a href="USAGE_NOTICE.md">完整使用与第三方声明</a> · <a href="THIRD_PARTY_ASSISTANTS.md">七助手许可与声明核查</a>。</p>
+  </div>
+</section>
+
+<section>
+  <h2>它做什么</h2>
+  <div class="flow">
+    <span class="step">选择助手与顺序</span><span class="arrow">→</span>
+    <span class="step">只读预检</span><span class="arrow">→</span>
+    <span class="step">串行运行</span><span class="arrow">→</span>
+    <span class="step">完成判定</span><span class="arrow">→</span>
+    <span class="step">失败收尾</span><span class="arrow">→</span>
+    <span class="step">汇总报告</span>
+  </div>
+  <div class="card">
+    <ul>
+      <li><strong>不越界</strong>：任务内容在用户各自的助手 GUI 里设置；GachaOps 正常运行不编辑助手任务配置，也不代替游戏完成判定——完成信号、退出码、结构化回执分开核实。</li>
+      <li><strong>确认收尾后继续</strong>：单个助手失败被保留为部分失败，收尾后继续链上后续任务；超时/中断会收尾本轮拥有的完整进程树（Windows Job Object），失败则停止整条链避免输入冲突。</li>
+      <li><strong>可追溯</strong>：每轮运行产出 JSON 汇总与日志（<code>runs/</code>），GUI 内置预检卡、整轮分段进度条、逐条问题摘要与日志入口。</li>
+      <li><strong>零依赖核心</strong>：Python 3.11+ 标准库实现契约与调度；Windows GUI 为 PySide6 独立目录包，需完整解压。</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>助手支持现状</h2>
+  <table>
+    <tr><th>游戏</th><th>执行器 / Adapter</th><th>当前状态</th></tr>
+    <tr><td>鸣潮</td><td>OK-WW <code>ok-ww</code></td><td><span class="pill ok">离线核验 · 新版实机另验</span></td></tr>
+    <tr><td>绝区零</td><td>ZZZ-OneDragon <code>zzz-onedragon</code></td><td><span class="pill ok">离线核验 · 历史实机分列</span></td></tr>
+    <tr><td>异环</td><td>OK-NTE <code>ok-nte</code></td><td><span class="pill warn">离线核验 · 版本实机另验</span></td></tr>
+    <tr><td>终末地</td><td>MaaEnd <code>maa-end</code></td><td><span class="pill warn">离线核验 · 首启默认未选</span></td></tr>
+    <tr><td>星铁</td><td>三月七助手 <code>march7</code></td><td><span class="pill warn">离线核验 · 首启默认未选</span></td></tr>
+    <tr><td>少前2</td><td>MaaGF2Exilium <code>maa-gf2</code></td><td><span class="pill warn">离线核验 · 保留原生失败</span></td></tr>
+    <tr><td>原神</td><td>BetterGI <code>bettergi</code></td><td><span class="pill pend">离线核验 · 原神实机待验</span></td></tr>
+  </table>
+  <p class="fine">公开 v1 尚未发布，暂无正式下载。七适配器当前公开证据均为离线核验；旧六游戏验收不覆盖新版或原神。详见 <a href="SUPPORT_MATRIX.md">兼容矩阵</a>。</p>
+</section>
+
+<section>
+  <h2>快速开始</h2>
+  <div class="card">
+    <h3>Windows GUI</h3><img src="images/first-start.png" alt="全新数据目录的首启界面：七项未登记、未选择" style="display:block;width:100%;max-height:540px;object-fit:contain;object-position:top;margin-bottom:20px">
+    <p>候选包完整解压后打开 GachaOps.exe（包括 _internal）。首启七项未登记、未勾选；登记与检查不会启动游戏。先在原助手保存任务 → 登记安装 → 只读检查 → 用户开始。开始运行可请求管理员权限，取消不会执行。见 <a href="QUICKSTART.md">快速开始</a>。</p>
+    <h3>CLI</h3>
+<pre>py -3 -m gachaops check-assistants --config config/assistants.example.json
+py -3 -m gachaops run-assistants  --config config/local.assistants.json
+py -3 -m gachaops doctor          # 只读桌面/会话/提权体检</pre>
+    <p class="fine">核心仅标准库；失败场景预期返回 1，参数或执行锁冲突返回 2。运行日志与 JSON 汇总在 <code>runs/</code>。</p>
+  </div>
+</section>
+
+<section><h2>当前交付门禁</h2><div class="card"><p>正在准备公开 v1：数据目录、首次启动、七助手登记、兼容矩阵与脱敏诊断已有离线验证；项目许可证已选 AGPLv3，第三方分发义务、资产、干净 Windows 验收和正式发布仍待完成。</p><p>需要帮助时先预览并导出脱敏诊断包；不上传原生日志、账号截图或配置。<a href="../CONTRIBUTING.md">贡献与问题说明</a> · <a href="../SECURITY.md">安全报告</a></p></div></section>
+
+<section>
+  <h2>边界</h2>
+  <div class="card">
+    <ul>
+      <li>这是本地助手编排工具：不包含战斗脚本，不抽卡、不强化、不切换账号、不自动更新助手、不并行跑游戏。</li>
+      <li>各助手以外部完整安装接入（external 模式），GachaOps 不内嵌上游源码、不共用依赖环境。</li>
+      <li>模拟与截图不代表实机通过；真实运行需要用户明确授权与交互桌面。</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <p class="fine">GachaOps · 2026-09-30 立项 · <a href="https://github.com/HybridRbt/GachaOps-public">github.com/HybridRbt/GachaOps-public</a> · 各游戏与助手版权归其各自所有方。</p>
+</footer>
+
+</div>
+</body>
+</html>

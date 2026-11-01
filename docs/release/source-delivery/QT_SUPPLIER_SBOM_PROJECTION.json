@@ -1,0 +1,858 @@
+{
+  "schema_version": 1,
+  "status": "derived_supplier_metadata_not_complete_application_sbom",
+  "omitted_fields": [
+    "sourceInfo",
+    "comments",
+    "documentNamespace",
+    "raw file/source paths"
+  ],
+  "documents": [
+    {
+      "archive_url": "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6102/qt6_6102/qt.qt6.6102.win64_msvc2022_64/6.10.2-0-202601261212qtbase-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z",
+      "archive_sha256": "c4cedcc54d2036ab20b193db113cf324d90f390647f831a522952cc9b158f38b",
+      "published_sha1": "5d89fd111a57ebdabe4e2122d747ae891f5d98c3",
+      "sbom_member": "sbom/qtbase-6.10.2.spdx.json",
+      "original_sbom_sha256": "49a96273143388adf81829d2a5150f0e9679f2c12e651a4b83e29dbc764a87be",
+      "original_sbom_privacy_findings": [
+        {
+          "path": "supplier-sbom.json",
+          "rule": "PERSONAL_PATH"
+        }
+      ],
+      "candidate_sdk_matches": [
+        {
+          "candidate_path": "_internal/Qt6Core.dll",
+          "sdk_path": "bin/Qt6Core.dll",
+          "candidate_sha256": "d8c54af3d84b16c17a086451ee8ef6e821e478603ffb9b91c000a7e50d6a7f6c",
+          "sdk_sha256": "b98eea394a95563879b614dbd4432ce074b0fceeb154c3bae252f4e7a9376a40",
+          "exact": false,
+          "pe_content_identical": true,
+          "candidate_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          },
+          "sdk_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          }
+        },
+        {
+          "candidate_path": "_internal/Qt6Gui.dll",
+          "sdk_path": "bin/Qt6Gui.dll",
+          "candidate_sha256": "34bc69bb2e21c11a6f318c60430852eddac856848842cf0c5a19d22f7733992b",
+          "sdk_sha256": "28ca8b9e7d3d1c4e3cfafd6fe63877a05cf10202a240134a11f98384f01c9e37",
+          "exact": false,
+          "pe_content_identical": true,
+          "candidate_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          },
+          "sdk_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          }
+        },
+        {
+          "candidate_path": "_internal/Qt6Network.dll",
+          "sdk_path": "bin/Qt6Network.dll",
+          "candidate_sha256": "e76dd832fa01d98bfe6129c47ff3d36eba54f99fa5fbc7dbca9effc2f8ceb449",
+          "sdk_sha256": "905e1ce3947fadaad566b6deffe345daf7f6efbc57207ea7fcdbfa77669e3de6",
+          "exact": false,
+          "pe_content_identical": true,
+          "candidate_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          },
+          "sdk_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          }
+        },
+        {
+          "candidate_path": "_internal/Qt6Widgets.dll",
+          "sdk_path": "bin/Qt6Widgets.dll",
+          "candidate_sha256": "77dff21c7f28072da5d05288822f1e750d37e3827b2e051acad01af18d8d4130",
+          "sdk_sha256": "f383fb6b3f6996efe23327ff607e7298fc47ee76e8b8ef8a65f8d2e0a91707e4",
+          "exact": false,
+          "pe_content_identical": true,
+          "candidate_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          },
+          "sdk_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          }
+        }
+      ],
+      "owner_packages": [
+        "SPDXRef-Package-qtbase-qt-module-Core",
+        "SPDXRef-Package-qtbase-qt-module-Gui",
+        "SPDXRef-Package-qtbase-qt-module-Network",
+        "SPDXRef-Package-qtbase-qt-module-Widgets"
+      ],
+      "packages": [
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-bdf",
+          "name": "BundledFreetype_Attribution_freetype-bdf",
+          "versionInfo": "2.14.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2000 Computing Research Labs, New Mexico State University\nCopyright (c) 2001-2014 Francesco Zappa Nardelli"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-pcf",
+          "name": "BundledFreetype_Attribution_freetype-pcf",
+          "versionInfo": "2.14.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2001, 2012 David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2000-2014 Francesco Zappa Nardelli\nCopyright (c) 1990, 1994, 1998 The Open Group"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-zlib",
+          "name": "BundledFreetype_Attribution_freetype-zlib",
+          "versionInfo": "2.14.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledPcre2-Attribution-pcre2-sljit",
+          "name": "BundledPcre2_Attribution_pcre2-sljit",
+          "versionInfo": "10.47",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright Zoltan Herczeg"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-blake2",
+          "name": "Core_Attribution_blake2",
+          "versionInfo": "ed1974ea83433eba7b2d95c5dcd9ac33cb847913",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2012, Samuel Neves <sneves@dei.uc.pt>"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-doubleconversion",
+          "name": "Core_Attribution_doubleconversion",
+          "versionInfo": "3.3.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2006-2012, the V8 project authors"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-easing",
+          "name": "Core_Attribution_easing",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2001 Robert Penner"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-md4",
+          "name": "Core_Attribution_md4",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Written by Alexander Peslyak - better known as Solar Designer <solar@openwall.com> - in 2001, and placed in the public domain. There's absolutely no warranty."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-md5",
+          "name": "Core_Attribution_md5",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Written by Colin Plumb in 1993, no copyright is claimed. Ian Jackson <ian@chiark.greenend.org.uk>."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-rfc6234",
+          "name": "Core_Attribution_rfc6234",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2011 IETF Trust and the persons identified as authors of the code."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha1",
+          "name": "Core_Attribution_sha1",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (C) Dominik Reichl <dominik.reichl@t-online.de>\nCopyright (C) 2016 The Qt Company Ltd"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha3-endian",
+          "name": "Core_Attribution_sha3_endian",
+          "versionInfo": "1.0.0",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 1998-2013, Brian Gladman, Worcester, UK. All rights reserved."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha3-keccak",
+          "name": "Core_Attribution_sha3_keccak",
+          "versionInfo": "3.2",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Guido Bertoni, Joan Daemen, Micha\u00ebl Peeters and Gilles Van Assche.\nTo the extent possible under law, the implementers have waived all copyright\nand related or neighboring rights to the source code in this file."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-siphash",
+          "name": "Core_Attribution_siphash",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (C) 2012-2014 Jean-Philippe Aumasson\nCopyright (C) 2012-2014 Daniel J. Bernstein <djb@cr.yp.to>\nCopyright (C) 2016 Intel Corporation"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tika-mimetypes",
+          "name": "Core_Attribution_tika-mimetypes",
+          "versionInfo": "dbcbb368e0a913e1a74cca61347fd6ce24bc6d7e",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2025 The Apache Software Foundation"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tinycbor",
+          "name": "Core_Attribution_tinycbor",
+          "versionInfo": "0.6.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (C) 2015-2021 Intel Corporation"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tlexpected",
+          "name": "Core_Attribution_tlexpected",
+          "versionInfo": "41d3e1f48d682992a2230b2a715bca38b848b269",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "To the extent possible under law, Sy Brand has waived all copyright and related or neighboring rights to the expected library. This work is published from: United Kingdom."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-unicode-character-database",
+          "name": "Core_Attribution_unicode-character-database",
+          "versionInfo": "34",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (C) 1991-2022 Unicode, Inc."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-unicode-cldr",
+          "name": "Core_Attribution_unicode-cldr",
+          "versionInfo": "v48",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (C) 2004-2025 Unicode, Inc."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-aglfn",
+          "name": "Gui_Attribution_aglfn",
+          "versionInfo": "1.7",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2002, 2003, 2005, 2006, 2008, 2010, 2015 Adobe Systems"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-d3d12memoryallocator",
+          "name": "Gui_Attribution_d3d12memoryallocator",
+          "versionInfo": "f128d39b7a95b4235bd228d231646278dc6c24b2",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2019-2022 Advanced Micro Devices, Inc. All rights reserved."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-emoji-segmenter",
+          "name": "Gui_Attribution_emoji-segmenter",
+          "versionInfo": "0.4.0",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2019 Google LLC"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-grayraster",
+          "name": "Gui_Attribution_grayraster",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2000-2016 by David Turner, Robert Wilhelm, and Werner Lemberg."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-icc-srgb-color-profile",
+          "name": "Gui_Attribution_icc-srgb-color-profile",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright International Color Consortium, 2015"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-md4c",
+          "name": "Gui_Attribution_md4c",
+          "versionInfo": "0.5.2",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright \u00a9 2016-2024 Martin Mit\u00e1\u0161"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-opengl-es2-headers",
+          "name": "Gui_Attribution_opengl-es2-headers",
+          "versionInfo": "Revision 27673",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2013-2014 The Khronos Group Inc."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-opengl-headers",
+          "name": "Gui_Attribution_opengl-headers",
+          "versionInfo": "Revision 27684",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2013-2014 The Khronos Group Inc."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-rhi-miniengine-d3d12-mipmap",
+          "name": "Gui_Attribution_rhi-miniengine-d3d12-mipmap",
+          "versionInfo": "0aa79bad78992da0b6a8279ddb9002c1753cb849",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2015 Microsoft"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-smooth-scaling-algorithm",
+          "name": "Gui_Attribution_smooth-scaling-algorithm",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (C) 2004, 2005 Daniel M. Duley.\n(C) Carsten Haitzler and various contributors.\n(C) Willem Monsuwe <willem@stack.nl>"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-vulkan-xml-spec",
+          "name": "Gui_Attribution_vulkan-xml-spec",
+          "versionInfo": "1.4.308",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2015-2025 The Khronos Group Inc."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-vulkanmemoryallocator",
+          "name": "Gui_Attribution_vulkanmemoryallocator",
+          "versionInfo": "3.2.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2017-2025 Advanced Micro Devices, Inc. All rights reserved."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-webgradients",
+          "name": "Gui_Attribution_webgradients",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2017 itmeo"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-xserverhelper",
+          "name": "Gui_Attribution_xserverhelper",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 1987, 1988 X Consortium\nCopyright 1987, 1988 by Digital Equipment Corporation, Maynard, Massachusetts."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-zlib",
+          "name": "Gui_Attribution_zlib",
+          "versionInfo": "1.3.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "(C) 1995-2024 Jean-loup Gailly and Mark Adler"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-libpsl",
+          "name": "Network_Attribution_libpsl",
+          "versionInfo": "664f3dc85259ec65e30248a61fa1c45b7b0e4c3f",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2014-2016 The Chromium Authors. All rights reserved."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-psl-data",
+          "name": "Network_Attribution_psl-data",
+          "versionInfo": "2025-06-16_09-45-02_UTC",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "The list was originally provided by Jo Hermans <jo.hermans@gmail.com>.\nIt is now maintained on github (https://github.com/publicsuffix/list)."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-zlib",
+          "name": "Network_Attribution_zlib",
+          "versionInfo": "1.3.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "(C) 1995-2024 Jean-loup Gailly and Mark Adler"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Platform-Attribution-extra-cmake-modules",
+          "name": "Platform_Attribution_extra-cmake-modules",
+          "versionInfo": "5.84.0",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright \u00a9 2011-2018 The KDE community"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Platform-Attribution-kwin",
+          "name": "Platform_Attribution_kwin",
+          "versionInfo": "5.13.4",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2014 Alex Merry <alex.merry@kde.org>\nCopyright 2014 Martin Gr\u00e4\u00dflin <mgraesslin@kde.org>\nCopyright (c) 2006,2007 Laurent Montel, <montel@kde.org>"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype",
+          "name": "BundledFreetype",
+          "versionInfo": "2.14.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 2007-2014 Adobe Systems Incorporated\nCopyright (c) 2004-2025 Albert Chin-A-Young\nCopyright (c) 2018-2025 Armin Hasitzka, David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2000 Computing Research Labs, New Mexico State University\nCopyright (c) 1996-2025 David Turner, Robert Wilhelm, Dominik R\u00f6ttsches, and Werner Lemberg\nCopyright (c) 2004-2025 David Turner, Robert Wilhelm, Werner Lemberg and George Williams\nCopyright (c) 2022-2025 David Turner, Robert Wilhelm, Werner Lemberg, and Moazin Khatti\nCopyright (c) 2008-2025 David Turner, Robert Wilhelm, Werner Lemberg, and suzuki toshiya\nCopyright (c) 2003-2025 David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2005-2025 David Turner\nCopyright (c) 2007-2025 Derek Clegg and Michael Toftdal\nCopyright (c) 2007 Dmitry Timoshkov for Codeweavers\nCopyright (c) 2001-2015 Francesco Zappa Nardelli\nCopyright (c) 2005, 2007, 2008, 2013 George Williams\nCopyright (c) 2013-2025 Google, Inc. Google Author(s) Behdad Esfahbod and Stuart Gill\nCopyright (c) 2013-2022 Google, Inc.\nCopyright (c) 2003 Huw D M Davies for Codeweavers\nCopyright (c) 2010-2025 Joel Klinghed\nCopyright (c) 1996-2025 Just van Rossum, David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2003-2025 Masatake YAMATO and Redhat K.K.\nCopyright (c) 2004-2025 Masatake YAMATO, Redhat K.K, David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2019-2025 Nikhil Ramakrishnan, David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2009-2025 Oran Agra and Mickey Gabel\nCopyright (c) 2007-2025 Rahul Bhalerao <rahul.bhalerao@redhat.com>\nCopyright (c) 2002-2025 Roberto Alameda\nCopyright (c) 2015-2025 Werner Lemberg\nCopyright (c) 2004-2025 suzuki toshiya, Masatake YAMATO, Red Hat K.K., David Turner, Robert Wilhelm, and Werner Lemberg\nCopyright (c) 2019 nyorain\nCopyright (c) 2022-2025 David Turner, Robert Wilhelm, Werner Lemberg, George Williams, and Dominik R\u00f6ttsches\nCopyright (C) 2009, 2023  Red Hat, Inc."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledHarfbuzz",
+          "name": "BundledHarfbuzz",
+          "versionInfo": "12.3.0",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright \u00a9 2010-2022  Google, Inc.\nCopyright \u00a9 2015-2020  Ebrahim Byagowi\nCopyright \u00a9 2019,2020  Facebook, Inc.\nCopyright \u00a9 2012,2015  Mozilla Foundation\nCopyright \u00a9 2011  Codethink Limited\nCopyright \u00a9 2008,2010  Nokia Corporation and/or its subsidiary(-ies)\nCopyright \u00a9 2009  Keith Stribley\nCopyright \u00a9 2011  Martin Hosken and SIL International\nCopyright \u00a9 2007  Chris Wilson\nCopyright \u00a9 2005,2006,2020,2021,2022,2023  Behdad Esfahbod\nCopyright \u00a9 2004,2007,2008,2009,2010,2013,2021,2022,2023  Red Hat, Inc.\nCopyright \u00a9 1998-2005  David Turner and Werner Lemberg\nCopyright \u00a9 2016  Igalia S.L.\nCopyright \u00a9 2022  Matthias Clasen\nCopyright \u00a9 2018,2021  Khaled Hosny\nCopyright \u00a9 2018,2019,2020  Adobe, Inc\nCopyright \u00a9 2013-2015  Alexei Podtelezhnikov"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledLibpng",
+          "name": "BundledLibpng",
+          "versionInfo": "1.6.54",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 1995-2026 The PNG Reference Library Authors\nCopyright (c) 2000-2026 Cosmin Truta\nCopyright (c) 1998-2018 Glenn Randers-Pehrson\nCopyright (c) 1996-1997 Andreas Dilger\nCopyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc.\nCopyright (c) 2000-2017 Simon-Pierre Cadieux\nCopyright (c) 2000-2017 Eric S. Raymond\nCopyright (c) 2000-2017 Mans Rullgard\nCopyright (c) 2000-2017 Gilles Vollant\nCopyright (c) 2000-2017 James Yu\nCopyright (c) 2000-2017 Mandar Sahastrabuddhe\nCopyright (c) 1998-2000 Tom Lane\nCopyright (c) 1998-2000 Willem van Schaik\nCopyright (c) 1996-1997 John Bowler\nCopyright (c) 1996-1997 Kevin Bracey\nCopyright (c) 1996-1997 Sam Bushell\nCopyright (c) 1996-1997 Magnus Holmgren\nCopyright (c) 1996-1997 Greg Roelofs\nCopyright (c) 1996-1997 Tom Tanner\nCopyright (c) 1995-1996 Dave Martindale\nCopyright (c) 1995-1996 Paul Schmidt\nCopyright (c) 1995-1996 Tim Wegner"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledPcre2",
+          "name": "BundledPcre2",
+          "versionInfo": "10.47",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright (c) 1997-2007 University of Cambridge\nCopyright (c) 2007-2024 Philip Hazel\nCopyright (c) 2010-2024 Zoltan Herczeg"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledZLIB",
+          "name": "BundledZLIB",
+          "versionInfo": "1.3.1",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "(C) 1995-2024 Jean-loup Gailly and Mark Adler"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-module-Core",
+          "name": "Core",
+          "versionInfo": "6.10.2",
+          "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+          "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-module-GlobalConfigPrivate",
+          "name": "GlobalConfigPrivate",
+          "versionInfo": "6.10.2",
+          "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+          "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "name": "Gui",
+          "versionInfo": "6.10.2",
+          "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+          "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-module-Network",
+          "name": "Network",
+          "versionInfo": "6.10.2",
+          "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+          "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-module-Platform",
+          "name": "Platform",
+          "versionInfo": "6.10.2",
+          "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+          "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal",
+          "name": "PlatformModuleInternal",
+          "versionInfo": "6.10.2",
+          "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+          "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-qt-module-Widgets",
+          "name": "Widgets",
+          "versionInfo": "6.10.2",
+          "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+          "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors."
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtbase-system-3rdparty-WrapAtomic",
+          "name": "WrapAtomic",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "NOASSERTION"
+        }
+      ],
+      "unresolved_external_dependency_refs": [],
+      "relations": [
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledPcre2",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledPcre2",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledPcre2-Attribution-pcre2-sljit"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledZLIB",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-GlobalConfigPrivate"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledZLIB"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledPcre2"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-Platform"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-system-3rdparty-WrapAtomic"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-unicode-character-database"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-unicode-cldr"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tlexpected"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-siphash"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-blake2"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-md4"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-md5"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha1"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha3-endian"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-sha3-keccak"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-rfc6234"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tinycbor"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-doubleconversion"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-easing"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Core",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Core-Attribution-tika-mimetypes"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledLibpng",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledLibpng",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-Core"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledLibpng"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-Core"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-zlib"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-bdf"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-BundledFreetype-Attribution-freetype-pcf"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledHarfbuzz",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Network",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-Core"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Network",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Network",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-zlib"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Network",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-psl-data"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Network",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Network-Attribution-libpsl"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-Core"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledLibpng"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledHarfbuzz"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-bundled-3rdparty-module-BundledFreetype"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-rhi-miniengine-d3d12-mipmap"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-opengl-headers"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-opengl-es2-headers"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-grayraster"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-smooth-scaling-algorithm"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-xserverhelper"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-aglfn"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-vulkanmemoryallocator"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-emoji-segmenter"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-webgradients"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-icc-srgb-color-profile"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-d3d12memoryallocator"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-md4c"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-zlib"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Gui",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Gui-Attribution-vulkan-xml-spec"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Widgets",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-Core"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Widgets",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-Gui"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Widgets",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Platform",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Platform-Attribution-extra-cmake-modules"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtbase-qt-module-Platform",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtbase-qt-3rdparty-sources-Platform-Attribution-kwin"
+        }
+      ]
+    },
+    {
+      "archive_url": "https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6102/qt6_6102/qt.qt6.6102.win64_msvc2022_64/6.10.2-0-202601261212qtsvg-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z",
+      "archive_sha256": "2c85364c1464100b583c36f071c6fca9fa36e1951a1f82ff26bf0a151de26e6c",
+      "published_sha1": "94765e05e1bf4b9c545002888c5917edcd15ed9e",
+      "sbom_member": "sbom/qtsvg-6.10.2.spdx.json",
+      "original_sbom_sha256": "7aa49ecca62638cc25b31f6d87fc89e0b2a53731ebaa2a72f0b5bef00407a615",
+      "original_sbom_privacy_findings": [
+        {
+          "path": "supplier-sbom.json",
+          "rule": "PERSONAL_PATH"
+        }
+      ],
+      "candidate_sdk_matches": [
+        {
+          "candidate_path": "_internal/Qt6Svg.dll",
+          "sdk_path": "bin/Qt6Svg.dll",
+          "candidate_sha256": "0cac0f1399ff6f4614ebcab05f00ec82d32fba0d5782ac56b58f12432ee8502f",
+          "sdk_sha256": "982a589e52680d7b525da0031eba783d3bbd77e6611cdea5cd276a2b9213f4c9",
+          "exact": false,
+          "pe_content_identical": true,
+          "candidate_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          },
+          "sdk_linker": {
+            "linker_major": 14,
+            "linker_minor": 39
+          }
+        }
+      ],
+      "owner_packages": [
+        "SPDXRef-Package-qtsvg-qt-module-Svg"
+      ],
+      "packages": [
+        {
+          "SPDXID": "SPDXRef-Package-qtsvg-qt-3rdparty-sources-Svg-Attribution-xsvg",
+          "name": "Svg_Attribution_xsvg",
+          "versionInfo": "unknown",
+          "licenseDeclared": "NOASSERTION",
+          "copyrightText": "Copyright 2002 USC/Information Sciences Institute"
+        },
+        {
+          "SPDXID": "SPDXRef-Package-qtsvg-qt-module-Svg",
+          "name": "Svg",
+          "versionInfo": "6.10.2",
+          "licenseDeclared": "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+          "copyrightText": "Copyright (C) The Qt Company Ltd. and other contributors."
+        }
+      ],
+      "unresolved_external_dependency_refs": [
+        "DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-Core",
+        "DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-Gui",
+        "DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+      ],
+      "relations": [
+        {
+          "spdxElementId": "SPDXRef-Package-qtsvg-qt-module-Svg",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-Core"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtsvg-qt-module-Svg",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-Gui"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtsvg-qt-module-Svg",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal"
+        },
+        {
+          "spdxElementId": "SPDXRef-Package-qtsvg-qt-module-Svg",
+          "relationshipType": "DEPENDS_ON",
+          "relatedSpdxElement": "SPDXRef-Package-qtsvg-qt-3rdparty-sources-Svg-Attribution-xsvg"
+        }
+      ]
+    }
+  ]
+}

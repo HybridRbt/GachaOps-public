@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "candidate_code_commit": "9e0d14e6a2066d2e0986f5e438b623b9b945322e",
+  "executable_sha256": "8ab5b003f5afd8d63006c3280d3f4dfb2cdfecc9faf6105d329369dd9d29985f",
+  "files": {
+    "build-manifest.json": "9730bd06beebecce4078bce8afd2df28d690f12758d77e8efa84bf456f6a8689",
+    "GachaOps.exe": "8ab5b003f5afd8d63006c3280d3f4dfb2cdfecc9faf6105d329369dd9d29985f",
+    "_internal/base_library.zip": "1064c9cca6edf8258e47df9ccb3fc8e537506144bc2ddf87ec1b590c96a8540a",
+    "_internal/libcrypto-3-x64.dll": "1e30b3a2d41b21cf8d83fea401bb5655aefb4fd9f728bc1911d6f2e03bdf6128",
+    "_internal/libffi-8.dll": "19240c4a821a785e6e5b5f1d6a65e25a2f60d078b843677ff2aa3622ba5de917",
+    "_internal/MSVCP140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
+    "_internal/MSVCP140_1.dll": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d",
+    "_internal/MSVCP140_2.dll": "3ea06f0ee098b4823cb79599df3780e7f23cce52c19aac31d2a0d47efe33a5e9",
+    "_internal/pyside6.abi3.dll": "6f3fb0793f16e40576b71b6f88e14288efc3ac55eb7be9cb158d8ee764bf9c1d",
+    "_internal/python3.dll": "78231b4621ddf0fb2f8d82a6fa80fb42cbbead9598e4055ba63f709cba6b2a6c",
+    "_internal/python312.dll": "2987445b1405431f9f396d492a039176930ee0298c573dd672bbac67c681f11c",
+    "_internal/Qt6Core.dll": "d8c54af3d84b16c17a086451ee8ef6e821e478603ffb9b91c000a7e50d6a7f6c",
+    "_internal/Qt6Gui.dll": "34bc69bb2e21c11a6f318c60430852eddac856848842cf0c5a19d22f7733992b",
+    "_internal/Qt6Network.dll": "e76dd832fa01d98bfe6129c47ff3d36eba54f99fa5fbc7dbca9effc2f8ceb449",
+    "_internal/Qt6Svg.dll": "0cac0f1399ff6f4614ebcab05f00ec82d32fba0d5782ac56b58f12432ee8502f",
+    "_internal/Qt6Widgets.dll": "77dff21c7f28072da5d05288822f1e750d37e3827b2e051acad01af18d8d4130",
+    "_internal/select.pyd": "e7330cb8951ed732bc6d55311b91a3d26f1fdc34bbcf019a3cd2f381f11c199e",
+    "_internal/shiboken6.abi3.dll": "ad3dd18c1cbb1641dc9bca5bed350e0a108d90d1799ae91f0e4a83997d2d5e09",
+    "_internal/unicodedata.pyd": "f7a191482a8c5094c46c3e81516f10cef29f0e961a986ee665fc6e30cfe7f97a",
+    "_internal/VCRUNTIME140.dll": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+    "_internal/VCRUNTIME140_1.dll": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
+    "_internal/_bz2.pyd": "84abc366173975e7c8a81914fec9518b3c2857eeb3f31dad1aae7e116104dbfd",
+    "_internal/_ctypes.pyd": "508c6b702c88de1b703f67083f5a4088dabf2c642283db7c17e93ce9715d107b",
+    "_internal/_decimal.pyd": "257d2bd9634cb6535a0d56f5395267e809522f4e1e5137da086308a9a7ecd9da",
+    "_internal/_hashlib.pyd": "4312f69878b8caf4e850a5710fd2ab75e861362639fbc310732b6cde87c9f0b3",
+    "_internal/_lzma.pyd": "368440add08f4df1d54d177b0a7ed84118fcb8fced82e38a2b2778bda5d5960a",
+    "_internal/_socket.pyd": "c6262df8ce2823faccd2c1a679bb4f10376dec574ecd088a65c99850c65c275b",
+    "_internal/_uuid.pyd": "b38821db2e4472355c804a77638f0e0d5bb920ce4a7b0a3f3fceae3b2cc36a0f",
+    "_internal/_wmi.pyd": "c69b954311a6a041f9a7eca2d9b41d84e79aa15806844d3fad97560a218ac916",
+    "_internal/gachaops/onedragon_bridge.py": "f0cde4ba1c43aa267a284b1dd4c736971a75eb6321fc86918eb972f345046e02",
+    "_internal/PySide6/opengl32sw.dll": "d05c658cfb998ba62b0b09fe1609ba8d05fc068134c65371913d729b3e691944",
+    "_internal/PySide6/QtCore.pyd": "97612934c29d24c2f4c6a16a75171c061384261877038fe80f43048c800c92f8",
+    "_internal/PySide6/QtGui.pyd": "53d23667b0167c21064eef83ca3dfdbdc5f95f8953929de084146f4c5054a7f6",
+    "_internal/PySide6/QtNetwork.pyd": "bd2c6966390be24c36be6743d35b182c8d13769c4a6f6f1029d4d9d9335c21ba",
+    "_internal/PySide6/QtWidgets.pyd": "cef76cbe093a955d9bc8a18be29e5f7adcd3fdf97b145a39b4f7e41f9738f40c",
+    "_internal/shiboken6/Shiboken.pyd": "e44152f30538477225002e6f8bebf7ac2de1534da5ce5ad17402c9c8d6ce8045",
+    "_internal/gachaops/assets/support_matrix.json": "b7598ff0f3ae19c32fda131724c94170f0000f4398448528f6ca456dded53a19",
+    "_internal/gachaops/assets/branding/program.png": "bc1aa59930329aa4f5daade02d28712dc0e3b5bc8f2c4fb012464d8e02733852",
+    "_internal/PySide6/translations/qtbase_ar.qm": "e03fe68d83201543698fd7fe267dd5dfc5bfd195147e74ff2f19ac3491401263",
+    "_internal/PySide6/translations/qtbase_bg.qm": "e448ac9e3f16c29eb27af3012efe21052daa78fabfb34cd6dff2f69ee3bd3cdb",
+    "_internal/PySide6/translations/qtbase_ca.qm": "005b0aa0c9a5b930dfdd870661958a8069bbec862d75f98bce20bf7401bea13d",
+    "_internal/PySide6/translations/qtbase_cs.qm": "03028b42df5479270371e4c3bdc7df2f56cbbe6dda956a2864ac6f6415861fe8",
+    "_internal/PySide6/translations/qtbase_da.qm": "7d1e5ca3310b54d104c19bf2abd402b38e584e87039a70e153c4a9af74b25c22",
+    "_internal/PySide6/translations/qtbase_de.qm": "9cb5504dee6ef0d4d4be8ba2e34ba8294018a9e0ec810ceaf5e973d57a283434",
+    "_internal/PySide6/translations/qtbase_en.qm": "494ac9a2b2cb2fdeced353f4a9f898ed8dcf616e9bc667438c62681e3f7f79cf",
+    "_internal/PySide6/translations/qtbase_es.qm": "4ffda56ba3bb5414ab0482d1dde64a6f226e3488f6b7f3f11a150e01f53fa4c8",
+    "_internal/PySide6/translations/qtbase_fa.qm": "f78e59b5bdd586181a999034ba418868ed17fe9c05707fb65e523f70e92253d2",
+    "_internal/PySide6/translations/qtbase_fi.qm": "e47fe13713e184d07fa4495dde0c589b0e8f562e91574a3558a9363443a4fa72",
+    "_internal/PySide6/translations/qtbase_fr.qm": "314243a55c32679ad473fdfe48dc7d66e973ad0fc8bf2164480c58dddb50c1a7",
+    "_internal/PySide6/translations/qtbase_gd.qm": "63b439dd44139aa3aed54c2ebe03fa9bc77f22c14ed8fba8eff2608445bb233d",
+    "_internal/PySide6/translations/qtbase_he.qm": "e1ebca16afe8994356f81ca007fbdb9ddf865842010fe908923d873b687cad3f",
+    "_internal/PySide6/translations/qtbase_hr.qm": "bb9eec9a9a652c1340dc75eb2e749be50df00f885b3d6900dfc76799c45b244d",
+    "_internal/PySide6/translations/qtbase_hu.qm": "98463295539d769c8645a0b7fb95ad38454cfd0b14f36af485513f036ddbbbc6",
+    "_internal/PySide6/translations/qtbase_it.qm": "7808ed542a7833c4bd94ec8bdfbbca00bb4f2fe15979b9121ce3249323687300",
+    "_internal/PySide6/translations/qtbase_ja.qm": "2b9581c69b975f59be505b127cd3c19d403ef3d12e0e8386fb97238223e9c1df",
+    "_internal/PySide6/translations/qtbase_ka.qm": "e55e4b72fa620bebee5297ca59dfe2f49894a1e544f2b7485b1cfd8829289d6f",
+    "_internal/PySide6/translations/qtbase_ko.qm": "0179ed1b136e1cb3f583351eaa2c545ba3d83a6ee3f82c32505926a1a5f5f183",
+    "_internal/PySide6/translations/qtbase_lg.qm": "31c0cc4ce13b1d74fe0c19ed0b47638fb31e20c93ee08092533e884007aebfb5",
+    "_internal/PySide6/translations/qtbase_lv.qm": "846e047573ae40c83671c3ba7f73e27efc24b98c82701da0df9973e574178bb2",
+    "_internal/PySide6/translations/qtbase_nl.qm": "f61513bcdbb6ad800585f9437a95d018aab17fa12ee414aa31462ff279d8240e",
+    "_internal/PySide6/translations/qtbase_nn.qm": "f9f2fb7c60e7fcb38bbd3c1314ef122145594265e20b0659ff00004baab13ac7",
+    "_internal/PySide6/translations/qtbase_pl.qm": "3cf6b5c14d5eb0cf81e9af2066e66b3aa579a6b9b3c323ed670761f6254a8c54",
+    "_internal/PySide6/translations/qtbase_pt_BR.qm": "3475d61604b938d459949801a906dbd34a8ca824ade94120015d676e208da859",
+    "_internal/PySide6/translations/qtbase_ru.qm": "3da6605668f9178d11a838c4515478084dcfb4f9cf22f99d7a92b492db9c224b",
+    "_internal/PySide6/translations/qtbase_sk.qm": "d586ae2c314074cf398417fdecb40709d5478dfeb0a67c2fe60d509ee9b59ed7",
+    "_internal/PySide6/translations/qtbase_sv.qm": "ed7786bb4fec609e99e98c5c91fa468add90093e95079b9eb7ff2e01371c6abe",
+    "_internal/PySide6/translations/qtbase_tr.qm": "2cedb7c431b20d3c59b4dc65ff5e53bd89023497162814b4a0e0b426c8a5b6c9",
+    "_internal/PySide6/translations/qtbase_uk.qm": "51b8ff55b37dc5907d637a8ddda12fbe816852b0244c74eb4f0fb84867a786e0",
+    "_internal/PySide6/translations/qtbase_zh_CN.qm": "0481a9b92a6f0578400e960a7d5ee70217a6a450eaf7f98b7d32b8dbd0d58616",
+    "_internal/PySide6/translations/qtbase_zh_TW.qm": "21012b2b427f8d09d31ce9cae582ca27955b478ca3dc2ec18a3068d808638c6a",
+    "_internal/PySide6/translations/qt_ar.qm": "b11333c520ccd8e375cde20985df402d586a1a95e0796313bbeb9f717d4db22e",
+    "_internal/PySide6/translations/qt_bg.qm": "1e22ee126ec9f76031d880285a907b3a0c4510392319ff700dcdee964abbb1ad",
+    "_internal/PySide6/translations/qt_ca.qm": "17ab2623c7f6e8def44b3dbcb517544185817d65f1298ddb10ef71136f232bdc",
+    "_internal/PySide6/translations/qt_cs.qm": "c585918fb1d4821a054ea40bdcf279f275ca76c88a5793f433dac6a611ac7e8f",
+    "_internal/PySide6/translations/qt_da.qm": "f6773c672acb73fdef6e092060d69d1e5dfee840012bac912d1e92de28714386",
+    "_internal/PySide6/translations/qt_de.qm": "0401c316aa3b50a172eb44a4ff1ec384924073beec7c928ef888ec48e4612688",
+    "_internal/PySide6/translations/qt_en.qm": "494ac9a2b2cb2fdeced353f4a9f898ed8dcf616e9bc667438c62681e3f7f79cf",
+    "_internal/PySide6/translations/qt_es.qm": "648ed4519bc45d7a4779479a7626ea16cf9aa23e93a0b178546cc47bea0591ab",
+    "_internal/PySide6/translations/qt_fa.qm": "3f4c989c6b2990d80cc6299408214b31698923b52f154483b3371875de91f88e",
+    "_internal/PySide6/translations/qt_fi.qm": "342d01c7eeb234e431d0506821c4cd03c0433115d8d63fee3357be2331858879",
+    "_internal/PySide6/translations/qt_fr.qm": "c896a38892a92346b033793d56440993236b23e47e06f3974afdb0552f628387",
+    "_internal/PySide6/translations/qt_gd.qm": "49df855a004a17950338af3146466f6df4d5852410bd0b58ea80e0d0203a9d24",
+    "_internal/PySide6/translations/qt_gl.qm": "204a01ac7deb6b5bae193afecbd1e50d18c73bf7d94badeb2bbfdf6123c4ed93",
+    "_internal/PySide6/translations/qt_he.qm": "36f01fff2f25e116d4b7af78097b7e49520fd5b7fb6fb120e40be228c05c045f",
+    "_internal/PySide6/translations/qt_help_ar.qm": "222088c9752d1cc3bab985ef2dc77e5ae78578dce18a61ec15b39f02e588163d",
+    "_internal/PySide6/translations/qt_help_bg.qm": "cbcdd1e0bbae332d80ddb0a286056f17c824fa28d353d7fdf12fc97d9f6fe054",
+    "_internal/PySide6/translations/qt_help_ca.qm": "8c98b5ee246e18397d0de7bd76b2891773a975553ec5dcdce42f8a696e5b34de",
+    "_internal/PySide6/translations/qt_help_cs.qm": "4ac56fc63e400943bab13f1d4c418502138908e1d488c24aee6131d3d17552aa",
+    "_internal/PySide6/translations/qt_help_da.qm": "6bb092552a398687119f6d52145f04bf8373977446d8f00c0dcbd56b96829f0f",
+    "_internal/PySide6/translations/qt_help_de.qm": "037bc99abf98571ae9375c2513536c15b571d66406c36c1de447b547ff539c07",
+    "_internal/PySide6/translations/qt_help_en.qm": "494ac9a2b2cb2fdeced353f4a9f898ed8dcf616e9bc667438c62681e3f7f79cf",
+    "_internal/PySide6/translations/qt_help_es.qm": "fd16b279f8cf69077f75e94d90c9c07a2afff3948a579e3789f5ffb5e5f4202d",
+    "_internal/PySide6/translations/qt_help_fr.qm": "875ee2dcdc64e3dea888d84048e382d3921a175f12847de2e6b1cb12ad9add50",
+    "_internal/PySide6/translations/qt_help_gl.qm": "7399a248609974773f60866c87b78ea7dfbc4f750313d692f7886cd763883c9f",
+    "_internal/PySide6/translations/qt_help_hr.qm": "8c8cc3c5b1ab2b074f82937001b896603420ef75592b3b78172177360dd7ea61",
+    "_internal/PySide6/translations/qt_help_hu.qm": "7be32e015119c969453abb6e8f3fb377963a69fafb10c27b796737b5eb283eaf",
+    "_internal/PySide6/translations/qt_help_it.qm": "316fe8d0815e2b4b396895beb38ef1a40431915b5e054df80f4c0cd556f26e4b",
+    "_internal/PySide6/translations/qt_help_ja.qm": "ae603b2c0d434d40cde433ffcba65f9ee27978a9e19316007be7fe782a5b8b47",
+    "_internal/PySide6/translations/qt_help_ka.qm": "159c74f94b384b5ee6afdf38b6cfc4806bc99ecf73be02d4a7021d4ceba7ec7e",
+    "_internal/PySide6/translations/qt_help_ko.qm": "f11c64694e8e34e1d2c46c1a1d15d6ba9f2db7b61de4fdf54eca5ab977c3e052",
+    "_internal/PySide6/translations/qt_help_nl.qm": "44a8a0daf775d14352180052d13f623814d7bdf98e2c5c80144b7bf74214e3b0",
+    "_internal/PySide6/translations/qt_help_nn.qm": "4c8a7213942078e4f72f5babd26c41b77ace70189714a58b5504a7d5ad0193dc",
+    "_internal/PySide6/translations/qt_help_pl.qm": "cc6cb4d8c54086224672f2e49e623c8cb7c0c1cd65b8d5ecd42fc9ba3a6065bd",
+    "_internal/PySide6/translations/qt_help_pt_BR.qm": "b4015c5d519b4fe93c00bf734d1742e4f0094d89862664d548eb64a46a2feae7",
+    "_internal/PySide6/translations/qt_help_ru.qm": "557b644e6da5f1ec720ef93965617087e4d1f40b2494cc5aa524cf3796108de7",
+    "_internal/PySide6/translations/qt_help_sk.qm": "f41e33e1d790bd0d3eb180f1f875bc191fe74773628f25c2cad95e1402e66867",
+    "_internal/PySide6/translations/qt_help_sl.qm": "2ec955e662407ebcd8dcdae5aaa21e4108e0b5b0aee0e9db712c27072943535f",
+    "_internal/PySide6/translations/qt_help_sv.qm": "95bdb03dbaa6dbdfda46c249e9ccce9a353f71ddb8b112961e8b005b2c60b13c",
+    "_internal/PySide6/translations/qt_help_tr.qm": "81da2f88cd624097581f2d29b10311796bcd9ab289e65883346d276110542d28",
+    "_internal/PySide6/translations/qt_help_uk.qm": "497cfc473684692ee44d7a3795e8fb2270c57069fd9eb98a615dd29ab9be8a7c",
+    "_internal/PySide6/translations/qt_help_zh_CN.qm": "e256d1f6034a5a5521c62f129f91731216e474f71e1d9caea3d3dcb11b670deb",
+    "_internal/PySide6/translations/qt_help_zh_TW.qm": "40112812abb43853d678cc6d97729f21f21b3a7321c827fc9d18f6c936447d1e",
+    "_internal/PySide6/translations/qt_hr.qm": "fc9e4146f33be3d09b234be01e56235d3037d8d82d64f0700b4d4a6e253a61a7",
+    "_internal/PySide6/translations/qt_hu.qm": "c2fa649f167cdb801d1cc0cb69c1d93594fd5bf8c0b7e79b969935da5c3e19aa",
+    "_internal/PySide6/translations/qt_it.qm": "9e7a18bc20ebeec54baaaf41c918a74534511271f796dffffd0f9b9ec31c68d3",
+    "_internal/PySide6/translations/qt_ja.qm": "0f5fe50452947d1ee9755249d860354bff6977279b4c496a5bc77e5b89dd745e",
+    "_internal/PySide6/translations/qt_ka.qm": "00b67c6dfc255079b5b98a5640f82519c96b2520a028682fba4078b39d743eaa",
+    "_internal/PySide6/translations/qt_ko.qm": "1d254b535e1cb35cbcad8210b15b89f4488159826bf35b4504696263dd102fa3",
+    "_internal/PySide6/translations/qt_lg.qm": "6ba668501f4c040c66da1bdc022362da3c8cf663da6aa484cbdb599028da98ed",
+    "_internal/PySide6/translations/qt_lt.qm": "47eb5f97467df769261421d54a5bea1131c9fb9b6388791d38bb6574335b64bf",
+    "_internal/PySide6/translations/qt_lv.qm": "addeca285282338294f24ca50d37d08a5f68d3785d0a94af86dd4ec8f2a3b449",
+    "_internal/PySide6/translations/qt_nl.qm": "39e870cbd25c0f97fa9b1828d5ea1ed9849857a2e26c5321b3f13c76be8f0548",
+    "_internal/PySide6/translations/qt_nn.qm": "4e544e23f75eafe1553dc896973db23b5795cd243786d5c653cc0f36a46ca74f",
+    "_internal/PySide6/translations/qt_pl.qm": "e6890afa0caf0f6db0248e4c94f6016b8ec8bc266f1e0e9b8f01e8ea912cf968",
+    "_internal/PySide6/translations/qt_pt_BR.qm": "0e24c58e35271853f8cdfb3f0f7b0741b5a9a588e43cdec62ae85a3842771e0a",
+    "_internal/PySide6/translations/qt_pt_PT.qm": "2c1e7bbf5168a64b43752dd4c547601c0bde6d610f8671fa3e3af38597e84783",
+    "_internal/PySide6/translations/qt_ru.qm": "1b388e2d6d1bd405603e794e498c6d7ec5f5a5ad819243546f6399181da36758",
+    "_internal/PySide6/translations/qt_sk.qm": "840c3b01c89df976fc1d2e5bfc6fc84b65666b8a3ceb4cbf5aa0c22af3d2a383",
+    "_internal/PySide6/translations/qt_sl.qm": "c44e0313a9414cc0e490b65b0c036fa11bca959353b228886547bc2c8492034f",
+    "_internal/PySide6/translations/qt_sv.qm": "daaae448e0814b469ac3d7a91096fde15491600a6b8bc6c01508425fb5e8b3ec",
+    "_internal/PySide6/translations/qt_tr.qm": "59e8a0c411be3b0802a68561b090f182099d6b75c4fe46f398e55f11528e11b9",
+    "_internal/PySide6/translations/qt_uk.qm": "053ec1f677c4dba48c6a97eb28f4fc78c1511324d1843d7f4cec2c7c00a66145",
+    "_internal/PySide6/translations/qt_zh_CN.qm": "c0e29d32c9540a7e78643b74214e633c56f6ab11f018e516629f2c11b1fb09fc",
+    "_internal/PySide6/translations/qt_zh_TW.qm": "24e226954491689549a1a1990db3b8cb78888008d8163b2fd2442b772b6d1b5f",
+    "_internal/PySide6/plugins/generic/qtuiotouchplugin.dll": "13488dc9d7bf7a2174c07e4abd12d1b6ddbb7b96d6e239a91e712d4038647c4f",
+    "_internal/PySide6/plugins/iconengines/qsvgicon.dll": "2d2ab84516935bf5da160adeb7e7231f616593fe56c76ce7b27b67df0c8389b1",
+    "_internal/PySide6/plugins/imageformats/qgif.dll": "d86d2e5a17c3af5569a930c5ed204860d0f583549e66db60991dce8b07298ac0",
+    "_internal/PySide6/plugins/imageformats/qicns.dll": "1147a72974065a975e6a1c772dd7763f4c9e61068e7cd87bd88cbdb5c0f18b1c",
+    "_internal/PySide6/plugins/imageformats/qico.dll": "7b09760871ddd7f21cecf0fdc5d6d7bbb0f5722a224ecbc7b55297a7e6d81cb0",
+    "_internal/PySide6/plugins/imageformats/qjpeg.dll": "464bfd542ad6dc017080e23f645cccd4a0a78ebf719500eb9012a3fdd9437830",
+    "_internal/PySide6/plugins/imageformats/qsvg.dll": "16351b05e22a0faa78b7cc0f5b9fc231e8c7961c41cf880a3f6dec51a277dc65",
+    "_internal/PySide6/plugins/imageformats/qtga.dll": "70404f7f8d40966e4fab7384902f3c3cb89cb1f838a4978a01e009ddda8fd018",
+    "_internal/PySide6/plugins/imageformats/qtiff.dll": "fc55d0d0364582e5f4af1b796cbe8c70e1148fa7394a8ed1dc04654dcfff4687",
+    "_internal/PySide6/plugins/imageformats/qwbmp.dll": "939759b66fdc1852e0a41cbd4f9dd84f20f29db8036839d9b1672dc779cfcffe",
+    "_internal/PySide6/plugins/imageformats/qwebp.dll": "feee775a7fa75e9ba6a4fd8cc2ea4ef63e6c0d950f3c0b5c85c07b0414ff6c91",
+    "_internal/PySide6/plugins/networkinformation/qnetworklistmanager.dll": "fa70ba59b418b57a9413209fbc9cd660cd9cc9cffb95483b448d22beff2884c5",
+    "_internal/PySide6/plugins/platforms/qdirect2d.dll": "eff3bf95df9d396d0a8afdd623fecf53d4f1464b57d72491ae09b0d01730491d",
+    "_internal/PySide6/plugins/platforms/qminimal.dll": "d8489d4f351c77212369d4eed895af6a5430f18f11e91e376656a1aa4213d31c",
+    "_internal/PySide6/plugins/platforms/qoffscreen.dll": "e6704e939ace945f9c5451fd9f4785e4102ed13add4211122e70476c8788025b",
+    "_internal/PySide6/plugins/platforms/qwindows.dll": "ed2944e4f06239996e27bff7783abc828d76d9497d5a26c339fa916b00ea3f74",
+    "_internal/PySide6/plugins/styles/qmodernwindowsstyle.dll": "f59e6bcac0624e042ee41bca3c2a75f9adaa2b4722a48e8ec9d242103b008551",
+    "_internal/PySide6/plugins/tls/qcertonlybackend.dll": "f7fb8e0ccb5c1f01345d92da4a2954b0b30e3134e6b636d0f3b9bf04d46b40f1",
+    "_internal/PySide6/plugins/tls/qopensslbackend.dll": "9d33ecb156227f25f25396496f708404397f812270a69b7abee3f95b144b5af6",
+    "_internal/PySide6/plugins/tls/qschannelbackend.dll": "d5209f8efcdcb9bf516bd0561f0cae5ce593f96d47540c0842770e9a00597c5b"
+  },
+  "post_build_changes": [
+    {
+      "path": "_internal/MSVCP140.dll",
+      "original_sha256": "d8fcd3b7619e7aa5623653afecbec42751358e56ac04aed7cc679cc494376ef1",
+      "new_sha256": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
+      "supplier_relative": "VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT/MSVCP140.dll"
+    },
+    {
+      "path": "_internal/MSVCP140_1.dll",
+      "original_sha256": "8ce6980144fadfea52b6f14f7799e05e3232c28414fb5e617968a814be33fc1a",
+      "new_sha256": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d",
+      "supplier_relative": "VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT/MSVCP140_1.dll"
+    },
+    {
+      "path": "_internal/MSVCP140_2.dll",
+      "original_sha256": "14301dc6a6021b6e70d102535d9b9a7ad1a40cfc61e88b601a9af8b84e0096b2",
+      "new_sha256": "3ea06f0ee098b4823cb79599df3780e7f23cce52c19aac31d2a0d47efe33a5e9",
+      "supplier_relative": "VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT/MSVCP140_2.dll"
+    },
+    {
+      "path": "_internal/VCRUNTIME140.dll",
+      "original_sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+      "new_sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+      "supplier_relative": "VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT/VCRUNTIME140.dll"
+    },
+    {
+      "path": "_internal/VCRUNTIME140_1.dll",
+      "original_sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
+      "new_sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
+      "supplier_relative": "VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT/VCRUNTIME140_1.dll"
+    }
+  ],
+  "runtime_signature_checks": [
+    {
+      "name": "MSVCP140_1.dll",
+      "status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d"
+    },
+    {
+      "name": "MSVCP140_2.dll",
+      "status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "3ea06f0ee098b4823cb79599df3780e7f23cce52c19aac31d2a0d47efe33a5e9"
+    },
+    {
+      "name": "MSVCP140.dll",
+      "status": "Valid",
+      "signer": "CN=Microsoft Windows, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9"
+    },
+    {
+      "name": "VCRUNTIME140_1.dll",
+      "status": "Valid",
+      "signer": "CN=Microsoft Windows, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f"
+    },
+    {
+      "name": "VCRUNTIME140.dll",
+      "status": "Valid",
+      "signer": "CN=Microsoft Windows, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066"
+    }
+  ],
+  "source": "Community_2022_VC_Redist",
+  "distribution_approved": true,
+  "approved_runtime_pinning": [
+    {
+      "path": "_internal/_bz2.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/_ctypes.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/_decimal.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/_hashlib.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/_lzma.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/_socket.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/_uuid.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/_wmi.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/base_library.zip",
+      "equivalence": "all_155_uncompressed_entries_identical"
+    },
+    {
+      "path": "_internal/libcrypto-3-x64.dll",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/libffi-8.dll",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/python3.dll",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/python312.dll",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/select.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    },
+    {
+      "path": "_internal/unicodedata.pyd",
+      "equivalence": "all_bytes_except_PE_checksum_and_certificate_table_identical"
+    }
+  ],
+  "material_approval_basis": "Existing maintainer material approval and explicit 9e0d14e ZIP rebuild request; dependency bytes/versions and license scope unchanged"
+}

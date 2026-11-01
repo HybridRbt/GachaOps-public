@@ -1,0 +1,14 @@
+{
+  "zzz-daily": [
+    "failure",
+    "success"
+  ],
+  "ww-daily": [
+    "timeout",
+    "timeout"
+  ],
+  "endfield-daily": [
+    "ambiguous",
+    "ambiguous"
+  ]
+}

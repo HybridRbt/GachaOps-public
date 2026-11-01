@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "status": "prepared_archives_for_same_package_delivery_not_yet_published",
+  "archives": [
+    {
+      "source": "docs/release/source-delivery/archives/pyside-pyside-setup-v6.10.2.tar.gz",
+      "file": "pyside-pyside-setup-v6.10.2.tar.gz",
+      "sha256": "e87189dc0fbce16d0203774fb369d43dabc8eb999fd946e5cbe7308d7c85cc56",
+      "bytes": 20826876,
+      "url": "https://codeload.github.com/pyside/pyside-setup/tar.gz/057cda38d369d042c59fd48544398cb917540718",
+      "scope": "Qt_PySide_library_source"
+    },
+    {
+      "source": "docs/release/source-delivery/archives/qt-qtbase-v6.10.2.tar.gz",
+      "file": "qt-qtbase-v6.10.2.tar.gz",
+      "sha256": "2bffe7325cd32454a7a03548a4afad0e31b9cc3087a37867cb6c9f6ad4024f37",
+      "bytes": 67281154,
+      "url": "https://codeload.github.com/qt/qtbase/tar.gz/000d6c62f7880bb8d3054724e8da0b8ae244130e",
+      "scope": "Qt_PySide_library_source"
+    },
+    {
+      "source": "docs/release/source-delivery/archives/qt-qtimageformats-v6.10.2.tar.gz",
+      "file": "qt-qtimageformats-v6.10.2.tar.gz",
+      "sha256": "def2a34d170375276dc27d093383b9da03be7031cdb9b9f1e797c67e12c98f75",
+      "bytes": 2643810,
+      "url": "https://codeload.github.com/qt/qtimageformats/tar.gz/076fb82c55321e42beeae62d9e3ca8c4bb71439c",
+      "scope": "Qt_PySide_library_source"
+    },
+    {
+      "source": "docs/release/source-delivery/archives/qt-qtsvg-v6.10.2.tar.gz",
+      "file": "qt-qtsvg-v6.10.2.tar.gz",
+      "sha256": "b77b5463d71f86f81dff940cfcabb0803d61a39019a08a3f9e3c680c885806b5",
+      "bytes": 2902702,
+      "url": "https://codeload.github.com/qt/qtsvg/tar.gz/b925029db51aff0b17a48f5939cb83c27932d0cb",
+      "scope": "Qt_PySide_library_source"
+    },
+    {
+      "source": "docs/release/source-delivery/archives/qt-qttranslations-v6.10.2.tar.gz",
+      "file": "qt-qttranslations-v6.10.2.tar.gz",
+      "sha256": "edb41ba2e25738504919ef278ab79ea6a0d243106ba86511aefbac30388e81ce",
+      "bytes": 3117197,
+      "url": "https://codeload.github.com/qt/qttranslations/tar.gz/198cf16a901055ddfd235d297da059de97b29257",
+      "scope": "Qt_PySide_library_source"
+    },
+    {
+      "source": "docs/release/source-delivery/archives/GachaOps-0.1.0-9e0d14e-source.zip",
+      "file": "GachaOps-0.1.0-9e0d14e-source.zip",
+      "sha256": "d369912c75b188e19ba78ff76a5e4f85d2af6bade5a15498798f77b050eda837",
+      "bytes": 690326,
+      "url": null,
+      "scope": "application_source_and_build_inputs"
+    }
+  ],
+  "publication_rule": "Include these files with the binary package; a source URL alone is not this delivery.",
+  "reproducible_binary_bytes_required": false
+}
