@@ -187,10 +187,15 @@ class BinaryDispositionTests(unittest.TestCase):
                         return SimpleNamespace(st_mode=stat.S_IFREG, st_file_attributes=0x400)
                     return original(path, *args, **kwargs)
 
-                with mock.patch.object(Path, 'is_junction', create=True):
-                    delattr(Path, 'is_junction')  # Emulate the supported Python 3.11 API.
+                junction = getattr(Path, 'is_junction', None)
+                try:
+                    if junction is not None:
+                        delattr(Path, 'is_junction')  # Emulate Python 3.11 without mock cleanup deleting twice.
                     with mock.patch.object(Path, 'lstat', new=reparse_stat):
                         report = module.audit(app, policy)
+                finally:
+                    if junction is not None:
+                        setattr(Path, 'is_junction', junction)
                 self.assertEqual(report['status'], 'blocked')
                 self.assertIn('SCAN_FAILED', report['errors'])
             finally:

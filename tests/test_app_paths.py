@@ -18,8 +18,8 @@ class AppPathsTests(unittest.TestCase):
                  patch('sys._MEIPASS', str(root / 'bundle'), create=True), \
                  patch.dict(os.environ, LOCALAPPDATA=str(root / '用户 data')):
                 paths = app_paths.resolve_app_paths()
-                self.assertEqual(paths.data_root, root / '用户 data/GachaOps')
-                self.assertEqual(paths.resource_root, root / 'bundle')
+                self.assertEqual(paths.data_root, (root / '用户 data/GachaOps').resolve())
+                self.assertEqual(paths.resource_root, (root / 'bundle').resolve())
                 self.assertEqual(paths.state_dir, paths.data_root / 'state')
                 self.assertEqual(app_paths.workspace_root(), paths.data_root)
                 self.assertFalse(paths.data_root.exists())
@@ -32,7 +32,7 @@ class AppPathsTests(unittest.TestCase):
             marker = app / 'gachaops-workspace.json'
             marker.write_text(json.dumps({'schema_version': 1, 'workspace': str(old)}), encoding='utf-8')
             with patch('sys.frozen', True, create=True), patch('sys.executable', str(app / 'GachaOps.exe')):
-                self.assertEqual(app_paths.resolve_app_paths().data_root, old)
+                self.assertEqual(app_paths.resolve_app_paths().data_root, old.resolve())
                 with self.assertRaises(ValueError):
                     app_paths.resolve_app_paths(root / 'new')
                 marker.write_text('{', encoding='utf-8')
@@ -89,7 +89,7 @@ class AppPathsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / '数据 root'
             paths = app_paths.resolve_app_paths(root)
-            self.assertEqual(paths.config_dir, root / 'config')
+            self.assertEqual(paths.config_dir, (root / 'config').resolve())
             command = worker_command('check-assistants', root / 'config/a.json', root / 'runs', root / 'stop', root / 'log', data_root=root)
             self.assertEqual(command[command.index('--data-root') + 1], str(root))
             with self.assertRaises(ValueError):

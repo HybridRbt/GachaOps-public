@@ -47,7 +47,7 @@ class DesktopTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as isolated, patch('sys.frozen', True, create=True), \
                  patch('sys.executable', str(Path(isolated) / 'GachaOps.exe')), \
                  patch.dict(os.environ, LOCALAPPDATA=str(Path(isolated) / 'local-data')):
-                self.assertEqual(workspace_root(), Path(isolated) / 'local-data/GachaOps')
+                self.assertEqual(workspace_root(), (Path(isolated) / 'local-data/GachaOps').resolve())
             other = root / 'isolated'; other.mkdir()
             (other / 'gachaops-workspace.json').write_text(json.dumps({'schema_version': 1, 'workspace': str(root)}))
             with patch('sys.frozen', True, create=True), patch('sys.executable', str(other / 'GachaOps.exe')):

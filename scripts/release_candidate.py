@@ -51,6 +51,7 @@ def validate_review(app, review):
 
 
 def verify_sidecars(source, review):
+    source = Path(source).resolve()
     hashes = review.get('sidecar_sha256')
     if not isinstance(hashes, dict) or set(hashes) != set(SIDECARS):
         raise ValueError('missing reviewed sidecar hashes')

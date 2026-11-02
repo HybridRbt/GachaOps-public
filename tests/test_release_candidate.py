@@ -48,6 +48,16 @@ class ReleaseCandidateTests(unittest.TestCase):
             'binary_dispositions': None}
         return source, app, cache, review
 
+    def test_sidecar_root_alias_normalizes_without_accepting_changed_bytes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve(); source, app, cache, review = self.fixture(root)
+            alias = source / '..' / source.name
+            self.module.verify_sidecars(alias, review)
+            path = source / 'docs/release/DISTRIBUTION_APPROVAL.json'
+            path.write_bytes(path.read_bytes() + b' ')
+            with self.assertRaisesRegex(ValueError, 'review sidecar changed'):
+                self.module.verify_sidecars(alias, review)
+
     def test_reviewed_fixture_prepares_stages_and_verifies_complete_zip(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); source, app, cache, review = self.fixture(root)
