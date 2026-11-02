@@ -2,7 +2,7 @@
 
 在 Windows 交互桌面上串行编排用户已经安装并配置好的游戏助手：登记路径 → 只读检查 → 选择顺序 → 用户开始 → 完成判定与收尾 → 结果与脱敏诊断。
 
-**公开 v1 尚未发布。** 本产品开源免费，采用 [GNU AGPLv3](LICENSE)（AGPL-3.0-only），Copyright (C) 2026 HybridRbt。当前为本地工程候选；第三方分发材料、资产、干净机器验收和发布门禁仍需完成。不会自动下载、安装、更新助手，也不会在打开界面或登记时运行游戏。
+**v0.1.0 预发布版。** 本产品开源免费，采用 [GNU AGPLv3](LICENSE)（AGPL-3.0-only），Copyright (C) 2026 HybridRbt。首次公开预发布保留已知验收限制；不宣称全部 Windows 环境及真实助手版本均已验收。不会自动下载、安装、更新助手，也不会在打开界面或登记时运行游戏。
 
 ## 微软组件使用前告知
 
@@ -32,7 +32,7 @@ GachaOps 与各游戏运营方及助手团队没有官方隶属或背书关系�
 
 ## 源码入口
 
-目标源码仓库：[HybridRbt/GachaOps-public](https://github.com/HybridRbt/GachaOps-public)。本轮先在私有仓库准备，访问需要相应权限；公开 v1 尚未发布，没有正式 Release 下载。外部助手安装入口仍以各上游项目为准。
+目标源码仓库：[HybridRbt/GachaOps-public](https://github.com/HybridRbt/GachaOps-public)。预发布与校验文件见 [v0.1.0 发布页](https://github.com/HybridRbt/GachaOps-public/releases/tag/v0.1.0)。下载前阅读上方微软 CRT 告知与完整条款；对应源码归档及第三方源码随包提供。外部助手安装入口仍以各上游项目为准。
 
 ```sh
 git clone --branch main https://github.com/HybridRbt/GachaOps-public.git
