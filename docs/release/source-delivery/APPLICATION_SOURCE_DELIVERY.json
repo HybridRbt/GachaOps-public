@@ -1,20 +1,19 @@
 {
   "schema_version": 1,
-  "candidate_code_commit": "9e0d14e6a2066d2e0986f5e438b623b9b945322e",
-  "candidate_executable_sha256": "8ab5b003f5afd8d63006c3280d3f4dfb2cdfecc9faf6105d329369dd9d29985f",
+  "candidate_code_commit": "002042c4c0dbe91e890c63efe9fe0274abdad651",
+  "candidate_executable_sha256": "80772260fa8301d4ac72226e4ebdd2764b915eac548dc0d97229fb7ff71abf85",
   "archive": {
-    "source": "docs/release/source-delivery/archives/GachaOps-0.1.0-9e0d14e-source.zip",
-    "file": "GachaOps-0.1.0-9e0d14e-source.zip",
-    "sha256": "d369912c75b188e19ba78ff76a5e4f85d2af6bade5a15498798f77b050eda837",
-    "bytes": 690326,
+    "source": "docs/release/source-delivery/archives/GachaOps-0.1.0-002042c-source.zip",
+    "file": "GachaOps-0.1.0-002042c-source.zip",
+    "sha256": "54eaa0a8dacdc242656b1992eb50134b4e7065b1ee6ed9de50c3067a5d91e3c7",
+    "bytes": 707906,
     "url": null,
     "scope": "application_source_and_build_inputs"
   },
-  "original_git_inputs": 126,
-  "archive_entries": 128,
+  "original_git_inputs": 130,
+  "archive_entries": 131,
   "all_original_input_hashes_verified": true,
   "supplements": [
-    "README.md",
     "SOURCE_MANIFEST.json"
   ],
   "application_built_from_commit": true,

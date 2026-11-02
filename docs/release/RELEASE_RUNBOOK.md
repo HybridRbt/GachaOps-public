@@ -1,6 +1,6 @@
 # 候选包构建、审查与交付
 
-公开 v1 尚未发布。既有本地候选材料曾获限范围批准；DISTRIBUTION_APPROVAL.json 记录该历史事实，不代表所有新字节或公开发布获批。旧 DISTRIBUTION_DELIVERY_PROPOSAL.json 是准备阶段历史提案，其中 blockers 不是当前事实。当前变更的材料以 DISTRIBUTION_REVIEW_PROPOSAL.json 待审记录为准，不能将 approved=false 自动改为 true。
+公开 v1 尚未发布。干净002042c/Python3.12.14本地候选及其确切源码/材料已获维护者限范围批准；两份正式批准记录适用于该候选。DISTRIBUTION_REVIEW_PROPOSAL保持false，是不可变的原提交审阅稿，不代表正式记录失效，也不代表公开已获批准。旧提案和历史批准仅保留当时范围。
 
 ## 构建与产物审查分开
 
@@ -46,4 +46,9 @@ python scripts/release_candidate.py finalize --source <已审材料源码树> --
 python scripts/release_candidate.py verify --zip <输出>/GachaOps-candidate.zip --summary <输出>/release-summary.json
 ```
 
-材料含深层上游文件，Windows 未启用长路径时应使用较短的工作/输出路径。路径写入失败会阻断，保留诊断目录且不得当作成功包。Actions 的显式 run-id 下载接口见[官方文档](https://github.com/actions/download-artifact#download-artifacts-from-other-workflow-runs-or-repositories)。本流程未在远端执行，额度与启用门禁保留。
+材料含深层上游文件，Windows 未启用长路径时应使用较短的工作/输出路径。路径写入失败会阻断，保留诊断目录且不得当作成功包。Actions 的显式 run-id 下载接口见[官方文档](https://github.com/actions/download-artifact#download-artifacts-from-other-workflow-runs-or-repositories)。三平台core-tests与Windows build已实际远端通过；materials/stage/publish未远端执行。云端3.12.10构建不替代已审3.12.14本地候选。
+
+
+## 本轮发布提案的执行方式
+
+待维护者明确批准的提案是：不重建已审本地ZIP，以人工上传该确切产物发布v0.1.0预发布；候选代码tag指向002042c，后续材料同步提交只更新元数据。此方式需维护者明确选择，不能冒充云端stage/publish通过。上述云端自动发布门禁保持关闭，不修改受保护环境或PUBLIC_RELEASE_ENABLED。公开决定和执行结果另行记录；尚未执行公开、tag或Release。

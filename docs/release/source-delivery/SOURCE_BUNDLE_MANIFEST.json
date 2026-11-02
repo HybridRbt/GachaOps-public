@@ -43,10 +43,10 @@
       "scope": "Qt_PySide_library_source"
     },
     {
-      "source": "docs/release/source-delivery/archives/GachaOps-0.1.0-9e0d14e-source.zip",
-      "file": "GachaOps-0.1.0-9e0d14e-source.zip",
-      "sha256": "d369912c75b188e19ba78ff76a5e4f85d2af6bade5a15498798f77b050eda837",
-      "bytes": 690326,
+      "source": "docs/release/source-delivery/archives/GachaOps-0.1.0-002042c-source.zip",
+      "file": "GachaOps-0.1.0-002042c-source.zip",
+      "sha256": "54eaa0a8dacdc242656b1992eb50134b4e7065b1ee6ed9de50c3067a5d91e3c7",
+      "bytes": 707906,
       "url": null,
       "scope": "application_source_and_build_inputs"
     }
