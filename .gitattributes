@@ -14,8 +14,15 @@ docs/ADDING_ADAPTER.md -text
 docs/VALIDATION.md -text
 docs/THIRD_PARTY_ASSISTANTS.md -text
 PACKAGE_README.md -text
+MICROSOFT_CRT_TERMS.md -text
+PACKAGE_MICROSOFT_CRT_TERMS.md -text
+PACKAGE_THIRD_PARTY_NOTICES.md -text
+# Source-only notice entrypoints are also bound to the reviewed material bytes.
+README.md -text
+docs/index.html -text
 SECURITY.md -text
 docs/release/DISTRIBUTION_REVIEW_PROPOSAL.json -text
 # Preserve exact proposal/approval evidence hashes across Windows checkouts.
 docs/release/DISTRIBUTION_APPROVAL.json -text
 docs/release/DISTRIBUTION_DELIVERY_PROPOSAL.json -text
+docs/release/BINARY_DISPOSITIONS.json -text

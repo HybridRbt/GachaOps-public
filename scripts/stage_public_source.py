@@ -7,7 +7,9 @@ import shutil
 
 from check_public_artifact import PRIVATE_DIRS, PRIVATE_FILES, RULES, scan_root
 
-TOP_FILES = {'README.md', 'PACKAGE_README.md', '.gitignore', '.gitattributes', 'pyproject.toml', 'requirements-desktop.txt', 'GachaOps.spec',
+TOP_FILES = {'README.md', 'PACKAGE_README.md', 'MICROSOFT_CRT_TERMS.md',
+             'PACKAGE_MICROSOFT_CRT_TERMS.md', 'PACKAGE_THIRD_PARTY_NOTICES.md',
+             '.gitignore', '.gitattributes', 'pyproject.toml', 'requirements-desktop.txt', 'GachaOps.spec',
              'LICENSE', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md'}
 TOP_DIRS = {'gachaops', 'tests', 'scripts', 'config', 'docs', '.github'}
 INTERNAL_DOCS = {'PROJECT_STATE.md', 'BASELINE.md', 'BASELINE_FILES.json', 'UI_ACCEPTANCE_20261003.md'}

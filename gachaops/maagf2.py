@@ -1,6 +1,7 @@
 """MFAAvalonia saved-instance entry and independent MaaFramework completion."""
 from datetime import datetime
 from dataclasses import dataclass, field
+import ctypes
 import hashlib
 import json
 import os
@@ -23,17 +24,89 @@ ADDITIONAL_VERIFIED_CORE_SHA256 = frozenset({
     '4cc6a10ef5c7cb6c728070d8e28730ea0fa79e104f77d2781314fd55d917c8e7',
 })
 
+LAUNCH_FIELDS = ('CurrentController', 'CurrentControllerName', 'BeforeTask', 'SoftwarePath',
+                 'IncludeInGlobalStart', 'AutoDetectOnConnectionFailed')
+
+
+def launch_metadata(root, instance_id):
+    """Project startup fields only; native daily task configuration stays opaque."""
+    root = Path(root).resolve(strict=True)
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', instance_id):
+        raise ValueError('invalid saved MaaGF2 instance identity')
+    core = root / 'libs/MFAAvalonia.Core.dll'
+    files = sorted((root / 'config/instances').glob('*.json'))
+    selected = root / 'config/instances' / (instance_id + '.json')
+    for path in (core, selected, *files):
+        if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(root):
+            raise ValueError('missing or external MaaGF2 launch metadata')
+    instance = json.loads(selected.read_text(encoding='utf-8-sig'))
+    return {'core_sha256': hashlib.sha256(core.read_bytes()).hexdigest(),
+            'instance_names': [p.name for p in files],
+            'selected_fields': {key: instance[key] for key in LAUNCH_FIELDS if key in instance}}
+
+
+def executable_product_name(exe):
+    """Read all declared ProductName translations from the actual entry PE."""
+    error = '无法核验少前2助手入口身份，请使用已核验的 MFAAvalonia 版本或取消勾选此助手。'
+    if os.name != 'nt':
+        raise ValueError(error)
+    api = ctypes.WinDLL('version', use_last_error=True)
+    api.GetFileVersionInfoSizeW.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_ulong)]
+    api.GetFileVersionInfoSizeW.restype = ctypes.c_ulong
+    api.GetFileVersionInfoW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
+    api.GetFileVersionInfoW.restype = ctypes.c_int
+    api.VerQueryValueW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p,
+                                 ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_uint)]
+    api.VerQueryValueW.restype = ctypes.c_int
+    handle = ctypes.c_ulong()
+    size = api.GetFileVersionInfoSizeW(str(exe), ctypes.byref(handle))
+    if not 0 < size <= 1024 * 1024:
+        raise ValueError(error)
+    buffer = ctypes.create_string_buffer(size)
+    if not api.GetFileVersionInfoW(str(exe), 0, size, buffer):
+        raise ValueError(error)
+    ptr, length = ctypes.c_void_p(), ctypes.c_uint()
+    if (not api.VerQueryValueW(buffer, '\\VarFileInfo\\Translation', ctypes.byref(ptr), ctypes.byref(length))
+            or not ptr.value or length.value == 0 or length.value % 4 or length.value > size):
+        raise ValueError(error)
+    words = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_ushort))
+    translations = [(words[i], words[i + 1]) for i in range(0, length.value // 2, 2)]
+    names = set()
+    for language, codepage in translations:
+        key = f'\\StringFileInfo\\{language:04x}{codepage:04x}\\ProductName'
+        if (not api.VerQueryValueW(buffer, key, ctypes.byref(ptr), ctypes.byref(length))
+                or not ptr.value or not 1 < length.value <= size // 2):
+            raise ValueError(error)
+        name = ctypes.wstring_at(ptr, length.value)
+        value = name.rstrip('\0')
+        if not name.endswith('\0') or '\0' in value or not value.strip():
+            raise ValueError(error)
+        names.add(value.strip())
+    if len(names) != 1:
+        raise ValueError(error)
+    return names.pop()
+
 
 def prepare(row):
     root = Path(row['installation_root']).resolve(strict=True)
     exe = root / 'MaaGF2Exilium.exe'
+    if not exe.is_file() or not exe.resolve().is_relative_to(root):
+        raise ValueError('missing or external MaaGF2 installation entry')
+    if row.get('entry_executable') and Path(row['entry_executable']).resolve() != exe:
+        raise ValueError('MaaGF2 entry must be the installation GUI')
+    with exe.open('rb') as stream:
+        launcher_sha256 = hashlib.file_digest(stream, 'sha256').hexdigest()
+    product = executable_product_name(exe)
+    if product.casefold() == 'mxu':
+        raise ValueError('检测到 MXU 版少前2助手，当前 GachaOps 尚未支持。请暂时取消勾选此助手，'
+                         '其他助手可按原检查结果使用；重新检查不能完成版本适配。')
+    if product != 'MFAAvalonia':
+        raise ValueError('少前2助手入口身份未经核验，请使用已核验的 MFAAvalonia 版本或取消勾选此助手。')
     core = root / 'libs/MFAAvalonia.Core.dll'
     for path in (exe, core, root / 'interface.json', root / 'config/config.json',
                  root / 'runtimes/win-x64/native/MaaFramework.dll'):
         if not path.is_file() or not path.resolve().is_relative_to(root):
             raise ValueError('missing or external MaaGF2 installation entry')
-    if row.get('entry_executable') and Path(row['entry_executable']).resolve() != exe:
-        raise ValueError('MaaGF2 entry must be the installation GUI')
     binary = core.read_bytes()
     if not all(flag.encode('utf-16le') in binary for flag in ('autostart', 'quit-after-run', 'instance')):
         raise ValueError('MFAAvalonia automatic saved-instance entry unavailable')
@@ -100,11 +173,15 @@ def prepare(row):
             raise ValueError('saved desktop controller window specification unavailable')
         re.compile(window_filter[key])
     return {'installation_root': str(root), 'cwd': str(root), 'launcher': str(exe),
+            'launcher_sha256': launcher_sha256,
             'argv_candidate': [str(exe), '--instance', files[0].stem],
             'game_path': game, 'observation_targets': targets, 'focus_targets': [game],
             'official_launcher': launcher_path,
             'native_startup': True, 'command_pipe_key': instance_key(exe, core),
             'command_protocol_sha256': core_digest,
+            'native_launch_metadata': {'core_sha256': core_digest,
+                'instance_names': [p.name for p in all_files],
+                'selected_fields': {key: instance[key] for key in LAUNCH_FIELDS if key in instance}},
             'native_startup_timeout': 120,
             'native_startup_mode': 'global' if native_global else 'command',
             'startup_window_filter': {k: window_filter[k] for k in ('window_regex', 'class_regex')},

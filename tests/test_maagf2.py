@@ -287,7 +287,8 @@ class MaaGF2Tests(unittest.TestCase):
             (root / 'config/config.json').write_text('{}')
             before = p.read_bytes()
             row = {'id': 'gf2', 'adapter': 'maa-gf2', 'installation_root': str(root), 'enabled': True}
-            with patch('gachaops.maagf2.elevation_report', return_value={'elevated': True}), \
+            with patch('gachaops.maagf2.executable_product_name', return_value='MFAAvalonia'), \
+                 patch('gachaops.maagf2.elevation_report', return_value={'elevated': True}), \
                  patch('gachaops.maagf2.SUPPORTED_CORE_SHA256', __import__('hashlib').sha256((root / 'libs/MFAAvalonia.Core.dll').read_bytes()).hexdigest()), \
                  patch('gachaops.maagf2.desktop_report', return_value={'status': 'observed_available'}), \
                  patch('gachaops.maagf2.find_matching_processes', return_value={'status': 'observed', 'matches': []}):

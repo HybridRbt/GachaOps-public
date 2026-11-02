@@ -14,7 +14,7 @@ class ReleaseMaterialsTests(unittest.TestCase):
         source = root / 'source'; source.mkdir()
         cache = root / 'cache'; cache.mkdir()
         required = {}
-        for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md', 'docs/QUICKSTART.md', 'docs/SUPPORT_MATRIX.md', 'docs/USAGE_NOTICE.md', 'docs/DATA_DIRECTORIES.md', 'docs/ADDING_ADAPTER.md', 'docs/VALIDATION.md', 'docs/THIRD_PARTY_ASSISTANTS.md', 'PACKAGE_README.md'):
+        for name in ('LICENSE', 'PACKAGE_THIRD_PARTY_NOTICES.md', 'PACKAGE_MICROSOFT_CRT_TERMS.md', 'SECURITY.md', 'docs/QUICKSTART.md', 'docs/SUPPORT_MATRIX.md', 'docs/USAGE_NOTICE.md', 'docs/DATA_DIRECTORIES.md', 'docs/ADDING_ADAPTER.md', 'docs/VALIDATION.md', 'docs/THIRD_PARTY_ASSISTANTS.md', 'PACKAGE_README.md'):
             p = source / name; p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(b'synthetic required notice')
             required[name] = hashlib.sha256(p.read_bytes()).hexdigest()
@@ -26,6 +26,8 @@ class ReleaseMaterialsTests(unittest.TestCase):
         proposal = {'schema_version': 1, 'approved': False, 'required_sha256': required, 'materials': [row]}
         proposal['required_destinations'] = {name: name for name in required}
         proposal['required_destinations']['PACKAGE_README.md'] = 'README.md'
+        proposal['required_destinations']['PACKAGE_THIRD_PARTY_NOTICES.md'] = 'THIRD_PARTY_NOTICES.md'
+        proposal['required_destinations']['PACKAGE_MICROSOFT_CRT_TERMS.md'] = 'MICROSOFT_CRT_TERMS.md'
         release = source / 'docs/release'; release.mkdir(parents=True, exist_ok=True)
         (release / 'DISTRIBUTION_DELIVERY_PROPOSAL.json').write_text(json.dumps(proposal), encoding='utf-8')
         actual = {'schema_version': 1, 'approved': False, 'status': 'blocked_pending_distribution_material_review'}

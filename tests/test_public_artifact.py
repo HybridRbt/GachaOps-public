@@ -44,6 +44,22 @@ class PublicArtifactTests(unittest.TestCase):
         result = self.scan(Path(tempfile.gettempdir()) / 'nonexistent-gachaops-artifact')
         self.assertNotEqual(result.returncode, 0)
 
+    def test_export_keeps_both_crt_layouts_without_internal_determination(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'source'; root.mkdir()
+            expected = {'MICROSOFT_CRT_TERMS.md': b'source-layout CRT terms\r\n',
+                        'PACKAGE_MICROSOFT_CRT_TERMS.md': b'package-layout CRT terms\r\n',
+                        'PACKAGE_THIRD_PARTY_NOTICES.md': b'package-specific notice\r\n'}
+            for name, data in expected.items(): (root / name).write_bytes(data)
+            private = root / 'docs/release/CRT-decision.md'
+            private.parent.mkdir(parents=True); private.write_bytes(b'internal decision')
+            output = Path(temp) / 'public'
+            result = subprocess.run([sys.executable, str(SCRIPT.with_name('stage_public_source.py')),
+                '--source', str(root), '--output', str(output)], capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for name, data in expected.items(): self.assertEqual((output / name).read_bytes(), data)
+            self.assertFalse((output / 'docs/release/CRT-decision.md').exists())
+
     def test_history_scans_deleted_private_file(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

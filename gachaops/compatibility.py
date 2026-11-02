@@ -65,7 +65,22 @@ def capture_installation_stamp(descriptor):
     if not descriptor.get('installation_root') or not descriptor.get('argv_candidate'):
         return descriptor
     probe = {key: deepcopy(descriptor[key]) for key in ('installation_root', 'argv_candidate')}
-    return dict(descriptor, installation_stamp={'probe': probe, 'files': _stamp(probe)})
+    files = _stamp(probe)
+    # Bind the bytes whose executable identity was inspected, rather than a
+    # replacement installed between that inspection and this snapshot.
+    if descriptor.get('launcher_sha256') is not None:
+        expected = {'path': descriptor['launcher'], 'sha256': descriptor['launcher_sha256']}
+        if expected not in files:
+            raise ValueError('助手入口在身份检查期间发生变化，请重新检查；不会启动游戏。')
+    stamp = {'probe': probe, 'files': files}
+    if descriptor.get('completion_kind') == 'maa-gf2':
+        from .maagf2 import launch_metadata
+        probe['maa_gf2_instance'] = descriptor['instance_id']
+        metadata = launch_metadata(probe['installation_root'], probe['maa_gf2_instance'])
+        if metadata != descriptor.get('native_launch_metadata'):
+            raise ValueError('助手启动配置在预检期间发生变化，请重新检查；不会启动游戏。')
+        stamp['native_launch_metadata'] = metadata
+    return dict(descriptor, installation_stamp=stamp)
 
 
 def verify_installation_stamp(descriptor):
@@ -75,5 +90,9 @@ def verify_installation_stamp(descriptor):
     try:
         if _stamp(stamp['probe']) != stamp['files']:
             raise ValueError('installation changed')
+        if 'maa_gf2_instance' in stamp['probe']:
+            from .maagf2 import launch_metadata
+            if launch_metadata(stamp['probe']['installation_root'], stamp['probe']['maa_gf2_instance']) != stamp.get('native_launch_metadata'):
+                raise ValueError('native startup metadata changed')
     except (OSError, ValueError, KeyError, TypeError):
         raise ValueError('助手安装在预检后发生变化，请重新检查；不会启动游戏。') from None

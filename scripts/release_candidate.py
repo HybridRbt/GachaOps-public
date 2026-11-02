@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 import zipfile
+from check_application_source import DELIVERY, BUNDLE as DELIVERED_BUNDLE, verify_application_source
 
 from check_release_binary import (_unique_object, candidate_identity, canonical_path,
                                   file_sha256, read_record, valid_hash)
@@ -115,6 +116,15 @@ def verify_package(path, summary):
                 or manifest.get('version') != summary.get('version')
                 or summary.get('files') != len(expected)):
             raise ValueError('package version or commit mismatch')
+        delivery = json.loads(archive.read(DELIVERY), object_pairs_hook=_unique_object)
+        application = 'SOURCE_DELIVERY/archives/' + delivery['archive']['file']
+        inputs = {DELIVERY: archive.read(DELIVERY), application: archive.read(application),
+                  DELIVERED_BUNDLE: archive.read(DELIVERED_BUNDLE)}
+        matrix = '_internal/gachaops/assets/support_matrix.json'
+        if matrix in expected:
+            inputs[matrix] = archive.read(matrix)
+        verify_application_source(inputs, {'candidate_code_commit': manifest['commit'],
+            'candidate_executable_sha256': hashlib.sha256(archive.read('GachaOps.exe')).hexdigest()})
     return summary
 
 

@@ -2,8 +2,8 @@
   "schema_version": 1,
   "status": "approved_exact_binary_findings",
   "approved": true,
-  "candidate_executable_sha256": "8ab5b003f5afd8d63006c3280d3f4dfb2cdfecc9faf6105d329369dd9d29985f",
-  "candidate_code_commit": "9e0d14e6a2066d2e0986f5e438b623b9b945322e",
+  "candidate_executable_sha256": "e3850b413f225b341c268768ecc77711d3f477a13436120b0ed71e2ad3de7675",
+  "candidate_code_commit": "55e9534108acfc1ba0b91f19dddb97f1565b7949",
   "policy": "exact relative path + rule + full-file SHA256; no normalized hashes, wildcard, prefix, supplier, version or generic dependency exemptions",
   "new_or_changed_findings": "block",
   "independent_gates": "license/source/replacement, clean Windows, public history and publication remain blocking",
@@ -275,9 +275,10 @@
   ],
   "approval": {
     "by": "maintainer",
-    "date": "2026-10-25",
+    "date": "2026-11-01",
     "scope": "binary_privacy_only",
-    "basis": "explicit user decision after explanation; not distribution or publication approval"
+    "source": "Direct reply 确认 to the exact HYB-152 local candidate review request",
+    "review_pack_sha256": "32de4b6b39a4d4436500631d7eed89cb0c53a227ef22dfc5685dd4f1f463fbb7"
   },
   "original_proposal_sha256": "3bea21f8ed170bb8ee4c2080256e71735526f3c6574a842622486d8119ef79d5",
   "original_proposal_sha256_scope": "approval-time worktree file bytes; historical line-ending-dependent observation",
@@ -289,5 +290,313 @@
     "previous_candidate_commit": "8b30990c17cbd33af72d04360b3dbe81c8461382",
     "previous_candidate_executable_sha256": "eb5f9273a81786cb3ce4d9e61c862dca0bafcc47c501d9b540c7f69ea43e3fff",
     "unchanged_exact_finding_files": 44
+  },
+  "historical_approval": {
+    "record": {
+      "schema_version": 1,
+      "status": "approved_exact_binary_findings",
+      "approved": true,
+      "candidate_executable_sha256": "8ab5b003f5afd8d63006c3280d3f4dfb2cdfecc9faf6105d329369dd9d29985f",
+      "candidate_code_commit": "9e0d14e6a2066d2e0986f5e438b623b9b945322e",
+      "policy": "exact relative path + rule + full-file SHA256; no normalized hashes, wildcard, prefix, supplier, version or generic dependency exemptions",
+      "new_or_changed_findings": "block",
+      "independent_gates": "license/source/replacement, clean Windows, public history and publication remain blocking",
+      "findings": [
+        {
+          "path": "_internal/_bz2.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "84abc366173975e7c8a81914fec9518b3c2857eeb3f31dad1aae7e116104dbfd",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/_ctypes.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "508c6b702c88de1b703f67083f5a4088dabf2c642283db7c17e93ce9715d107b",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/_decimal.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "257d2bd9634cb6535a0d56f5395267e809522f4e1e5137da086308a9a7ecd9da",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/_hashlib.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "4312f69878b8caf4e850a5710fd2ab75e861362639fbc310732b6cde87c9f0b3",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/_lzma.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "368440add08f4df1d54d177b0a7ed84118fcb8fced82e38a2b2778bda5d5960a",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/_socket.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "c6262df8ce2823faccd2c1a679bb4f10376dec574ecd088a65c99850c65c275b",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/_uuid.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "b38821db2e4472355c804a77638f0e0d5bb920ce4a7b0a3f3fceae3b2cc36a0f",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/_wmi.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "c69b954311a6a041f9a7eca2d9b41d84e79aa15806844d3fad97560a218ac916",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/base_library.zip",
+          "rule": "PERSONAL_PATH",
+          "sha256": "1064c9cca6edf8258e47df9ccb3fc8e537506144bc2ddf87ec1b590c96a8540a",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/libcrypto-3-x64.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "1e30b3a2d41b21cf8d83fea401bb5655aefb4fd9f728bc1911d6f2e03bdf6128",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/libffi-8.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "19240c4a821a785e6e5b5f1d6a65e25a2f60d078b843677ff2aa3622ba5de917",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/generic/qtuiotouchplugin.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "13488dc9d7bf7a2174c07e4abd12d1b6ddbb7b96d6e239a91e712d4038647c4f",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/iconengines/qsvgicon.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "2d2ab84516935bf5da160adeb7e7231f616593fe56c76ce7b27b67df0c8389b1",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qgif.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "d86d2e5a17c3af5569a930c5ed204860d0f583549e66db60991dce8b07298ac0",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qicns.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "1147a72974065a975e6a1c772dd7763f4c9e61068e7cd87bd88cbdb5c0f18b1c",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qico.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "7b09760871ddd7f21cecf0fdc5d6d7bbb0f5722a224ecbc7b55297a7e6d81cb0",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qjpeg.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "464bfd542ad6dc017080e23f645cccd4a0a78ebf719500eb9012a3fdd9437830",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qsvg.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "16351b05e22a0faa78b7cc0f5b9fc231e8c7961c41cf880a3f6dec51a277dc65",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qtga.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "70404f7f8d40966e4fab7384902f3c3cb89cb1f838a4978a01e009ddda8fd018",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qtiff.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "fc55d0d0364582e5f4af1b796cbe8c70e1148fa7394a8ed1dc04654dcfff4687",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qwbmp.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "939759b66fdc1852e0a41cbd4f9dd84f20f29db8036839d9b1672dc779cfcffe",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/imageformats/qwebp.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "feee775a7fa75e9ba6a4fd8cc2ea4ef63e6c0d950f3c0b5c85c07b0414ff6c91",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/networkinformation/qnetworklistmanager.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "fa70ba59b418b57a9413209fbc9cd660cd9cc9cffb95483b448d22beff2884c5",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/platforms/qdirect2d.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "eff3bf95df9d396d0a8afdd623fecf53d4f1464b57d72491ae09b0d01730491d",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/platforms/qminimal.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "d8489d4f351c77212369d4eed895af6a5430f18f11e91e376656a1aa4213d31c",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/platforms/qoffscreen.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "e6704e939ace945f9c5451fd9f4785e4102ed13add4211122e70476c8788025b",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/platforms/qwindows.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "ed2944e4f06239996e27bff7783abc828d76d9497d5a26c339fa916b00ea3f74",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/styles/qmodernwindowsstyle.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "f59e6bcac0624e042ee41bca3c2a75f9adaa2b4722a48e8ec9d242103b008551",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/tls/qcertonlybackend.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "f7fb8e0ccb5c1f01345d92da4a2954b0b30e3134e6b636d0f3b9bf04d46b40f1",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/tls/qopensslbackend.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "9d33ecb156227f25f25396496f708404397f812270a69b7abee3f95b144b5af6",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/tls/qopensslbackend.dll",
+          "rule": "CREDENTIAL",
+          "sha256": "9d33ecb156227f25f25396496f708404397f812270a69b7abee3f95b144b5af6",
+          "classification": "dependency_pem_format_literal"
+        },
+        {
+          "path": "_internal/PySide6/plugins/tls/qschannelbackend.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "d5209f8efcdcb9bf516bd0561f0cae5ce593f96d47540c0842770e9a00597c5b",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/PySide6/plugins/tls/qschannelbackend.dll",
+          "rule": "CREDENTIAL",
+          "sha256": "d5209f8efcdcb9bf516bd0561f0cae5ce593f96d47540c0842770e9a00597c5b",
+          "classification": "dependency_pem_format_literal"
+        },
+        {
+          "path": "_internal/python3.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "78231b4621ddf0fb2f8d82a6fa80fb42cbbead9598e4055ba63f709cba6b2a6c",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/python312.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "2987445b1405431f9f396d492a039176930ee0298c573dd672bbac67c681f11c",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/Qt6Core.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "d8c54af3d84b16c17a086451ee8ef6e821e478603ffb9b91c000a7e50d6a7f6c",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/Qt6Gui.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "34bc69bb2e21c11a6f318c60430852eddac856848842cf0c5a19d22f7733992b",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/Qt6Network.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "e76dd832fa01d98bfe6129c47ff3d36eba54f99fa5fbc7dbca9effc2f8ceb449",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/Qt6Network.dll",
+          "rule": "CREDENTIAL",
+          "sha256": "e76dd832fa01d98bfe6129c47ff3d36eba54f99fa5fbc7dbca9effc2f8ceb449",
+          "classification": "dependency_pem_format_literal"
+        },
+        {
+          "path": "_internal/Qt6Svg.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "0cac0f1399ff6f4614ebcab05f00ec82d32fba0d5782ac56b58f12432ee8502f",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/Qt6Widgets.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "77dff21c7f28072da5d05288822f1e750d37e3827b2e051acad01af18d8d4130",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/select.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "e7330cb8951ed732bc6d55311b91a3d26f1fdc34bbcf019a3cd2f381f11c199e",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/shiboken6.abi3.dll",
+          "rule": "PERSONAL_PATH",
+          "sha256": "ad3dd18c1cbb1641dc9bca5bed350e0a108d90d1799ae91f0e4a83997d2d5e09",
+          "classification": "dependency_build_path"
+        },
+        {
+          "path": "_internal/unicodedata.pyd",
+          "rule": "PERSONAL_PATH",
+          "sha256": "f7a191482a8c5094c46c3e81516f10cef29f0e961a986ee665fc6e30cfe7f97a",
+          "classification": "dependency_build_path"
+        }
+      ],
+      "approval": {
+        "by": "maintainer",
+        "date": "2026-10-25",
+        "scope": "binary_privacy_only",
+        "basis": "explicit user decision after explanation; not distribution or publication approval"
+      },
+      "original_proposal_sha256": "3bea21f8ed170bb8ee4c2080256e71735526f3c6574a842622486d8119ef79d5",
+      "original_proposal_sha256_scope": "approval-time worktree file bytes; historical line-ending-dependent observation",
+      "original_proposal_canonical_sha256": "95c567ae521ee8d3a2f9cd9e3b468895234302710fef98600cd6ebe38e837cc0",
+      "original_proposal_canonicalization": "JSON sorted keys, compact separators, ensure_ascii=true, UTF-8, no trailing newline",
+      "identity_refresh": {
+        "date": "2026-10-28",
+        "basis": "Maintainer requested rebuilding ZIP from 9e0d14e; new complete scan and unchanged exact previously approved dependency findings, no new exclusions",
+        "previous_candidate_commit": "8b30990c17cbd33af72d04360b3dbe81c8461382",
+        "previous_candidate_executable_sha256": "eb5f9273a81786cb3ce4d9e61c862dca0bafcc47c501d9b540c7f69ea43e3fff",
+        "unchanged_exact_finding_files": 44
+      }
+    },
+    "sha256": "31bbd8fa8785f87a15c60b32e1d985db6420901bc06f9a1ad70f1591abe449a4",
+    "applies_to_current_candidate": false
+  },
+  "confirmation": {
+    "date": "2026-11-01",
+    "reply": "确认",
+    "scope": "Exact new local candidate identity, 44 unchanged reviewed finding files and changed compatibility document; local staging and ZIP verification only",
+    "review_pack_sha256": "32de4b6b39a4d4436500631d7eed89cb0c53a227ef22dfc5685dd4f1f463fbb7",
+    "publication_approved": false,
+    "push_approved": false,
+    "remote_ci_approved": false,
+    "installation_replacement_approved": false,
+    "game_execution_approved": false
   }
 }

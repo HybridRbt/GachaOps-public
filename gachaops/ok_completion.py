@@ -6,6 +6,8 @@ The caller must separately prove process ownership/exclusive log writer binding.
 """
 from dataclasses import dataclass, replace
 from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
+from types import SimpleNamespace
 import hashlib
 import os
 from pathlib import Path
@@ -28,6 +30,19 @@ class LogCursor:
     captured_at_ns: int = 0
     archive_identities: tuple = ()
     expected_archive_name: str = ''
+    baseline_mtime: float | None = None
+
+
+def midnight_archive_name(path, mtime, observed_at):
+    """Compute the native stdlib handler's suffix without opening a log writer."""
+    settings = SimpleNamespace(when='MIDNIGHT', utc=False, atTime=None, interval=86400)
+    rollover = TimedRotatingFileHandler.computeRollover(settings, int(mtime))
+    start = rollover - settings.interval
+    then = time.localtime(start)
+    now_dst = time.localtime(int(observed_at)).tm_isdst
+    if now_dst != then.tm_isdst:
+        then = time.localtime(start + (3600 if now_dst else -3600))
+    return f'{path.stem}.{time.strftime("%Y-%m-%d", then)}{path.suffix}'
 
 
 def dated_archives(path):
@@ -51,7 +66,8 @@ def capture_cursor(path):
     return LogCursor(str(path), (stat.st_dev, stat.st_ino), len(prefix),
                      hashlib.sha256(prefix).hexdigest(), not prefix or prefix.endswith(b"\n"),
                      captured_at_ns, tuple(archives),
-                     f'{path.stem}.{datetime.fromtimestamp(stat.st_mtime):%Y-%m-%d}{path.suffix}')
+                     f'{path.stem}.{datetime.fromtimestamp(stat.st_mtime):%Y-%m-%d}{path.suffix}',
+                     stat.st_mtime)
 
 
 def appended_lines(cursor):
@@ -108,8 +124,11 @@ def correlated_lines(cursor, root_pid):
             identity = (stat.st_dev, stat.st_ino)
             if baseline.get(archive.name) != identity:
                 changed.append((archive, identity))
+        allowed_names = {cursor.expected_archive_name}
+        if cursor.baseline_mtime is not None:
+            allowed_names.add(midnight_archive_name(path, cursor.baseline_mtime, time.time()))
         if (len(changed) != 1 or changed[0][1] != cursor.identity
-                or changed[0][0].name != cursor.expected_archive_name):
+                or changed[0][0].name not in allowed_names):
             raise ValueError('original log archive missing or multiple rotations; completion cannot be correlated')
         archive = changed[0][0]
         # Use the original cursor so identity, length, prefix and line boundary

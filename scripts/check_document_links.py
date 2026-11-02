@@ -11,6 +11,17 @@ from urllib.parse import unquote, urlsplit
 MARKDOWN = re.compile(r'!?\[[^\]\n]*\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+[^)\n]*)?\)')
 REFERENCES = re.compile(r'(?m)^ {0,3}\[[^\]\n]+\]:[ \t]*(?:\r?\n[ \t]*)?(?:<([^>\n]+)>|([^\s]+))')
 
+PACKAGE_DOCUMENTS = {'PACKAGE_README.md': 'README.md',
+                     'PACKAGE_THIRD_PARTY_NOTICES.md': 'THIRD_PARTY_NOTICES.md',
+                     'PACKAGE_MICROSOFT_CRT_TERMS.md': 'MICROSOFT_CRT_TERMS.md'}
+DOCUMENT_DELIVERY = {name: name for name in (
+    'LICENSE', 'SECURITY.md', 'docs/QUICKSTART.md', 'docs/SUPPORT_MATRIX.md',
+    'docs/USAGE_NOTICE.md', 'docs/DATA_DIRECTORIES.md', 'docs/ADDING_ADAPTER.md',
+    'docs/VALIDATION.md', 'docs/THIRD_PARTY_ASSISTANTS.md')}
+DOCUMENT_DELIVERY.update(PACKAGE_DOCUMENTS)
+SUPPLIER_PREFIXES = ('docs/release/dependency-licenses/', 'docs/release/source-delivery/',
+                     'THIRD_PARTY_LICENSES/', 'SOURCE_DELIVERY/')
+
 
 class HtmlLinks(HTMLParser):
     def __init__(self):
@@ -68,6 +79,24 @@ def check_links(files, documents=None):
     return findings
 
 
+def check_product_links(files):
+    """Check source pages in source layout and explicit templates after delivery mapping."""
+    documents = [name for name in files if name not in PACKAGE_DOCUMENTS
+                 and not name.startswith(SUPPLIER_PREFIXES)]
+    findings = check_links(files, documents)
+    templates = {source: target for source, target in PACKAGE_DOCUMENTS.items() if source in files}
+    if templates:
+        delivered = {target: files[source] for source, target in DOCUMENT_DELIVERY.items() if source in files}
+        for source, target in (('docs/release/dependency-licenses/', 'THIRD_PARTY_LICENSES/'),
+                               ('docs/release/source-delivery/', 'SOURCE_DELIVERY/')):
+            delivered.update({target + name[len(source):]: data for name, data in files.items()
+                              if name.startswith(source)})
+        delivered.update({target: files[source] for source, target in templates.items()})
+        for source, target in templates.items():
+            findings.extend(dict(finding, path=source) for finding in check_links(delivered, [target]))
+    return findings
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
@@ -77,11 +106,7 @@ def main():
         check_tree(args.root)
         files = {p.relative_to(args.root).as_posix(): p.read_bytes()
                  for p in args.root.rglob('*') if p.is_file()}
-        # Supplier documents have their own upstream layout; only validate product docs.
-        documents = [name for name in files if not name.startswith((
-            'docs/release/dependency-licenses/', 'docs/release/source-delivery/',
-            'THIRD_PARTY_LICENSES/', 'SOURCE_DELIVERY/'))]
-        findings = check_links(files, documents)
+        findings = check_product_links(files)
     except (ValueError, OSError, UnicodeError):
         findings = [{'path': '.', 'rule': 'LINK_CHECK_FAILED'}]
     print(json.dumps({'status': 'blocked' if findings else 'passed', 'findings': findings}))

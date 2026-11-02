@@ -6,16 +6,12 @@ from pathlib import Path
 import shutil
 
 from check_public_artifact import inspect
-from check_document_links import check_links
+from check_document_links import check_links, DOCUMENT_DELIVERY
+from check_application_source import verify_application_source
 from check_release_binary import (audit, canonical_path, candidate_identity, check_tree,
                                   file_sha256, is_reparse_point, read_record, valid_hash)
 
-REQUIRED = {name: name for name in (
-    'LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md',
-    'docs/QUICKSTART.md', 'docs/SUPPORT_MATRIX.md', 'docs/USAGE_NOTICE.md',
-    'docs/DATA_DIRECTORIES.md', 'docs/ADDING_ADAPTER.md', 'docs/VALIDATION.md',
-    'docs/THIRD_PARTY_ASSISTANTS.md')}
-REQUIRED['PACKAGE_README.md'] = 'README.md'
+REQUIRED = dict(DOCUMENT_DELIVERY)
 MATERIAL_CHECKS = {'dependency_notices', 'corresponding_source', 'replacement_rebuild', 'bridge_asset_rights'}
 
 
@@ -82,6 +78,11 @@ def distribution_materials(source, app_dir):
         raise ValueError('source material privacy gate failed')
     if check_links(frozen, REQUIRED.values()):
         raise ValueError('package document link missing or outside package')
+    inputs = dict(frozen)
+    matrix = app_dir / '_internal/gachaops/assets/support_matrix.json'
+    if matrix.is_file():
+        inputs['_internal/gachaops/assets/support_matrix.json'] = matrix.read_bytes()
+    verify_application_source(inputs, approval)
     return frozen
 
 

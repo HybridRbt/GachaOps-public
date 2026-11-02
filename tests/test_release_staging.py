@@ -6,15 +6,79 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/stage_release.py'
 
 
 class ReleaseStagingTests(unittest.TestCase):
+    def test_application_source_missing_stale_or_incomplete_even_with_updated_outer_hashes_blocks(self):
+        for case in ('missing', 'old_inner_commit', 'bad_input_hash', 'missing_build_input', 'resource_drift'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp); source, app = self.fixture(root)
+                approval_path = source / 'docs/release/DISTRIBUTION_APPROVAL.json'
+                approval = json.loads(approval_path.read_text())
+                delivery = source / 'docs/release/source-delivery/APPLICATION_SOURCE_DELIVERY.json'
+                record = json.loads(delivery.read_text())
+                archive = source / record['archive']['source']
+                if case == 'missing':
+                    approval['materials'] = [r for r in approval['materials'] if not r['source'].endswith('APPLICATION_SOURCE_DELIVERY.json')]
+                elif case == 'resource_drift':
+                    matrix = app / '_internal/gachaops/assets/support_matrix.json'
+                    matrix.parent.mkdir(parents=True)
+                    matrix.write_bytes(b'different runtime matrix')
+                else:
+                    with zipfile.ZipFile(archive) as z:
+                        files = {n: z.read(n) for n in z.namelist()}
+                    manifest = json.loads(files['SOURCE_MANIFEST.json'])
+                    if case == 'old_inner_commit': manifest['candidate_code_commit'] = 'b' * 40
+                    elif case == 'bad_input_hash': manifest['git_input_files'][0]['sha256'] = '0' * 64
+                    else:
+                        files.pop('gachaops/maagf2.py')
+                        manifest['git_input_files'] = [r for r in manifest['git_input_files'] if r['path'] != 'gachaops/maagf2.py']
+                        record['original_git_inputs'] -= 1; record['archive_entries'] -= 1
+                    files['SOURCE_MANIFEST.json'] = json.dumps(manifest).encode()
+                    with zipfile.ZipFile(archive, 'w') as z:
+                        for name, data in files.items(): z.writestr(name, data)
+                    record['archive']['sha256'] = hashlib.sha256(archive.read_bytes()).hexdigest()
+                    record['archive']['bytes'] = archive.stat().st_size
+                    delivery.write_text(json.dumps(record))
+                    bundle_path = source / 'docs/release/source-delivery/SOURCE_BUNDLE_MANIFEST.json'
+                    bundle = json.loads(bundle_path.read_text())
+                    bundle['archives'] = [record['archive'] if row.get('scope') == 'application_source_and_build_inputs'
+                                          else row for row in bundle['archives']]
+                    bundle_path.write_text(json.dumps(bundle))
+                    for row in approval['materials']:
+                        row['sha256'] = hashlib.sha256((source / row['source']).read_bytes()).hexdigest()
+                approval_path.write_text(json.dumps(approval))
+                output = root / 'staged'
+                self.assertNotEqual(self.stage(source, app, output).returncode, 0)
+                self.assertFalse(output.exists())
+
+    def test_wrong_application_source_identity_is_rejected_before_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); source, app = self.fixture(root)
+            relative = 'docs/release/source-delivery/APPLICATION_SOURCE_DELIVERY.json'
+            path = source / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({'schema_version': 1, 'candidate_code_commit': 'b' * 40,
+                                        'candidate_executable_sha256': '0' * 64}), encoding='utf-8')
+            approval_path = source / 'docs/release/DISTRIBUTION_APPROVAL.json'
+            approval = json.loads(approval_path.read_text())
+            approval['materials'] = [r for r in approval['materials'] if r['source'] != relative]
+            approval['materials'].append({'source': relative,
+                'destination': 'SOURCE_DELIVERY/APPLICATION_SOURCE_DELIVERY.json',
+                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+            approval_path.write_text(json.dumps(approval), encoding='utf-8')
+            output = root / 'staged'
+            result = self.stage(source, app, output)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(output.exists())
+
     def fixture(self, root):
         source = root / 'source'; source.mkdir()
         (source / 'docs').mkdir()
-        for path in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md', 'docs/QUICKSTART.md', 'docs/SUPPORT_MATRIX.md', 'docs/USAGE_NOTICE.md', 'docs/DATA_DIRECTORIES.md', 'docs/ADDING_ADAPTER.md', 'docs/VALIDATION.md', 'docs/THIRD_PARTY_ASSISTANTS.md', 'PACKAGE_README.md'):
+        for path in ('LICENSE', 'PACKAGE_THIRD_PARTY_NOTICES.md', 'PACKAGE_MICROSOFT_CRT_TERMS.md', 'SECURITY.md', 'docs/QUICKSTART.md', 'docs/SUPPORT_MATRIX.md', 'docs/USAGE_NOTICE.md', 'docs/DATA_DIRECTORIES.md', 'docs/ADDING_ADAPTER.md', 'docs/VALIDATION.md', 'docs/THIRD_PARTY_ASSISTANTS.md', 'PACKAGE_README.md'):
             (source / path).write_text('Synthetic release notice', encoding='utf-8')
         app = root / 'app'; app.mkdir(); (app / '_internal').mkdir()
         (app / 'GachaOps.exe').write_bytes(b'synthetic executable fixture')
@@ -32,12 +96,46 @@ class ReleaseStagingTests(unittest.TestCase):
                     'checks': {key: True for key in ('dependency_notices', 'corresponding_source',
                                                     'replacement_rebuild', 'bridge_asset_rights')},
                     'required_sha256': {path: hashlib.sha256((source / path).read_bytes()).hexdigest()
-                                        for path in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'SECURITY.md', 'docs/QUICKSTART.md', 'docs/SUPPORT_MATRIX.md', 'docs/USAGE_NOTICE.md', 'docs/DATA_DIRECTORIES.md', 'docs/ADDING_ADAPTER.md', 'docs/VALIDATION.md', 'docs/THIRD_PARTY_ASSISTANTS.md', 'PACKAGE_README.md')},
+                                        for path in ('LICENSE', 'PACKAGE_THIRD_PARTY_NOTICES.md', 'PACKAGE_MICROSOFT_CRT_TERMS.md', 'SECURITY.md', 'docs/QUICKSTART.md', 'docs/SUPPORT_MATRIX.md', 'docs/USAGE_NOTICE.md', 'docs/DATA_DIRECTORIES.md', 'docs/ADDING_ADAPTER.md', 'docs/VALIDATION.md', 'docs/THIRD_PARTY_ASSISTANTS.md', 'PACKAGE_README.md')},
                     'materials': [{'source': material.relative_to(source).as_posix(),
                                    'destination': 'THIRD_PARTY_LICENSES/synthetic-license.txt',
                                    'sha256': hashlib.sha256(material.read_bytes()).hexdigest()}]}
         approval['required_destinations'] = {name: name for name in approval['required_sha256']}
         approval['required_destinations']['PACKAGE_README.md'] = 'README.md'
+        approval['required_destinations']['PACKAGE_THIRD_PARTY_NOTICES.md'] = 'THIRD_PARTY_NOTICES.md'
+        approval['required_destinations']['PACKAGE_MICROSOFT_CRT_TERMS.md'] = 'MICROSOFT_CRT_TERMS.md'
+        # A synthetic but complete application source contract, separate from
+        # dependency notices and bound to this fixture's exact app identity.
+        source_dir = source / 'docs/release/source-delivery'
+        archive_dir = source_dir / 'archives'; archive_dir.mkdir(parents=True)
+        archive = archive_dir / 'application-source.zip'
+        names = ('GachaOps.spec', 'pyproject.toml', 'requirements-desktop.txt',
+                 'scripts/desktop_entry.py', 'gachaops/__init__.py', 'gachaops/__main__.py',
+                 'gachaops/desktop.py', 'gachaops/maagf2.py', 'gachaops/assets/support_matrix.json')
+        inputs = []
+        with zipfile.ZipFile(archive, 'w') as z:
+            for name in names:
+                data = b'synthetic source fixture'
+                z.writestr(name, data)
+                inputs.append({'path': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
+                               'git_blob': hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()})
+            z.writestr('SOURCE_MANIFEST.json', json.dumps({'schema_version': 1,
+                'candidate_code_commit': manifest['commit'], 'git_input_files': inputs,
+                'supplements': ['SOURCE_MANIFEST.json']}))
+        row = {'source': archive.relative_to(source).as_posix(), 'file': archive.name,
+               'scope': 'application_source_and_build_inputs', 'bytes': archive.stat().st_size,
+               'sha256': hashlib.sha256(archive.read_bytes()).hexdigest()}
+        delivery = source_dir / 'APPLICATION_SOURCE_DELIVERY.json'
+        delivery.write_text(json.dumps({'schema_version': 1, 'candidate_code_commit': manifest['commit'],
+            'candidate_executable_sha256': manifest['executable_sha256'], 'archive': row,
+            'original_git_inputs': len(inputs), 'archive_entries': len(inputs) + 1}), encoding='utf-8')
+        bundle = source_dir / 'SOURCE_BUNDLE_MANIFEST.json'
+        bundle.write_text(json.dumps({'schema_version': 1, 'archives': [row]}), encoding='utf-8')
+        for path, destination in ((archive, 'SOURCE_DELIVERY/archives/' + archive.name),
+                                  (delivery, 'SOURCE_DELIVERY/APPLICATION_SOURCE_DELIVERY.json'),
+                                  (bundle, 'SOURCE_DELIVERY/SOURCE_BUNDLE_MANIFEST.json')):
+            approval['materials'].append({'source': path.relative_to(source).as_posix(),
+                'destination': destination, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
         (source / 'docs/release/DISTRIBUTION_APPROVAL.json').write_text(json.dumps(approval), encoding='utf-8')
         return source, app
 
@@ -58,6 +156,31 @@ class ReleaseStagingTests(unittest.TestCase):
                                 'sha256': hashlib.sha256(data).hexdigest(), 'classification': 'dependency_build_path'}]}
         path = root / 'approved.json'; path.write_text(json.dumps(policy), encoding='utf-8')
         return path
+
+    def test_crt_terms_are_delivered_exactly_and_missing_or_drifted_terms_block(self):
+        for case in ('approved', 'changed_terms', 'missing_original'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp); source, app = self.fixture(root)
+                terms = source / 'PACKAGE_MICROSOFT_CRT_TERMS.md'
+                content = b'CRT-specific terms\r\n[original](THIRD_PARTY_LICENSES/synthetic-license.txt)\r\n'
+                terms.write_bytes(content)
+                approval_path = source / 'docs/release/DISTRIBUTION_APPROVAL.json'
+                approval = json.loads(approval_path.read_text())
+                approval['required_sha256']['PACKAGE_MICROSOFT_CRT_TERMS.md'] = hashlib.sha256(content).hexdigest()
+                approval_path.write_text(json.dumps(approval), encoding='utf-8')
+                if case == 'changed_terms': terms.write_bytes(content + b'unreviewed change')
+                if case == 'missing_original':
+                    (source / 'docs/release/dependency-licenses/synthetic-license.txt').unlink()
+                output = root / 'candidate'
+                result = self.stage(source, app, output)
+                if case == 'approved':
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual((output / 'MICROSOFT_CRT_TERMS.md').read_bytes(), content)
+                    self.assertTrue((output / 'THIRD_PARTY_NOTICES.md').is_file())
+                    self.assertNotIn('PACKAGE_MICROSOFT_CRT_TERMS.md', json.loads((output / 'checksums.json').read_text()))
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(output.exists())
 
     def test_allowlisted_staging_has_checksums_not_private_build_files(self):
         with tempfile.TemporaryDirectory() as temp:

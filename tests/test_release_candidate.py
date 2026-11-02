@@ -27,11 +27,13 @@ class ReleaseCandidateTests(unittest.TestCase):
         rel = 'docs/release/source-delivery/archives/source.zip'
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         bundle = source / 'docs/release/source-delivery/SOURCE_BUNDLE_MANIFEST.json'
-        bundle.parent.mkdir(parents=True)
-        bundle.write_text(json.dumps({'schema_version': 1, 'archives': [
-            {'source': rel, 'file': 'source.zip', 'bytes': archive.stat().st_size, 'sha256': digest}]}), encoding='utf-8')
+        bundle.parent.mkdir(parents=True, exist_ok=True)
+        bundle_data = json.loads(bundle.read_text())
+        bundle_data['archives'].append({'source': rel, 'file': 'source.zip', 'bytes': archive.stat().st_size, 'sha256': digest})
+        bundle.write_text(json.dumps(bundle_data), encoding='utf-8')
         path = source / 'docs/release/DISTRIBUTION_APPROVAL.json'
         approval = json.loads(path.read_text())
+        approval['materials'] = [r for r in approval['materials'] if r['source'] != bundle.relative_to(source).as_posix()]
         approval['materials'] += [
             {'source': rel, 'destination': 'SOURCE_DELIVERY/archives/source.zip', 'sha256': digest},
             {'source': bundle.relative_to(source).as_posix(), 'destination': 'SOURCE_DELIVERY/SOURCE_BUNDLE_MANIFEST.json',

@@ -66,13 +66,14 @@
       "verified_versions": [
         "v2.7.3 / MFAAvalonia v2.16.2"
       ],
-      "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
-      "evidence_date": "2026-10-23",
+      "contract": "Actual entry ProductName must be MFAAvalonia; verified Core hashes and saved desktop instance contract remain required",
+      "evidence_date": "2026-11-01",
       "evidence": [
         "docs/MAAGF2.md"
       ],
       "limitations": [
-        "Native task failures remain failures; damaged critical callbacks remain unconfirmed."
+        "v2.8.0 / MXU is unsupported, including mixed installations with stale MFA files. Unknown executable identity is blocked before legacy preset reads.",
+        "Native task failures remain failures; damaged critical callbacks remain unconfirmed. Offline guard verification does not establish current Windows game acceptance."
       ]
     },
     {
