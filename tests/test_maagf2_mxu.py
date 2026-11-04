@@ -372,6 +372,7 @@ class MxuCompletionTests(unittest.TestCase):
             ('[msg=Tasker.Task.Unknown] [details={"task_id":3}]', True),
             ('[msg=Tasker.Task.Failed] [details=[]]', True),
             ('[msg=Tasker.Task.Failed] [details={"task_id":3', False),
+            ('[msg=Tasker.Ta', False),
         ):
             with self.subTest(message=message, newline=newline):
                 self.fresh_cursor(); self.write_cycle(frames, gui)

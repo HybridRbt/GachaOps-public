@@ -360,9 +360,10 @@ def _read_events(cursor, root_pid, agents, root_created):
                 if not old[2]:
                     content = content.partition(b'\n')[2]
             boundary = content.rfind(b'\n') + 1
-            if any(marker in content[boundary:] for marker in (
-                    b'Tasker.Task.', b'MAA Process Start', '任务已提交'.encode(), '自动执行任务完成'.encode())):
-                raise ValueError('MXU critical log tail is incomplete')
+            # Observation runs after exit/cleanup. Even the event name may be
+            # truncated, so a marker allowlist cannot authenticate this tail.
+            if content[boundary:].strip():
+                raise ValueError('MXU log tail is incomplete')
             content = content[:boundary]
             native = path.name.startswith('maafw')
             for line in content.decode('utf-8', errors='strict').splitlines():
