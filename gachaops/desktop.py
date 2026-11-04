@@ -57,6 +57,8 @@ BLOCKER_TEXT = {
     'version_unsupported': '版本或启动协议尚未核验',
     'permission_or_desktop': '权限或桌面状态需要处理',
     'native_setup_required': '原助手安装或原生设置需要处理',
+    'maagf2_mxu_unsafe_native_action': '少前2预设含未核验的 MXU 特殊动作，请在原助手处理',
+    'maagf2_mxu_disable_external_triggers': '少前2的独立任务触发入口需要关闭',
     'maaend_disable_native_launch_task': '手动模式：请在 MaaEnd 当前实例中禁用内置“启动游戏（PC）”任务',
     'maaend_disable_launch_preactions': '手动模式：请在 MaaEnd 当前实例中禁用所有启动前动作，保留 Endfield.exe 路径记录',
     'native_command_protocol_unverified': '助手版本已变化，启动通信尚未核验；需要更新 GachaOps 的兼容支持，解除隔离不能解决此项。',
@@ -77,6 +79,8 @@ BLOCKER_TEXT = {
     'march7_complete_native_first_setup': '请先打开三月七原生 GUI 完成首次设置',
     'march7_info_logging_required': '请在三月七助手中启用 INFO 或 DEBUG 日志'}
 BLOCKER_SUGGESTIONS = {
+    'maagf2_mxu_unsafe_native_action': '在少前2原助手中关闭按名称结束进程、外部程序、关机等特殊任务，保存并退出后重新检查；GachaOps 不会代改预设。',
+    'maagf2_mxu_disable_external_triggers': '在少前2原助手中关闭定时策略、Web 控制、全局热键和独立自动运行，保存并退出后重新检查，由 GachaOps 统一开始。',
     'maaend_disable_launch_preactions': '打开 MaaEnd 的当前日常实例，关闭启动前动作后保存并退出助手；用原生启动器进入游戏，再重新检查。',
     'supervisor_elevation_required': '点击开始运行时在 UAC 弹窗确认；程序会以管理员身份重新打开。',
     'manual_game_requires_exactly_one_running_instance': '先手动进入游戏并只保留一个窗口，再点开始运行。',

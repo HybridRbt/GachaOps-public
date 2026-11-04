@@ -7,7 +7,7 @@ The machine-readable source is `gachaops/assets/support_matrix.json`; run `pytho
 | OK-WW | Saved DailyTask / installed PyAppify metadata contract | Assistant, manual | Offline verified; version-specific Windows evidence not promoted |
 | ZZZ-OneDragon | Saved preset / owned structured callbacks | Assistant | Offline verified; historical live six-game result is separate |
 | MaaEnd | v2.34.0 LaunchGamePC; legacy direct-entry contract | Assistant, manual | Offline verified; Global/Auto default-location launch lifecycle awaits live acceptance |
-| MaaGF2 | v2.7.3 / MFAAvalonia v2.16.2, actual MFAAvalonia entry and verified Core hashes | Assistant | Offline verified; v2.8.0 / MXU unsupported, including stale MFA files; unknown entry identity blocked |
+| MaaGF2 | v2.7.3 / MFAAvalonia v2.16.2; exact GF2 v2.8.3 / MXU v2.8.1 components | Assistant | Offline verified; guarded MXU saved-PC contract and read-only preparation. Other MXU builds remain blocked; the published v0.1.0 binary has no MXU support |
 | OK-NTE | Installed CLI selector / official-launcher metadata contract | Assistant | Offline verified; version-specific Windows evidence not promoted |
 | March7 | v2026.9.30, v2026.10.16 | Assistant | Offline verified; new-version natural daily acceptance remains separate |
 | BetterGI | 0.66.0.0 | Assistant | Offline verified; HYB-66 live single/serial acceptance pending |
