@@ -71,6 +71,11 @@ def commit_registration(profile, inspection, identity=None):
     old = targets[0]
     enabled = old.get('enabled', True) if not inspection.blockers else False
     timeout = old.get('timeout_seconds', 1800)
+    # Inspection is a complete snapshot of the registration form. Empty optional
+    # fields must clear earlier entries, especially after changing installations.
+    for field in spec.registration_fields:
+        if field not in row:
+            old.pop(field, None)
     old.update(row, id=old['id'], enabled=enabled, timeout_seconds=timeout)
     validate_assistants(result)
     return result
