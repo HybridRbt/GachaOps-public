@@ -12,6 +12,187 @@ from unittest.mock import patch
 
 @unittest.skipUnless(importlib.util.find_spec('PySide6'), 'optional desktop dependencies unavailable')
 class DesktopUiTests(unittest.TestCase):
+    def _registration_case(self, exercise):
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def invoke(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                exercise(window, root)
+                self.assertIsNone(window.process)
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', invoke, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_registration_save_cancel_buttons_are_chinese_and_keep_standard_roles(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+        def exercise(window, root):
+            before = Path(window.profiles.currentData()).read_bytes()
+            def cancel(dialog):
+                buttons = dialog.findChild(QDialogButtonBox)
+                save = buttons.button(QDialogButtonBox.StandardButton.Save)
+                cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+                self.assertEqual(save.text(), '保存')
+                self.assertEqual(cancel.text(), '取消')
+                self.assertEqual(buttons.buttonRole(save), QDialogButtonBox.ButtonRole.AcceptRole)
+                self.assertEqual(buttons.buttonRole(cancel), QDialogButtonBox.ButtonRole.RejectRole)
+                return QDialog.DialogCode.Rejected
+            with patch.object(QDialog, 'exec', cancel):
+                window.register_assistant(window.data['assistants'][0]['id'])
+            self.assertEqual(Path(window.profiles.currentData()).read_bytes(), before)
+        self._registration_case(exercise)
+
+    def _registration_retry_case(self, action, chooser_cancel=False, failures=1, preview_accept=True):
+        from PySide6.QtWidgets import QDialog, QLineEdit, QFileDialog, QMessageBox
+        from gachaops import desktop
+        from gachaops.registration import RegistrationInspection
+        def exercise(window, root):
+            row = next(r for r in window.data['assistants'] if r['adapter'] == 'zzz-onedragon')
+            before = Path(window.profiles.currentData()).read_bytes()
+            calls = []; errors = []
+            def edit(dialog):
+                install = dialog.findChild(QLineEdit, 'installation_root')
+                game = dialog.findChild(QLineEdit, 'game_path')
+                if not calls: game.setText(str(root / 'remember.exe'))
+                self.assertEqual(game.text(), str(root / 'remember.exe'))
+                calls.append(install.text())
+                if chooser_cancel and len(calls) > 1:
+                    self.assertEqual(install.text(), '')
+                    return QDialog.DialogCode.Rejected
+                return QDialog.DialogCode.Accepted
+            def error_dialog(box):
+                labels = {button.text(): button for button in box.buttons()}
+                self.assertEqual(set(labels), {'重新选择', '取消'})
+                errors.append(box.text())
+                choice = '取消' if action == 'cancel' or len(errors) > failures else '重新选择'
+                box._fixture_choice = labels[choice]
+                return 0
+            candidate = RegistrationInspection(dict(row, installation_root=str(root)), (), (), {})
+            outcomes = [ValueError('请选择已安装助手的完整目录')] * failures
+            if action != 'cancel' and not chooser_cancel: outcomes.append(candidate)
+            with patch.object(QDialog, 'exec', edit), \
+                 patch.object(QMessageBox, 'exec', error_dialog), \
+                 patch.object(QMessageBox, 'clickedButton', lambda box: box._fixture_choice), \
+                 patch.object(QMessageBox, 'warning', return_value=None), \
+                 patch.object(QMessageBox, 'question', return_value=(QMessageBox.StandardButton.Yes if preview_accept else QMessageBox.StandardButton.No)) as preview, \
+                 patch.object(QFileDialog, 'getExistingDirectory', return_value='' if chooser_cancel else str(root)) as chooser, \
+                 patch.object(desktop, 'inspect_registration', side_effect=outcomes) as inspect:
+                window.register_assistant(row['id'])
+                self.assertEqual(len(errors), failures)
+                if action == 'cancel' or chooser_cancel:
+                    self.assertEqual(Path(window.profiles.currentData()).read_bytes(), before)
+                    self.assertEqual(inspect.call_count, 1)
+                    preview.assert_not_called()
+                    self.assertEqual(chooser.call_count, int(chooser_cancel))
+                else:
+                    self.assertEqual(inspect.call_count, failures + 1)
+                    self.assertEqual(chooser.call_count, failures)
+                    self.assertEqual(inspect.call_args.args[1]['installation_root'], str(root))
+                    self.assertEqual(len(calls), failures + 1)
+                    preview.assert_called_once()
+                    if preview_accept:
+                        saved = next(r for r in window.data['assistants'] if r['id'] == row['id'])
+                        self.assertEqual(saved['installation_root'], str(root))
+                    else:
+                        self.assertEqual(Path(window.profiles.currentData()).read_bytes(), before)
+        self._registration_case(exercise)
+
+    def test_registration_invalid_path_can_retry_and_revalidates_before_save(self):
+        self._registration_retry_case('retry', failures=3)
+
+    def test_registration_error_cancel_exits_without_saving(self):
+        self._registration_retry_case('cancel')
+
+    def test_registration_chooser_cancel_returns_to_preserved_inputs(self):
+        self._registration_retry_case('retry', chooser_cancel=True)
+
+    def test_registration_retry_preview_cancel_does_not_save(self):
+        self._registration_retry_case('retry', preview_accept=False)
+
+    def test_profile_rename_preserves_unsaved_order_selection_and_timeouts(self):
+        from copy import deepcopy
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                before_disk = Path(window.profiles.currentData()).read_bytes()
+                window.data['assistants'].reverse()
+                window.data['assistants'][0]['timeout_seconds'] = 2400
+                window.data['assistants'][0]['installation_root'] = str(root)
+                window.selected_ids = [window.data['assistants'][0]['id']]
+                window.render()
+                window.selection()
+                expected_data = deepcopy(window.data)
+                expected_selection = window.selected_ids[:]
+                window.rename_profile_named('只改名称')
+                self.assertEqual(window.data, expected_data)
+                self.assertEqual(window.selected_ids, expected_selection)
+                self.assertEqual(Path(window.profiles.currentData()).read_bytes(), before_disk)
+                self.assertEqual(window.profile_names[window.profiles.currentData()], '只改名称')
+                self.assertIn('自定义', window.profiles.currentText())
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_profile_deletion_requires_named_permanent_confirmation_and_cancel_is_noop(self):
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.create_profile_named('待删除组合')
+                selected = window.profiles.currentData()
+                before = Path(selected).read_bytes()
+                window.profiles.setItemText(window.profiles.currentIndex(), '自定义 · 已选 0 项')
+                with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.No) as ask:
+                    window.prompt_delete_profile()
+                    message = ask.call_args.args[2]
+                    self.assertIn('待删除组合', message)
+                    self.assertIn('不可恢复', message)
+                    self.assertNotIn('移入备份', message)
+                self.assertEqual(Path(selected).read_bytes(), before)
+                with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes):
+                    window.prompt_delete_profile()
+                self.assertFalse(Path(selected).parent.exists())
+                self.assertEqual(window.profiles.count(), 1)
+                self.assertIsNone(window.process)
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_partial_profile_deletion_refreshes_list_and_warns_about_residue(self):
+        from PySide6.QtWidgets import QMessageBox
+        def exercise(window, root):
+            window.create_profile_named('待删除')
+            real_delete = window.profile_store.delete_profile
+            def incomplete(identity):
+                real_delete(identity)
+                return {'cleanup_complete': False, 'residual_path': str(root / 'config/profiles/.deleting-fixture')}
+            with patch.object(window.profile_store, 'delete_profile', side_effect=incomplete), \
+                 patch.object(QMessageBox, 'warning') as warning:
+                window.delete_current_profile()
+                self.assertEqual(window.profiles.count(), 1)
+                warning.assert_called_once()
+                self.assertIn('未完全删除', warning.call_args.args[1])
+                self.assertIn('.deleting-fixture', warning.call_args.args[2])
+        self._registration_case(exercise)
+
     def setUp(self):
         # Public tests use generated pixels, never redistribution-unknown game art.
         from PySide6.QtGui import QImage, QColor

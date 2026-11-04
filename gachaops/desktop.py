@@ -1334,17 +1334,35 @@ def main():
             if len(spec.start_modes) > 1: form.addRow('游戏启动', mode)
             layout.addLayout(form)
             buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+            buttons.button(QDialogButtonBox.StandardButton.Save).setText('保存')
+            buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
             buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
-            if dialog.exec() != QDialog.DialogCode.Accepted: return
-            try:
-                fields = {field: editor.text().strip() for field, editor in editors.items() if editor.text().strip()}
-                fields['game_start'] = mode.currentData()
-                inspection = inspect_registration(row['adapter'], fields)
-                message = ('检查发现以下阻碍，将保存为禁用状态：\n' + '\n'.join(BLOCKER_TEXT.get(b, b) for b in inspection.blockers)
-                           if inspection.blockers else '路径检查完成，将保留组合顺序和选择；不会开始运行。')
-                if QMessageBox.question(self, '登记预览', message) != QMessageBox.StandardButton.Yes: return
-                self.commit_registration_inspection(identity, inspection)
-            except (OSError, ValueError, TypeError) as error: QMessageBox.warning(self, '登记需要处理', sanitize_detail(error))
+            while dialog.exec() == QDialog.DialogCode.Accepted:
+                if self.busy(): return
+                try:
+                    fields = {field: editor.text().strip() for field, editor in editors.items() if editor.text().strip()}
+                    fields['game_start'] = mode.currentData()
+                    inspection = inspect_registration(row['adapter'], fields)
+                except (OSError, ValueError, TypeError) as error:
+                    warning = QMessageBox(QMessageBox.Icon.Warning, '登记需要处理', sanitize_detail(error),
+                                          QMessageBox.StandardButton.NoButton, dialog)
+                    retry = warning.addButton('重新选择', QMessageBox.ButtonRole.ActionRole)
+                    cancel = warning.addButton('取消', QMessageBox.ButtonRole.RejectRole)
+                    warning.setDefaultButton(cancel); warning.setEscapeButton(cancel)
+                    warning.exec()
+                    if warning.clickedButton() is not retry or self.busy(): return
+                    editor = editors['installation_root']
+                    value = QFileDialog.getExistingDirectory(dialog, '选择助手目录', editor.text())
+                    if value: editor.setText(value)
+                    continue
+                try:
+                    message = ('检查发现以下阻碍，将保存为禁用状态：\n' + '\n'.join(BLOCKER_TEXT.get(b, b) for b in inspection.blockers)
+                               if inspection.blockers else '路径检查完成，将保留组合顺序和选择；不会开始运行。')
+                    if QMessageBox.question(self, '登记预览', message) != QMessageBox.StandardButton.Yes: return
+                    self.commit_registration_inspection(identity, inspection)
+                except (OSError, ValueError, TypeError) as error:
+                    QMessageBox.warning(self, '登记需要处理', sanitize_detail(error))
+                return
 
         def register_local_bettergi(self, identity):
             if self.busy() or self.data is None: return
@@ -1401,13 +1419,22 @@ def main():
             if self.busy(): return
             identity = self.profile_ids.get(self.profiles.currentData())
             if identity is None: raise ValueError('先保存或导入此组合')
-            self.profile_store.rename_profile(identity, name); self.reload_profiles(identity)
+            self.profile_store.rename_profile(identity, name)
+            # A name change must not reload the saved configuration over edits.
+            self.profile_names[self.profiles.currentData()] = name.strip()
+            self.profiles.setItemText(self.profiles.currentIndex(), name.strip())
+            self.sync_combo_label()
 
         def delete_current_profile(self):
             if self.busy(): return
             identity = self.profile_ids.get(self.profiles.currentData())
             if identity is None: raise ValueError('先保存或导入此组合')
-            self.profile_store.delete_profile(identity); self.reload_profiles()
+            result = self.profile_store.delete_profile(identity)
+            self.reload_profiles()
+            if not result['cleanup_complete']:
+                QMessageBox.warning(self, '组合文件未完全删除',
+                    '组合已从列表移除，但部分配置文件未能删除。请检查数据目录中的残留；这不是可恢复备份：\n'
+                    + result['residual_path'])
 
         def prompt_new_profile(self):
             if self.busy(): return
@@ -1425,7 +1452,13 @@ def main():
 
         def prompt_delete_profile(self):
             if self.busy(): return
-            if QMessageBox.question(self, '删除组合', '组合将移入备份；最后一个组合删除后会建立默认组合。') == QMessageBox.StandardButton.Yes:
+            name = self.profile_names.get(self.profiles.currentData(), self.profiles.currentText())
+            message = (f'永久删除组合“{name}”？此操作不可恢复，不会新增备份。\n'
+                       '仅删除此组合配置，不会删除助手或游戏；既有变更备份保留。\n'
+                       '最后一个组合删除后会建立默认组合。')
+            if QMessageBox.question(self, '删除组合', message,
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                   QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
                 try: self.delete_current_profile()
                 except (OSError, ValueError) as error: QMessageBox.warning(self, '删除失败', str(error))
 
