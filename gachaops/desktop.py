@@ -1892,14 +1892,15 @@ def main():
                         except OSError:
                             pass
                     if 'previous execution has unverified cleanup; manual inspection required' in error:
-                        explanation = '上一轮清理未确认，当前轮未启动。需要核对上一轮进程与清理证据；不会自动解除隔离。'
+                        from .recovery_check import recovery_instructions
+                        explanation = recovery_instructions(self.workspace, NAMES)
                     else:
                         explanation = '当前轮未启动；不会自动重试。'
                     if not error:
                         explanation += '\n运行器未写入错误记录，无法确认具体原因。'
                     self.set_problems([{'name': '本轮', 'summary': '未能完成启动',
                                         'detail': explanation,
-                                        'cause_unknown': not error or 'previous execution has unverified cleanup; manual inspection required' in error,
+                                        'cause_unknown': not error,
                                         'error': ('运行器原始错误：\n' + error) if error else ''}])
             except (OSError, ValueError, KeyError):
                 self.set_problems([{'name': '本轮', 'summary': '结果无法读取',

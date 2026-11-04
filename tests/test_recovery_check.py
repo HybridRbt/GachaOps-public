@@ -37,6 +37,84 @@ class RecoveryCheckTests(unittest.TestCase):
                    return_value=scan or dict(status='observed', matches=[], uncertain=[])):
             return recover_workspace(root)
 
+    def uncertain_fixture(self, root):
+        path, journal = self.fixture(root)
+        node = json.loads(path.read_text())
+        node['reason'] = 'matching_process_observation_uncertain'
+        node['remaining_processes'] = dict(status='uncertain',
+            matches=[dict(pid=101, image=str(root / 'native.exe'), creation_ticks=100)],
+            uncertain=[dict(pid=222, name='native.exe', error=5)])
+        save(path, node)
+        return path, journal
+
+    def test_historical_access_denial_recovers_only_after_all_fresh_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); path, journal = self.uncertain_fixture(root)
+            before = path.read_bytes()
+            with patch('gachaops.recovery_check.inspect_process_identity', return_value=None) as inspect, \
+                 patch('gachaops.recovery_check.find_matching_processes',
+                       return_value=dict(status='observed', matches=[], uncertain=[])) as scan:
+                result = recover_workspace(root)
+            self.assertEqual(result['status'], 'recovered', result)
+            self.assertIn(222, [call.args[0] for call in inspect.call_args_list])
+            self.assertIn(str(root / 'native.exe'), scan.call_args.args[0])
+            self.assertIn(str(root / 'game.exe'), scan.call_args.args[0])
+            proof = json.loads((Path(result['evidence']) / 'fresh-inspection.json').read_text())
+            self.assertTrue(any(row['pid'] == 222 and row['live_identity'] is None
+                                for row in proof['process_checks']))
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(json.loads((Path(result['evidence']) / 'original-journal.json').read_text()), journal)
+
+    def test_historical_unknown_live_pid_cannot_be_assumed_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); _, journal = self.uncertain_fixture(root)
+            live = dict(pid=222, image=str(root / 'unrelated.exe'), creation_ticks=999)
+            result = self.run_recovery(root, identities={222: live})
+            self.assertEqual(result['status'], 'blocked')
+            self.assertIn('222', result['message'])
+            self.assertIn('导出诊断包', result['message'])
+            self.assertEqual(read_state(root / 'state'), journal)
+
+    def test_historical_denial_still_requires_current_empty_scan_and_job_proof(self):
+        for change in ('scan', 'proof', 'audit'):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory); path, journal = self.uncertain_fixture(root)
+                if change == 'proof':
+                    node = json.loads(path.read_text()); node['owned_job_cleanup_verified'] = False; save(path, node)
+                def audit(destination, data):
+                    if change == 'audit' and Path(destination).name == 'planned-journal.json':
+                        raise OSError('disk full')
+                    save(destination, data)
+                with patch('gachaops.recovery_check.save', side_effect=audit):
+                    result = self.run_recovery(root, scan=(dict(status='uncertain', matches=[],
+                        uncertain=[dict(pid=333, name='native.exe', error=5)]) if change == 'scan' else None))
+                self.assertEqual(result['status'], 'blocked')
+                self.assertEqual(read_state(root / 'state'), journal)
+
+    def test_historical_unknown_current_permission_error_identifies_pid_and_action(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); _, journal = self.uncertain_fixture(root)
+            def denied(pid):
+                if pid == 222: raise PermissionError('access denied')
+                return None
+            with patch('gachaops.recovery_check.inspect_process_identity', side_effect=denied):
+                result = recover_workspace(root)
+            self.assertEqual(result['status'], 'blocked')
+            self.assertIn('222', result['message'])
+            self.assertIn('管理员', result['message'])
+            self.assertEqual(read_state(root / 'state'), journal)
+
+    def test_malformed_or_unrelated_historical_unknown_cannot_be_dropped(self):
+        for row in ({}, dict(pid=True, name='native.exe', error=5),
+                    dict(pid=222, name='other.exe', error=5),
+                    dict(pid=222, name='../native.exe', error=5),
+                    dict(pid=222, name='native.exe', error='')):
+            with self.subTest(row=row), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory); path, journal = self.uncertain_fixture(root)
+                node = json.loads(path.read_text()); node['remaining_processes']['uncertain'] = [row]; save(path, node)
+                self.assertEqual(self.run_recovery(root)['status'], 'blocked')
+                self.assertEqual(read_state(root / 'state'), journal)
+
     def test_restores_only_after_job_proof_and_fresh_checks_preserves_originals(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); path, original = self.fixture(root); before = path.read_bytes()

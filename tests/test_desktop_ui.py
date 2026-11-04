@@ -476,6 +476,14 @@ class DesktopUiTests(unittest.TestCase):
             session = root / 'session'; session.mkdir()
             raw = 'gachaops: previous execution has unverified cleanup; manual inspection required'
             (session / 'worker.log').write_text(raw + '\n', encoding='utf-8')
+            from gachaops.recovery import save
+            chain_path = root / 'runs/gui-old/assistants-old/summary.json'
+            chain_path.parent.mkdir(parents=True)
+            save(chain_path, dict(run_id='old-run', status='stopped_cleanup_unconfirmed', assistants=[
+                dict(id='genshin', status='ownership_or_cleanup_unconfirmed', cleanup_verified=False)]))
+            (root / 'state').mkdir()
+            save(root / 'state/execution.json', dict(schema_version=1, run_id='old-run', phase='quarantined',
+                cleanup_verified=False, chain_summary=str(chain_path)))
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
                 window.session = session; window.action = 'run-assistants'; window.summary_path = None
@@ -489,7 +497,9 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertIn('上一轮清理未确认', texts[0])
                 self.assertIn('当前轮未启动', texts[0])
                 self.assertIn(raw, texts[0])
-                self.assertIn('可能原因，并非已确认的诊断', texts[0])
+                for instruction in ('原神', 'old-run', '管理员', '退出', '运行情况', '检查并恢复运行资格', '导出诊断包'):
+                    self.assertIn(instruction, texts[0])
+                self.assertNotIn('可能原因，并非已确认的诊断', texts[0])
                 self.assertNotIn('请查看下方错误', texts[0])
                 window.close()
             with patch.object(desktop, 'workspace_root', return_value=root), \
