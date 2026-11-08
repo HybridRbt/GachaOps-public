@@ -189,6 +189,38 @@ class MxuPreparationTests(unittest.TestCase):
                 self.write(self.root / 'tasks/daily.json', imported)
                 with self.assertRaises(ValueError): prepare_assistant(self.row)
 
+    def test_alternate_import_spellings_normalize_to_the_same_drift_key(self):
+        for spelling in ('tasks/daily.json', 'tasks//daily.json', 'tasks/./daily.json'):
+            with self.subTest(spelling=spelling):
+                self.interface['import'] = [spelling]; self.flush()
+                self.assertFalse(prepare_assistant(self.row)['blockers'])
+
+    def test_official_launcher_is_observed_and_reported_when_present(self):
+        from types import SimpleNamespace
+        directory = self.root / 'game'; directory.mkdir()
+        self.game = directory / 'GF2_Exilium.exe'; self.game.write_bytes(b'fixture-game')
+        self.instance['savedDevice']['connectedProgramPath'] = str(self.game)
+        self.instance['preActions'][0]['program'] = str(self.game)
+        self.flush()
+        self.assertIsNone(prepare_assistant(self.row)['official_launcher'])
+        launcher = self.root / 'PCLauncher.exe'; launcher.write_bytes(b'fixture-launcher')
+        scanned = {}
+        def scan(targets):
+            scanned['targets'] = list(targets)
+            return {'status': 'observed', 'matches': []}
+        with patch.object(self.mxu, 'find_matching_processes', side_effect=scan):
+            prepared = prepare_assistant(self.row)
+        self.assertEqual(prepared['official_launcher'], str(launcher))
+        self.assertIn(str(launcher), prepared['observation_targets'])
+        self.assertIn(str(launcher), scanned['targets'])
+        real_lstat = Path.lstat
+        def redirected(path):
+            value = real_lstat(path)
+            return (SimpleNamespace(st_mode=value.st_mode, st_file_attributes=0x400)
+                    if path == launcher else value)
+        with patch.object(Path, 'lstat', redirected):
+            with self.assertRaisesRegex(ValueError, 'MXU'): prepare_assistant(self.row)
+
     def test_redirected_game_parent_is_rejected_at_prepare_and_recheck(self):
         from types import SimpleNamespace
         directory = self.root / 'game'; directory.mkdir()

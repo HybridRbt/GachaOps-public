@@ -1449,7 +1449,11 @@ def main():
 
         def prompt_rename_profile(self):
             if self.busy(): return
-            name, accepted = QInputDialog.getText(self, '修改名称', '组合名称', text=self.profiles.currentText())
+            # The combo may show a transient edited-state label; prefill the
+            # stored name so accepting it unchanged keeps the profile's name.
+            name, accepted = QInputDialog.getText(
+                self, '修改名称', '组合名称',
+                text=self.profile_names.get(self.profiles.currentData(), self.profiles.currentText()))
             if accepted:
                 try: self.rename_profile_named(name)
                 except (OSError, ValueError) as error: QMessageBox.warning(self, '改名失败', str(error))

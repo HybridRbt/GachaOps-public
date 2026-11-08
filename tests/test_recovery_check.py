@@ -81,7 +81,7 @@ class RecoveryCheckTests(unittest.TestCase):
                 root = Path(directory); path, journal = self.uncertain_fixture(root)
                 if change == 'proof':
                     node = json.loads(path.read_text()); node['owned_job_cleanup_verified'] = False; save(path, node)
-                def audit(destination, data):
+                def audit(destination, data, change=change):
                     if change == 'audit' and Path(destination).name == 'planned-journal.json':
                         raise OSError('disk full')
                     save(destination, data)

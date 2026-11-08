@@ -145,6 +145,28 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()
 
+    def test_rename_prompt_prefills_stored_name_not_transient_combo_label(self):
+        from PySide6.QtWidgets import QApplication, QInputDialog
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.create_profile_named('存储名称')
+                selected = window.profiles.currentData()
+                window.profiles.setItemText(window.profiles.currentIndex(), '自定义 · 已选 2 项')
+                with patch.object(QInputDialog, 'getText', return_value=('存储名称', True)) as ask:
+                    window.prompt_rename_profile()
+                self.assertEqual(ask.call_args.kwargs['text'], '存储名称')
+                self.assertEqual(window.profile_names[selected], '存储名称')
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
     def test_profile_deletion_requires_named_permanent_confirmation_and_cancel_is_noop(self):
         from PySide6.QtWidgets import QApplication, QMessageBox
         from gachaops import desktop

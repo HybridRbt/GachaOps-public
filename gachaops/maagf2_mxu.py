@@ -99,7 +99,9 @@ def installation_metadata(root, config_file, game_path):
 def _json(root, name, consumed):
     path = _inside(root, name)
     raw = path.read_bytes()
-    consumed[name] = hashlib.sha256(raw).hexdigest()
+    # installation_metadata records POSIX-relative paths; compare the same
+    # representation so alternate import spellings are not rejected as drift.
+    consumed[path.relative_to(root).as_posix()] = hashlib.sha256(raw).hexdigest()
     value = json.loads(raw.decode('utf-8-sig'))
     if not isinstance(value, dict):
         raise ValueError('MXU configuration must be an object')
@@ -263,6 +265,15 @@ def prepare(row, *, root, exe, launcher_sha256):
     if desktop.get('status') != 'observed_available':
         blockers.extend(desktop.get('blockers') or ['desktop_unavailable'])
     targets = [str(exe), str(game), str(root / 'python/python.exe')]
+    # This game's installed launcher can reopen after the game exits. Observe
+    # it without launching or adopting it, including when it escapes the Job.
+    official_launcher = game.parent.parent / 'PCLauncher.exe'
+    launcher_path = None
+    if official_launcher.is_file():
+        if _redirected(official_launcher) or official_launcher.resolve().parent != game.parent.parent.resolve():
+            raise ValueError('MXU external GF2 launcher entry')
+        launcher_path = str(official_launcher.resolve())
+        targets.append(launcher_path)
     observation = find_matching_processes(targets)
     if observation.get('status') != 'observed' or observation.get('matches'):
         blockers.append('existing_runner_or_game_not_exclusive')
@@ -273,7 +284,8 @@ def prepare(row, *, root, exe, launcher_sha256):
     return {'installation_root': str(root), 'cwd': str(root), 'launcher': str(exe),
             'launcher_sha256': launcher_sha256,
             'argv_candidate': [str(exe), '--autostart', '--instance', instance['name'], '--quit-after-run'],
-            'game_path': str(game), 'observation_targets': targets, 'game_start': 'assistant', 'borrowed_game': [],
+            'game_path': str(game), 'observation_targets': targets, 'official_launcher': launcher_path,
+            'game_start': 'assistant', 'borrowed_game': [],
             'runner_version': RESOURCE_VERSION, 'mxu_framework_version': FRAMEWORK_VERSION,
             'completion_kind': 'maa-gf2-mxu', 'instance_id': instance['id'], 'instance_name': instance['name'],
             'mxu_agent_image': str(root / 'python/python.exe'),

@@ -9,7 +9,7 @@
 
 后续源码新增 GF2 资源 v2.8.3 / MXU 框架 v2.8.1 的离线契约。两者版本维度不同，不能只看目录名或任一版本字符串放行。已从[官方 GF2 v2.8.3 归档](https://github.com/DarkLingYun/MaaGF2Exilium/releases/tag/v2.8.3)核对主程序、MaaFramework、Python 入口及 agent 主脚本的完整摘要；CLI/配置/日志协议依据 [MXU v2.8.1 固定源码](https://github.com/MaaXYZ/MXU/tree/dbce2f2e124a67d5df9e481730e801fd1dfe2469)。其他 MXU 字节及 v2.8.0 继续阻断。
 
-仅支持原助手已保存的唯一 PC 实例和唯一直接游戏 EXE 前动作，不新增手动开局。启动使用数组参数 `--autostart --instance <实例名称> --quit-after-run`，不改任务选项、不去重原生任务名称。启动前重新核对配置、接口导入、Framework/Python/agent、任务/选项定义、资源及游戏字节；新增、缺失、变化或重解析点均拒绝。完整检查可能比旧版更慢；检查期间取消仍须在创建进程前生效。
+仅支持原助手按 lastActiveInstanceId 运行最近选中的 PC 实例（保存多个实例不阻断，重复名称/ID 仍拒绝）和唯一直接游戏 EXE 前动作，不新增手动开局。请在原助手中先选中要运行的实例，再保存并退出；GachaOps 启动的就是该实例。启动使用数组参数 `--autostart --instance <实例名称> --quit-after-run`，不改任务选项、不去重原生任务名称。启动前重新核对配置、接口导入、Framework/Python/agent、任务/选项定义、资源及游戏字节；新增、缺失、变化或重解析点均拒绝。完整检查可能比旧版更慢；检查期间取消仍须在创建进程前生效。
 
 须在原助手处理以下阻碍后保存并退出，再回到 GachaOps 重新检查：
 
