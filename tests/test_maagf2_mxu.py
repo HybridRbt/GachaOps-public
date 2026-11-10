@@ -339,6 +339,13 @@ class MxuCompletionTests(unittest.TestCase):
             self.assertEqual(result['failed_applications'], ['fixture-task-2'] if failed else [])
             self.assertEqual([r['pid'] for r in result['auxiliary_log_writers']], [456])
 
+    def test_extra_started_task_without_terminal_callback_stays_unconfirmed(self):
+        # An unmatched Starting beyond the submitted batch is unfinished work;
+        # its missing terminal callback must not be ignored for success.
+        frames, gui, _, event = self.cycle()
+        self.write_cycle(frames + [event('Starting', 3)], gui)
+        self.assertEqual(self.observe()['status'], 'completion_unconfirmed')
+
     def test_missing_start_terminal_quit_wrong_instance_and_duplicate_batch_are_unknown(self):
         frames, gui, _, _ = self.cycle()
         for f, g in ((frames[1:], gui), (frames[:-1], gui), (frames, gui[:-1]),

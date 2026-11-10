@@ -1,7 +1,7 @@
 <!-- gachaops-public-evidence-v1 -->
 # MaaGF2Exilium：公开契约与证据边界
 
-版本范围以 v2.7.3 / MFAAvalonia v2.16.2 及实际 Core 摘要检查为准。原生日常任务失败如实保留；关键回调损坏保持 completion_unconfirmed，不代填账号来源或凭据。
+旧版 MFAAvalonia 的版本范围以 v2.7.3 / MFAAvalonia v2.16.2 及实际 Core 摘要检查为准（MXU 离线契约的范围见下文）。原生日常任务失败如实保留；关键回调损坏保持 completion_unconfirmed，不代填账号来源或凭据。
 
 入口按实际 ProductName 分流。MFAAvalonia 继续使用已核验 Core 摘要与旧实例契约；MXU 不读取残留 MFA 配置。缺失、未知或冲突身份均阻止运行。2026-11-01 的身份保护只证明旧版阻断，不能当作后来新增的 MXU 日常验收。
 

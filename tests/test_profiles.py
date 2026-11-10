@@ -100,6 +100,26 @@ class ProfileTests(unittest.TestCase):
                 with self.assertRaises(ValueError): store.delete_profile(first['id'])
             self.assertTrue(Path(first['path']).exists())
 
+    def test_external_profile_startup_error_names_entry_and_recovery_steps(self):
+        import re
+        from types import SimpleNamespace
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as temp:
+            store = ProfileStore(temp)
+            first = store.create_profile('外部组合')
+            target = Path(first['path']).parent
+            real_lstat = Path.lstat
+            def reparse(path):
+                result = real_lstat(path)
+                return (SimpleNamespace(st_mode=result.st_mode, st_file_attributes=0x400)
+                        if path == target else result)
+            with patch.object(Path, 'lstat', reparse):
+                # Startup surfaces this message verbatim, so it must identify the
+                # affected profile directory and say how to recover safely.
+                with self.assertRaisesRegex(ValueError, re.escape(str(target))) as caught:
+                    store.list_profiles()
+            self.assertIn('恢复', str(caught.exception))
+
     @unittest.skipUnless(__import__('os').name == 'nt', 'Windows junction boundary')
     def test_delete_rejects_junction_profile_and_preserves_external_directory(self):
         import subprocess

@@ -43,7 +43,12 @@ class ProfileStore:
         if (self._redirected(self.directory) or self._redirected(path)
                 or not self.directory.resolve().is_relative_to(self.root)
                 or any((path / name).is_symlink() for name in ('config.json', 'name.json'))):
-            raise ValueError('external profile directory')
+            # Startup aborts on this error, so name the affected entry and safe
+            # recovery steps instead of a bare rejection the user cannot act on.
+            raise ValueError(
+                f'组合目录被重定向或不在数据目录内：{path}。'
+                '请检查该目录是否为 junction/符号链接；需要保留数据请先从 backups/profiles '
+                '恢复备份，或移除该条目后重新创建组合。')
         return path
 
     @staticmethod

@@ -182,8 +182,13 @@ def recover_workspace(workspace):
                 check['live_identity'] = current
                 if current is not None:
                     require(valid_identity(current) and current['pid'] == pid, f'无法核验进程 {pid} 的身份。')
-                    require(valid_identity(old) and current['creation_ticks'] != old['creation_ticks'],
-                            f'进程 PID {pid}（{label}）仍在运行或历史身份无法确认，请先退出相关程序。')
+                    # Two different blocked causes need different user actions:
+                    # a live process to exit, versus a record we cannot compare.
+                    require(valid_identity(old),
+                            f'进程 PID {pid}（{label}）仍在运行，但没有可比对的历史身份，'
+                            '无法排除 PID 复用；请先退出相关程序后重新检查，仍失败请导出诊断包。')
+                    require(current['creation_ticks'] != old['creation_ticks'],
+                            f'进程 PID {pid}（{label}）仍在运行，请先退出相关程序后重新检查。')
             # Include renamed updater executables within this installation. System
             # helpers are checked by their old identity, not by global filename.
             installation = Path(node['cwd']).resolve()

@@ -75,6 +75,22 @@ class RecoveryCheckTests(unittest.TestCase):
             self.assertIn('导出诊断包', result['message'])
             self.assertEqual(read_state(root / 'state'), journal)
 
+    def test_live_process_block_distinguishes_running_from_uncomparable_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); self.uncertain_fixture(root)
+            running = self.run_recovery(root, identities={101: dict(pid=101,
+                image=str(root / 'native.exe'), creation_ticks=100)})
+            self.assertEqual(running['status'], 'blocked')
+            self.assertIn('仍在运行', running['message'])
+            self.assertIn('退出', running['message'])
+            self.assertNotIn('没有可比对的历史身份', running['message'])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); self.uncertain_fixture(root)
+            uncomparable = self.run_recovery(root, identities={222: dict(pid=222,
+                image=str(root / 'unrelated.exe'), creation_ticks=999)})
+            self.assertEqual(uncomparable['status'], 'blocked')
+            self.assertIn('没有可比对的历史身份', uncomparable['message'])
+
     def test_historical_denial_still_requires_current_empty_scan_and_job_proof(self):
         for change in ('scan', 'proof', 'audit'):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
