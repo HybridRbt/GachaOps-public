@@ -121,10 +121,11 @@
       "status": "offline_verified",
       "verified_versions": [
         "v2026.9.30",
-        "v2026.10.16"
+        "v2026.10.16",
+        "v2026.11.8"
       ],
       "contract": "Existing saved-preset and identity/completion contract; adapter guards remain authoritative",
-      "evidence_date": "2026-10-23",
+      "evidence_date": "2026-11-10",
       "evidence": [
         "docs/MARCH7.md"
       ],

@@ -9,7 +9,7 @@ The machine-readable source is `gachaops/assets/support_matrix.json`; run `pytho
 | MaaEnd | v2.34.0 LaunchGamePC; legacy direct-entry contract | Assistant, manual | Offline verified; Global/Auto default-location launch lifecycle awaits live acceptance |
 | MaaGF2 | v2.7.3 / MFAAvalonia v2.16.2, actual MFAAvalonia entry and verified Core hashes | Assistant | Offline verified; v2.8.0 / MXU unsupported, including stale MFA files; unknown entry identity blocked |
 | OK-NTE | Installed CLI selector / official-launcher metadata contract | Assistant | Offline verified; version-specific Windows evidence not promoted |
-| March7 | v2026.9.30, v2026.10.16 | Assistant | Offline verified; new-version natural daily acceptance remains separate |
+| March7 | v2026.9.30, v2026.10.16, v2026.11.8 | Assistant | Offline verified; new-version natural daily acceptance remains separate |
 | BetterGI | 0.66.0.0 | Assistant | Offline verified; HYB-66 live single/serial acceptance pending |
 
 All seven have implementation and no-game regression coverage. None is newly declared `windows_verified` by this milestone. A future promotion needs exact versions, a dated scenario and evidence; old six-game acceptance does not cover current updates or BetterGI. Unsupported native versions/protocols retain their existing adapter blockers. Adapters that validate contracts rather than a fixed version whitelist remain described as contract-based; this matrix does not invent a whitelist.

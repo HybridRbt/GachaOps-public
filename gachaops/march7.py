@@ -19,9 +19,10 @@ from .onedragon_bridge import creation_ticks
 from .app_paths import workspace_root
 
 SUPPORTED_VERSION = 'v2026.9.30'
-# v2026.10.16 was reviewed against v2026.9.30: CLI, pause control and
-# completion markers are unchanged. Unknown builds still require review.
-SUPPORTED_VERSIONS = frozenset({SUPPORTED_VERSION, 'v2026.10.16'})
+# v2026.10.16 and v2026.11.8 were reviewed against v2026.9.30: CLI, pause
+# control and completion markers are unchanged. Unknown builds still require
+# review.
+SUPPORTED_VERSIONS = frozenset({SUPPORTED_VERSION, 'v2026.10.16', 'v2026.11.8'})
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
 

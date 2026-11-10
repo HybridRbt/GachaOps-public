@@ -20,7 +20,7 @@ class March7Tests(unittest.TestCase):
             with patch.object(march7, 'elevation_report', return_value={'elevated': True}), \
                  patch.object(march7, 'desktop_report', return_value={'status': 'observed_available'}), \
                  patch.object(march7, 'find_matching_processes', return_value={'status': 'observed', 'matches': []}):
-                for value in ('v2026.9.30', 'v2026.10.16'):
+                for value in ('v2026.9.30', 'v2026.10.16', 'v2026.11.8'):
                     with self.subTest(version=value):
                         version.write_text(value, encoding='utf-8')
                         result = march7.prepare(row)
@@ -39,7 +39,8 @@ class March7Tests(unittest.TestCase):
             launch = root / 'march7-launch.json'
             for prepared, installed in (('v2026.10.16', 'v2026.9.30'),
                                          ('v2026.9.30', 'v2026.10.16'),
-                                         ('v2026.10.16', 'unknown'), (None, 'v2026.9.30')):
+                                         ('v2026.10.16', 'unknown'), (None, 'v2026.9.30'),
+                                         ('v2026.11.8', 'v2026.9.30')):
                 with self.subTest(prepared=prepared, installed=installed):
                     descriptor['runner_version'] = prepared
                     launch.write_text(json.dumps(descriptor), encoding='utf-8')
@@ -186,7 +187,7 @@ class March7Tests(unittest.TestCase):
                  patch('gachaops.march7.process_identity', return_value={'pid':2,'creation_ticks':20,'image':descriptor['argv_candidate'][0]}), \
                  patch('gachaops.march7.subprocess.Popen', popen), \
                  patch('gachaops.march7.subprocess.CREATE_NO_WINDOW', 0, create=True):
-                for version in ('v2026.9.30', 'v2026.10.16'):
+                for version in ('v2026.9.30', 'v2026.10.16', 'v2026.11.8'):
                     (root / 'assets/config/version.txt').write_text(version, encoding='utf-8')
                     descriptor['runner_version'] = version
                     launch.write_text(json.dumps(descriptor), encoding='utf-8')
