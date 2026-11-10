@@ -1217,7 +1217,7 @@ def main():
             if self.recovery_locked():
                 warnings.append(('运行资格待恢复', '请先点击下方恢复按钮；恢复完成后才能配置、接入或运行助手。'))
             elif elevated is not True:
-                warnings.append(('需要管理员权限', '点击开始运行时确认 UAC；程序会以管理员身份重新打开。'))
+                warnings.append(('需要管理员权限', '点击开始运行时确认 UAC；程序会以管理员身份重新打开并替换当前窗口。'))
             for row in self.selected_rows():
                 name = NAMES.get(row['id'], row['id'])
                 if row.get('game_start') == 'manual':
@@ -1574,9 +1574,12 @@ def main():
                 finally:
                     if previous is None: os.environ.pop('PYINSTALLER_RESET_ENVIRONMENT', None)
                     else: os.environ['PYINSTALLER_RESET_ENVIRONMENT'] = previous
-                self.flash_hint(('已打开管理员窗口；正在检查并恢复运行资格。' if recovering
-                                 else '已打开管理员窗口；请在新窗口中开始运行。') if code and code > 32
-                                else '管理员窗口未打开，尚未启动任何助手')
+                if code and code > 32:
+                    # The elevated replacement owns the flow from here; retire
+                    # this window so two instances never coexist (issue #2 D2).
+                    self.close()
+                else:
+                    self.flash_hint('管理员窗口未打开，尚未启动任何助手')
             except (OSError, ValueError, TypeError) as error:
                 QMessageBox.warning(self, '无法打开管理员窗口', str(error))
 
