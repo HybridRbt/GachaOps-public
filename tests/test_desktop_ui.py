@@ -27,6 +27,83 @@ class DesktopUiTests(unittest.TestCase):
         icon_patch.start(); self.addCleanup(icon_patch.stop)
         self.addCleanup(self._release_qt)
 
+    def test_quarantine_locks_edits_and_routes_primary_to_recovery(self):
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                with patch.object(window, 'needs_recovery', return_value=True):
+                    window.set_view('all'); window.refresh_controls()
+                    for control in (window.choose, window.save_button, window.new_profile,
+                                    window.rename_profile, window.delete_profile,
+                                    window.repeat_input, window.recheck):
+                        self.assertFalse(control.isEnabled())
+                    self.assertTrue(window.table.isEnabled())
+                    self.assertTrue(window.start.isEnabled())
+                    self.assertEqual(window.start.text(), '以管理员身份重开并恢复')
+                    self.assertTrue(window.recovery_button.isHidden())
+                    for index in range(window.table.rowCount()):
+                        for column in (0, 2, 3, 5):
+                            self.assertFalse(window.table.cellWidget(index, column).isEnabled())
+                    with patch.object(window, 'elevate') as elevate:
+                        window.start.click()
+                        elevate.assert_called_once_with()
+                    if os.name == 'nt':
+                        # Recovery elevation must also work with an unreadable preset.
+                        with patch.object(window, 'selection', side_effect=ValueError('bad preset')), \
+                             patch.object(desktop.ctypes.windll.shell32, 'ShellExecuteW', return_value=5) as shell:
+                            window.elevate()
+                            self.assertIn('--recover', shell.call_args.args[3])
+                            self.assertIn('--data-root', shell.call_args.args[3])
+                            self.assertNotIn('--config', shell.call_args.args[3])
+                            self.assertIsNone(window.process)
+                            self.assertFalse(window.choose.isEnabled())
+                        with patch.object(desktop.ctypes.windll.shell32, 'ShellExecuteW', return_value=42) as shell:
+                            window.elevate()
+                            self.assertIn('--recover', shell.call_args.args[3])
+                            self.assertIsNone(window.process)
+                    count = window.profiles.count()
+                    window.create_profile_named('禁止创建')
+                    self.assertEqual(window.profiles.count(), count)
+                window.refresh_controls()
+                self.assertTrue(window.new_profile.isEnabled())
+                self.assertNotEqual(window.start.text(), '以管理员身份重开并恢复')
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=Path(temp)), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': False}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_elevated_recover_flag_starts_recovery_without_running_assistants(self):
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            windows = []
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.data = None
+                windows.append(window)
+            def event_loop(app):
+                app.processEvents()
+                window = windows[0]
+                self.assertEqual(window.action, 'recover-assistants')
+                self.assertIn('recover-assistants', window.process.arguments())
+                self.assertNotIn('run-assistants', window.process.arguments())
+                window.close()
+                return 0
+            with patch.object(desktop, 'workspace_root', return_value=Path(temp)), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QProcess, 'start', return_value=None), \
+                 patch.object(QApplication, 'exec', event_loop), \
+                 patch('sys.argv', ['desktop-test', '--recover']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
     def test_clean_first_start_profiles_are_editable_without_starting_worker(self):
         from PySide6.QtWidgets import QApplication
         from gachaops import desktop
@@ -195,16 +272,18 @@ class DesktopUiTests(unittest.TestCase):
                 phase='quarantined', cleanup_verified=False)))
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
-                self.assertFalse(window.recovery_button.isHidden())
+                self.assertTrue(window.recovery_button.isHidden())
+                self.assertEqual(window.start.text(), '检查并恢复运行资格')
+                self.assertTrue(window.start.isEnabled())
                 window.results={'one': dict(id='one', status='ownership_or_cleanup_unconfirmed')}
                 buttons=[]
                 with patch.object(QDialog, 'exec', lambda dialog: buttons.extend(
                     b.text() for b in dialog.findChildren(QPushButton))):
                     window.open_result_reason('one')
-                self.assertIn('检查并恢复运行资格', buttons)
+                self.assertNotIn('检查并恢复运行资格', buttons)
                 old=root/'old-session'; old.mkdir(); window.session=old
                 old_summary=old/'summary.json'; window.summary_path=old_summary
-                window.begin('recover-assistants')
+                window.start.click()
                 self.assertEqual(window.action, 'recover-assistants')
                 self.assertIn('recover-assistants', window.process.arguments())
                 (window.session/'recovery.json').write_text(json.dumps(dict(status='recovered', message='核对通过')))

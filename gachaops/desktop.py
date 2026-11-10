@@ -650,8 +650,11 @@ def main():
         def running(self):
             return self.busy() and self.action == 'run-assistants'
 
+        def recovery_locked(self):
+            return not self.running() and self.needs_recovery()
+
         def can_reorder(self):
-            return (self.data is not None and not self.busy()
+            return (self.data is not None and not self.busy() and not self.recovery_locked()
                     and self.view == 'selected' and not self.running())
 
         def adapter_of(self, assistant_id):
@@ -667,7 +670,8 @@ def main():
             return self.running()
 
         def refresh_controls(self):
-            idle = not self.busy()
+            locked = self.recovery_locked()
+            idle = not self.busy() and not locked
             for widget in (self.profiles, self.choose, self.save_button, self.recheck, self.repeat_input,
                            self.new_profile, self.rename_profile, self.delete_profile):
                 widget.setEnabled(idle)
@@ -675,9 +679,18 @@ def main():
             # reason entry, which must stay clickable while the run continues.
             self.table.setEnabled(idle or self.action != 'check-assistants')
             selected = self.selected_ids if self.selected_ids is not None else [r['id'] for r in self.selected_rows()]
-            self.start.setEnabled(idle and bool(selected))
+            self.start.setEnabled(not self.busy() and (locked or bool(selected)))
+            self.start.setText(('检查并恢复运行资格' if elevation_report().get('elevated') is True
+                                else '以管理员身份重开并恢复') if locked
+                               else ('检查中…' if self.busy_check() else f'开始运行（{len(selected)} 个）'))
+            self.start.setToolTip('先恢复运行资格，再配置或接入助手' if locked else '')
+            for index in range(self.table.rowCount()):
+                for column in (0, 2, 3, 5):
+                    cell = self.table.cellWidget(index, column)
+                    if cell is not None: cell.setEnabled(idle)
+            self.undo_label.setEnabled(idle)
             self.stop.setEnabled(self.running())
-            self.recovery_button.setVisible(self.needs_recovery())
+            self.recovery_button.setVisible(False)
             self.recovery_button.setEnabled(idle)
             active = self.run_session_active()
             self.progress_card.setVisible(active)
@@ -889,6 +902,7 @@ def main():
             return self.tinted(label, tint)
 
         def commit_game_start(self, identity, mode):
+            if self.recovery_locked(): return
             if self.busy() or self.data is None: return
             row = next((r for r in self.data['assistants'] if r['id'] == identity), None)
             if row is None or row['adapter'] not in MANUAL_START_ADAPTERS: return
@@ -916,6 +930,7 @@ def main():
             return self.tinted(box, tint)
 
         def commit_timeout(self, value):
+            if self.recovery_locked(): return
             if self.busy() or self.data is None: return
             row = next((r for r in self.data['assistants'] if r['id'] == value.property('assistant_id')), None)
             if row is None: return
@@ -1083,6 +1098,7 @@ def main():
                 self.start.setText(f'开始运行（{len(enabled)} 个）')
             self.start.setEnabled(bool(enabled) and not self.busy())
             self.start.setToolTip('' if enabled else '请至少选择一个已接入的助手')
+            self.refresh_controls()
             self.sync_combo_label()
             self.refresh_footer()
             if schedule_check and not self.busy():
@@ -1112,6 +1128,7 @@ def main():
                 self.hint.setText('按序号顺序运行，拖动手柄调整' if selected else '')
 
         def remove_assistant(self, assistant_id):
+            if self.recovery_locked(): return
             if self.busy(): return
             selected = [i for i in (self.selected_ids or []) if i != assistant_id]
             self.undo_info = assistant_id
@@ -1125,6 +1142,7 @@ def main():
             self.recheck_timer.start(6000)
 
         def undo_remove(self):
+            if self.recovery_locked(): return
             if self.undo_info is None or self.busy(): return
             identity = self.undo_info; self.undo_info = None
             self.set_selected(identity, True)
@@ -1138,6 +1156,7 @@ def main():
             QTimer.singleShot(6000, self.refresh_footer)
 
         def set_selected(self, identity, checked):
+            if self.recovery_locked(): return
             selected = set(self.selected_ids or [])
             if checked: selected.add(identity)
             else: selected.discard(identity)
@@ -1171,6 +1190,7 @@ def main():
                 combo.blockSignals(True); combo.setItemText(combo.currentIndex(), label); combo.blockSignals(False)
 
         def move_row(self, source, target):
+            if self.recovery_locked(): return
             if self.busy() or self.data is None: return
             visible = self.visible_rows()
             if not (0 <= source < len(visible) and 0 <= target < len(visible)) or source == target: return
@@ -1194,7 +1214,9 @@ def main():
                 if item.widget(): item.widget().deleteLater()
             warnings, passes = [], []
             elevated = elevation_report().get('elevated')
-            if elevated is not True:
+            if self.recovery_locked():
+                warnings.append(('运行资格待恢复', '请先点击下方恢复按钮；恢复完成后才能配置、接入或运行助手。'))
+            elif elevated is not True:
                 warnings.append(('需要管理员权限', '点击开始运行时确认 UAC；程序会以管理员身份重新打开。'))
             for row in self.selected_rows():
                 name = NAMES.get(row['id'], row['id'])
@@ -1289,6 +1311,7 @@ def main():
         # ---------- actions ----------
 
         def persist_profile_data(self, data):
+            if self.recovery_locked(): return
             identity = self.profile_ids.get(self.profiles.currentData())
             if identity is None:
                 identity = self.profile_store.create_profile('我的组合', data)['id']
@@ -1297,6 +1320,7 @@ def main():
             self.reload_profiles(identity)
 
         def commit_registration_inspection(self, identity, inspection):
+            if self.recovery_locked(): return
             if self.busy() or self.data is None: return
             data = commit_registration(self.selection(), inspection, identity)
             self.persist_profile_data(data)
@@ -1304,6 +1328,7 @@ def main():
             self.flash_hint('登记已保存；运行前请重新检查' if not inspection.blockers else '登记已保存为禁用状态，请处理检查阻碍')
 
         def register_assistant(self, identity):
+            if self.recovery_locked(): return
             if self.busy() or self.data is None: return
             row = next(r for r in self.data['assistants'] if r['id'] == identity)
             spec = get_adapter(row['adapter'])
@@ -1347,6 +1372,7 @@ def main():
             except (OSError, ValueError, TypeError) as error: QMessageBox.warning(self, '登记需要处理', sanitize_detail(error))
 
         def register_local_bettergi(self, identity):
+            if self.recovery_locked(): return
             if self.busy() or self.data is None: return
             executable, _ = QFileDialog.getOpenFileName(self, '选择已安装的 BetterGI.exe',
                 'C:/BetterGI/BetterGI.exe', 'BetterGI (BetterGI.exe)')
@@ -1369,6 +1395,7 @@ def main():
                 QMessageBox.warning(self, 'BetterGI 接入需要处理', sanitize_detail(error))
 
         def browse(self):
+            if self.recovery_locked(): return
             if self.busy(): return
             path, _ = QFileDialog.getOpenFileName(self, '打开 GachaOps 助手配置', str(self.workspace / 'config'), 'JSON 配置 (*.json)')
             if path:
@@ -1393,23 +1420,27 @@ def main():
             self.load_profile()
 
         def create_profile_named(self, name):
+            if self.recovery_locked(): return
             if self.busy(): return
             profile = self.profile_store.create_profile(name)
             self.reload_profiles(profile['id'])
 
         def rename_profile_named(self, name):
+            if self.recovery_locked(): return
             if self.busy(): return
             identity = self.profile_ids.get(self.profiles.currentData())
             if identity is None: raise ValueError('先保存或导入此组合')
             self.profile_store.rename_profile(identity, name); self.reload_profiles(identity)
 
         def delete_current_profile(self):
+            if self.recovery_locked(): return
             if self.busy(): return
             identity = self.profile_ids.get(self.profiles.currentData())
             if identity is None: raise ValueError('先保存或导入此组合')
             self.profile_store.delete_profile(identity); self.reload_profiles()
 
         def prompt_new_profile(self):
+            if self.recovery_locked(): return
             if self.busy(): return
             name, accepted = QInputDialog.getText(self, '新建组合', '组合名称')
             if accepted:
@@ -1417,6 +1448,7 @@ def main():
                 except (OSError, ValueError) as error: QMessageBox.warning(self, '新建失败', str(error))
 
         def prompt_rename_profile(self):
+            if self.recovery_locked(): return
             if self.busy(): return
             name, accepted = QInputDialog.getText(self, '修改名称', '组合名称', text=self.profiles.currentText())
             if accepted:
@@ -1424,12 +1456,14 @@ def main():
                 except (OSError, ValueError) as error: QMessageBox.warning(self, '改名失败', str(error))
 
         def prompt_delete_profile(self):
+            if self.recovery_locked(): return
             if self.busy(): return
             if QMessageBox.question(self, '删除组合', '组合将移入备份；最后一个组合删除后会建立默认组合。') == QMessageBox.StandardButton.Yes:
                 try: self.delete_current_profile()
                 except (OSError, ValueError) as error: QMessageBox.warning(self, '删除失败', str(error))
 
         def save_selection(self):
+            if self.recovery_locked(): return
             if self.busy(): return
             try:
                 identity = self.profile_ids.get(self.profiles.currentData())
@@ -1443,6 +1477,8 @@ def main():
             except (OSError, ValueError, TypeError) as error: QMessageBox.warning(self, '保存失败', str(error))
 
         def begin_run(self):
+            if self.recovery_locked():
+                self.begin_recovery(); return
             if self.busy() or self.data is None: return
             if elevation_report().get('elevated') is not True:
                 self.elevate(); return
@@ -1451,11 +1487,12 @@ def main():
         def begin_recovery(self):
             if self.busy(): return
             if elevation_report().get('elevated') is not True:
-                QMessageBox.warning(self, '需要管理员权限', '请以管理员权限重新打开 GachaOps，再点击“检查并恢复运行资格”。')
+                self.elevate()
                 return
             self.begin('recover-assistants')
 
         def begin(self, action):
+            if action != 'recover-assistants' and self.recovery_locked(): return
             if self.busy() or (self.data is None and action != 'recover-assistants'): return
             try:
                 data = self.selection() if action != 'recover-assistants' else None
@@ -1518,9 +1555,14 @@ def main():
                 self.flash_hint('管理员提权仅在 Windows 上可用')
                 return
             try:
-                path = self.workspace / 'runs' / ('gui-setup-' + uuid.uuid4().hex) / 'assistants.json'
-                save_configuration(path, self.selection())
-                args = desktop_command()[1:] + ['--config', str(path), '--data-root', str(self.workspace)]
+                recovering = self.needs_recovery()
+                args = desktop_command()[1:] + ['--data-root', str(self.workspace)]
+                if recovering:
+                    args.append('--recover')
+                else:
+                    path = self.workspace / 'runs' / ('gui-setup-' + uuid.uuid4().hex) / 'assistants.json'
+                    save_configuration(path, self.selection())
+                    args.extend(['--config', str(path)])
                 shell = ctypes.windll.shell32.ShellExecuteW
                 shell.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p,
                                   ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_int]
@@ -1532,7 +1574,8 @@ def main():
                 finally:
                     if previous is None: os.environ.pop('PYINSTALLER_RESET_ENVIRONMENT', None)
                     else: os.environ['PYINSTALLER_RESET_ENVIRONMENT'] = previous
-                self.flash_hint('已打开管理员窗口；请在新窗口中开始运行。' if code and code > 32
+                self.flash_hint(('已打开管理员窗口；正在检查并恢复运行资格。' if recovering
+                                 else '已打开管理员窗口；请在新窗口中开始运行。') if code and code > 32
                                 else '管理员窗口未打开，尚未启动任何助手')
             except (OSError, ValueError, TypeError) as error:
                 QMessageBox.warning(self, '无法打开管理员窗口', str(error))
@@ -1563,6 +1606,7 @@ def main():
                 return None
 
         def poll(self):
+            if not self.busy(): self.refresh_controls()
             if self.session is None: return
             try:
                 if self.action == 'run-assistants':
@@ -1689,14 +1733,6 @@ def main():
                 export = QPushButton('导出诊断包')
                 export.clicked.connect(self.export_diagnostic_bundle)
                 buttons.addWidget(export)
-            if self.needs_recovery():
-                recovery = QPushButton('检查并恢复运行资格')
-                recovery.setEnabled(not self.busy())
-                def request_recovery():
-                    dialog.accept()
-                    self.begin_recovery()
-                recovery.clicked.connect(request_recovery)
-                buttons.addWidget(recovery)
             if details['source']:
                 raw = QPushButton('打开本轮原始记录')
                 raw.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(details['source']))))
@@ -1897,6 +1933,8 @@ def main():
         window = Window(); window.show()
     except (OSError, ValueError) as error:
         QMessageBox.critical(None, 'GachaOps 无法打开', str(error)); return 2
+    if '--recover' in sys.argv and elevation_report().get('elevated') is True:
+        QTimer.singleShot(0, window.begin_recovery)
     # Layout-preview hook for off-Windows UI work; never set during real runs.
     preview_factory = globals().get('PREVIEW_FACTORY')
     if preview_factory is not None:
