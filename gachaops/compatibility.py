@@ -80,6 +80,14 @@ def capture_installation_stamp(descriptor):
         if metadata != descriptor.get('native_launch_metadata'):
             raise ValueError('助手启动配置在预检期间发生变化，请重新检查；不会启动游戏。')
         stamp['native_launch_metadata'] = metadata
+    elif descriptor.get('completion_kind') == 'maa-gf2-mxu':
+        from .maagf2_mxu import installation_metadata
+        probe['mxu_config_file'] = descriptor['mxu_config_file']
+        probe['mxu_game_path'] = descriptor['mxu_game_source_path']
+        metadata = installation_metadata(probe['installation_root'], probe['mxu_config_file'], probe['mxu_game_path'])
+        if metadata != descriptor.get('native_launch_metadata'):
+            raise ValueError('MXU 启动配置在预检期间发生变化，请重新检查；不会启动游戏。')
+        stamp['native_launch_metadata'] = metadata
     return dict(descriptor, installation_stamp=stamp)
 
 
@@ -94,5 +102,10 @@ def verify_installation_stamp(descriptor):
             from .maagf2 import launch_metadata
             if launch_metadata(stamp['probe']['installation_root'], stamp['probe']['maa_gf2_instance']) != stamp.get('native_launch_metadata'):
                 raise ValueError('native startup metadata changed')
+        if 'mxu_config_file' in stamp['probe']:
+            from .maagf2_mxu import installation_metadata
+            probe = stamp['probe']
+            if installation_metadata(probe['installation_root'], probe['mxu_config_file'], probe['mxu_game_path']) != stamp.get('native_launch_metadata'):
+                raise ValueError('MXU startup metadata changed')
     except (OSError, ValueError, KeyError, TypeError):
         raise ValueError('助手安装在预检后发生变化，请重新检查；不会启动游戏。') from None

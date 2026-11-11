@@ -4,6 +4,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
+import stat
 import uuid
 
 from .adapter_catalog import list_adapters
@@ -38,11 +40,24 @@ class ProfileStore:
         except (ValueError, TypeError, AttributeError):
             raise ValueError('invalid profile id') from None
         path = self.directory / identity
-        if (self.directory.is_symlink() or path.is_symlink()
+        if (self._redirected(self.directory) or self._redirected(path)
                 or not self.directory.resolve().is_relative_to(self.root)
                 or any((path / name).is_symlink() for name in ('config.json', 'name.json'))):
-            raise ValueError('external profile directory')
+            # Startup aborts on this error, so name the affected entry and safe
+            # recovery steps instead of a bare rejection the user cannot act on.
+            raise ValueError(
+                f'组合目录被重定向或不在数据目录内：{path}。'
+                '请检查该目录是否为 junction/符号链接；需要保留数据请先从 backups/profiles '
+                '恢复备份，或移除该条目后重新创建组合。')
         return path
+
+    @staticmethod
+    def _redirected(path):
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            return False
+        return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
     def _name(self, name):
         if not isinstance(name, str) or not name.strip() or len(name) > 100:
@@ -112,11 +127,33 @@ class ProfileStore:
 
     def delete_profile(self, identity):
         path = self._path(identity)
+        if not path.is_dir():
+            raise ValueError('profile directory unavailable')
         rows = self.list_profiles()
+        replacement = None
         if len(rows) == 1:
-            self.create_profile('默认组合')
-        self.backups.mkdir(parents=True, exist_ok=True)
-        os.replace(path, self.backups / ('deleted-' + identity + '-' + uuid.uuid4().hex))
+            replacement = self.create_profile('默认组合')
+        pending = self.directory / ('.deleting-' + identity + '-' + uuid.uuid4().hex)
+        try:
+            # Detach atomically before destructive cleanup so partial deletion
+            # cannot leave a broken entry in the active combination list.
+            os.replace(path, pending)
+        except OSError:
+            if replacement is not None:
+                try:
+                    shutil.rmtree(self._path(replacement['id']))
+                except OSError:
+                    # Preserve the original deletion error; a safe empty default
+                    # may remain if the rollback is also denied.
+                    pass
+            raise
+        try:
+            # Windows rmtree does not traverse nested junctions; symlinks are
+            # unlinked, not followed. Existing edit backups are not touched.
+            shutil.rmtree(pending)
+        except OSError:
+            return {'cleanup_complete': False, 'residual_path': str(pending)}
+        return {'cleanup_complete': True, 'residual_path': None}
 
     def preview_import(self, path):
         source = Path(path).resolve(strict=True)

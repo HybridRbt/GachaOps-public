@@ -9,6 +9,137 @@ from gachaops.assistants import load_assistants, check_assistants
 
 
 class ProfileTests(unittest.TestCase):
+    def test_delete_permanently_removes_only_selected_profile_without_new_backup(self):
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as temp:
+            store = ProfileStore(temp)
+            first = store.create_profile('待删除')
+            other = store.create_profile('保留')
+            store.save_profile(first['id'], store.load_profile(first['id']))
+            backups = {p.name: p.read_bytes() for p in store.backups.iterdir()}
+            other_bytes = Path(other['path']).read_bytes()
+            external = Path(temp) / 'native-install'
+            external.mkdir(); (external / 'keep.txt').write_text('keep')
+            store.delete_profile(first['id'])
+            self.assertFalse(Path(first['path']).parent.exists())
+            self.assertEqual([r['id'] for r in store.list_profiles()], [other['id']])
+            self.assertEqual(Path(other['path']).read_bytes(), other_bytes)
+            self.assertEqual({p.name for p in store.backups.iterdir()}, set(backups))
+            self.assertEqual({p.name: p.read_bytes() for p in store.backups.iterdir()}, backups)
+            self.assertEqual((external / 'keep.txt').read_text(), 'keep')
+
+    def test_delete_permission_failure_preserves_selection_and_other_profile(self):
+        import os
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as temp:
+            store = ProfileStore(temp)
+            first = store.create_profile('待删除'); other = store.create_profile('保留')
+            original = Path(first['path']).read_bytes()
+            actual_replace = os.replace
+            def deny_selected(source, destination):
+                if Path(source) == Path(first['path']).parent:
+                    raise PermissionError('fixture denied')
+                return actual_replace(source, destination)
+            with patch('os.replace', side_effect=deny_selected):
+                with self.assertRaises(PermissionError): store.delete_profile(first['id'])
+            self.assertEqual(Path(first['path']).read_bytes(), original)
+            self.assertEqual({r['id'] for r in store.list_profiles()}, {first['id'], other['id']})
+
+    def test_delete_last_failure_does_not_leave_an_extra_default_profile(self):
+        import os
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as temp:
+            store = ProfileStore(temp)
+            first = store.create_profile('唯一组合')
+            actual_replace = os.replace
+            def deny_selected(source, destination):
+                if Path(source) == Path(first['path']).parent:
+                    raise PermissionError('fixture denied')
+                return actual_replace(source, destination)
+            with patch('os.replace', side_effect=deny_selected):
+                with self.assertRaises(PermissionError): store.delete_profile(first['id'])
+            self.assertEqual([r['id'] for r in store.list_profiles()], [first['id']])
+
+    @unittest.skipUnless(__import__('os').name == 'nt', 'Windows readonly deletion')
+    def test_partial_delete_keeps_active_profiles_valid_and_reports_hidden_residue(self):
+        import stat
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as temp:
+            store = ProfileStore(temp)
+            first = store.create_profile('唯一组合')
+            metadata = Path(first['path']).with_name('name.json')
+            metadata.chmod(stat.S_IREAD)
+            try:
+                result = store.delete_profile(first['id'])
+                self.assertFalse(result['cleanup_complete'])
+                residue = Path(result['residual_path'])
+                self.assertTrue(residue.name.startswith('.deleting-'))
+                self.assertTrue(residue.exists())
+                self.assertFalse(Path(first['path']).parent.exists())
+                rows = store.list_profiles()
+                self.assertEqual(len(rows), 1)
+                self.assertNotEqual(rows[0]['id'], first['id'])
+                self.assertEqual(store.load_profile(rows[0]['id'])['repeat_limit'], 0)
+            finally:
+                for path in store.directory.rglob('name.json'):
+                    path.chmod(stat.S_IREAD | stat.S_IWRITE)
+
+    def test_delete_rejects_reparse_profile_even_when_path_is_not_a_symlink(self):
+        from types import SimpleNamespace
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as temp:
+            store = ProfileStore(temp)
+            first = store.create_profile('重解析点')
+            target = Path(first['path']).parent
+            real_lstat = Path.lstat
+            def reparse(path):
+                result = real_lstat(path)
+                return (SimpleNamespace(st_mode=result.st_mode, st_file_attributes=0x400)
+                        if path == target else result)
+            with patch.object(Path, 'lstat', reparse):
+                with self.assertRaises(ValueError): store.delete_profile(first['id'])
+            self.assertTrue(Path(first['path']).exists())
+
+    def test_external_profile_startup_error_names_entry_and_recovery_steps(self):
+        import re
+        from types import SimpleNamespace
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as temp:
+            store = ProfileStore(temp)
+            first = store.create_profile('外部组合')
+            target = Path(first['path']).parent
+            real_lstat = Path.lstat
+            def reparse(path):
+                result = real_lstat(path)
+                return (SimpleNamespace(st_mode=result.st_mode, st_file_attributes=0x400)
+                        if path == target else result)
+            with patch.object(Path, 'lstat', reparse):
+                # Startup surfaces this message verbatim, so it must identify the
+                # affected profile directory and say how to recover safely.
+                with self.assertRaisesRegex(ValueError, re.escape(str(target))) as caught:
+                    store.list_profiles()
+            self.assertIn('恢复', str(caught.exception))
+
+    @unittest.skipUnless(__import__('os').name == 'nt', 'Windows junction boundary')
+    def test_delete_rejects_junction_profile_and_preserves_external_directory(self):
+        import subprocess
+        import uuid
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as temp:
+            store = ProfileStore(temp)
+            store.create_profile('保留')
+            external_store = ProfileStore(Path(temp) / 'external')
+            external = external_store.create_profile('外部')
+            identity = str(uuid.uuid4()); link = store.directory / identity
+            result = subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(Path(external['path']).parent)],
+                                    capture_output=True)
+            if result.returncode: self.skipTest('junction creation unavailable')
+            try:
+                with self.assertRaises(ValueError): store.delete_profile(identity)
+                self.assertTrue(Path(external['path']).exists())
+            finally:
+                if link.exists(): link.rmdir()
+
     def test_first_start_is_seven_unregistered_disabled_and_empty_list_is_valid(self):
         from gachaops.profiles import ProfileStore
         with tempfile.TemporaryDirectory() as temp:

@@ -10,6 +10,27 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/check_public_artifact.py
 
 
 class PublicArtifactTests(unittest.TestCase):
+    def test_runtime_matrix_keeps_git_bytes_in_autocrlf_checkout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            attributes = SCRIPT.parents[1] / '.gitattributes'
+            (root / '.gitattributes').write_bytes(attributes.read_bytes())
+            relative = 'gachaops/assets/support_matrix.json'
+            path = root / relative
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b'{"schema_version": 1}\n')
+            def git(*args):
+                return subprocess.check_output(['git', '-c', 'safe.directory=' + str(root),
+                    '-C', str(root), *args], stderr=subprocess.STDOUT)
+            git('init', '-q')
+            git('config', 'core.autocrlf', 'true')
+            git('add', '.')
+            stored = git('show', ':' + relative)
+            path.unlink()
+            git('checkout-index', '--force', '--', relative)
+            self.assertEqual(path.read_bytes(), stored,
+                             'Frozen runtime resource must retain the exact delivered Git source bytes')
+
     def scan(self, root):
         return subprocess.run([sys.executable, str(SCRIPT), '--root', str(root)],
                               capture_output=True, text=True, encoding='utf-8')

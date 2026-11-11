@@ -6,6 +6,8 @@ Program resources and runtime data are separate. Source development defaults to 
 
 Data contains `config`, `state`, `runs` and `backups`. Default CLI output goes under that directory's `runs`. No real user data is migrated merely by opening the app. First-run profiles are handled separately from directory resolution.
 
+Confirmed combination deletion permanently removes only the selected UUID directory under `config/profiles`; it does not create a deletion archive or touch native assistants and games. Saving or renaming can retain earlier edit backups under `backups/profiles`; deleting a combination does not purge those existing backups. They remain until the user explicitly removes them. No automatic expiry or cleanup runs. Canceling deletion makes no change; deleting the last combination creates a default combination. The selected directory is atomically removed from the active list before file cleanup. If cleanup fails partway, a warning identifies the hidden `.deleting-*` residue for manual inspection; it is not a recoverable backup and no background purge runs. Other combinations and the default remain usable. A failure to remove the directory from the active list is reported as a deletion failure.
+
 To migrate, explicitly choose an existing source and a **new, nonexistent target outside source**:
 
 ```

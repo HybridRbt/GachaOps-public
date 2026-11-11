@@ -6,6 +6,30 @@ from unittest.mock import patch
 
 
 class RegistrationTests(unittest.TestCase):
+    def test_reregister_without_optional_entry_clears_stale_path_after_install_change(self):
+        from gachaops.profiles import default_configuration
+        from gachaops.registration import inspect_registration, commit_registration
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old_root = root / 'old'; old_root.mkdir()
+            new_root = root / 'new'; new_root.mkdir()
+            data = default_configuration()
+            row = next(r for r in data['assistants'] if r['adapter'] == 'maa-gf2')
+            row.update(installation_root=str(old_root), entry_executable=str(old_root / 'old.exe'),
+                       enabled=True, timeout_seconds=2400)
+            before = copy.deepcopy(data)
+            with patch('gachaops.registration.prepare_assistant', return_value={'blockers': []}) as prepare:
+                inspection = inspect_registration('maa-gf2', {'installation_root': str(new_root)})
+            self.assertNotIn('entry_executable', prepare.call_args.args[0])
+            updated = commit_registration(data, inspection, row['id'])
+            changed = next(r for r in updated['assistants'] if r['id'] == row['id'])
+            self.assertFalse(changed.get('entry_executable'))
+            self.assertEqual(changed['installation_root'], str(new_root.resolve()))
+            self.assertTrue(changed['enabled'])
+            self.assertEqual(changed['timeout_seconds'], 2400)
+            self.assertEqual([r['id'] for r in updated['assistants']], [r['id'] for r in data['assistants']])
+            self.assertEqual(data, before)
+
     def test_all_seven_inspect_commit_keep_order_selection_timeout_and_never_launch(self):
         from gachaops.adapter_catalog import list_adapters
         from gachaops.profiles import default_configuration

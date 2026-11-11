@@ -64,16 +64,18 @@
       ],
       "status": "offline_verified",
       "verified_versions": [
-        "v2.7.3 / MFAAvalonia v2.16.2"
+          "v2.7.3 / MFAAvalonia v2.16.2",
+          "GF2 v2.8.3 / MXU v2.8.1 (exact component SHA256)"
       ],
-      "contract": "Actual entry ProductName must be MFAAvalonia; verified Core hashes and saved desktop instance contract remain required",
-      "evidence_date": "2026-11-01",
+        "contract": "Actual entry identity selects legacy MFA or exact-hash MXU. MXU uses the saved unique PC instance, direct game pre-action, owned root/agent completion and full native installation fingerprints",
+        "evidence_date": "2026-11-04",
       "evidence": [
         "docs/MAAGF2.md"
       ],
       "limitations": [
-        "v2.8.0 / MXU is unsupported, including mixed installations with stale MFA files. Unknown executable identity is blocked before legacy preset reads.",
-        "Native task failures remain failures; damaged critical callbacks remain unconfirmed. Offline guard verification does not establish current Windows game acceptance."
+          "MXU versions outside the exact GF2 v2.8.3/MXU v2.8.1 component set remain unsupported, including v2.8.0 and mixed installations with stale MFA files.",
+          "MXU special host actions and independent Web/global-hotkey/scheduled/automatic triggers must be disabled in the native assistant; no preset is edited automatically. Only direct assistant-start PC mode is covered.",
+          "Native task failures remain failures; damaged critical callbacks remain unconfirmed. Offline fixtures and read-only installed preparation do not establish Windows game, Job inheritance, normal exit or serial acceptance. The published v0.1.0 binary predates this MXU implementation."
       ]
     },
     {

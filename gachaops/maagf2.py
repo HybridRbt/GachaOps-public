@@ -98,8 +98,8 @@ def prepare(row):
         launcher_sha256 = hashlib.file_digest(stream, 'sha256').hexdigest()
     product = executable_product_name(exe)
     if product.casefold() == 'mxu':
-        raise ValueError('检测到 MXU 版少前2助手，当前 GachaOps 尚未支持。请暂时取消勾选此助手，'
-                         '其他助手可按原检查结果使用；重新检查不能完成版本适配。')
+        from . import maagf2_mxu
+        return maagf2_mxu.prepare(row, root=root, exe=exe, launcher_sha256=launcher_sha256)
     if product != 'MFAAvalonia':
         raise ValueError('少前2助手入口身份未经核验，请使用已核验的 MFAAvalonia 版本或取消勾选此助手。')
     core = root / 'libs/MFAAvalonia.Core.dll'

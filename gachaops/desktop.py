@@ -57,6 +57,8 @@ BLOCKER_TEXT = {
     'version_unsupported': '版本或启动协议尚未核验',
     'permission_or_desktop': '权限或桌面状态需要处理',
     'native_setup_required': '原助手安装或原生设置需要处理',
+    'maagf2_mxu_unsafe_native_action': '少前2预设含未核验的 MXU 特殊动作，请在原助手处理',
+    'maagf2_mxu_disable_external_triggers': '少前2的独立任务触发入口需要关闭',
     'maaend_disable_native_launch_task': '手动模式：请在 MaaEnd 当前实例中禁用内置“启动游戏（PC）”任务',
     'maaend_disable_launch_preactions': '手动模式：请在 MaaEnd 当前实例中禁用所有启动前动作，保留 Endfield.exe 路径记录',
     'native_command_protocol_unverified': '助手版本已变化，启动通信尚未核验；需要更新 GachaOps 的兼容支持，解除隔离不能解决此项。',
@@ -77,6 +79,8 @@ BLOCKER_TEXT = {
     'march7_complete_native_first_setup': '请先打开三月七原生 GUI 完成首次设置',
     'march7_info_logging_required': '请在三月七助手中启用 INFO 或 DEBUG 日志'}
 BLOCKER_SUGGESTIONS = {
+    'maagf2_mxu_unsafe_native_action': '在少前2原助手中关闭按名称结束进程、外部程序、关机等特殊任务，保存并退出后重新检查；GachaOps 不会代改预设。',
+    'maagf2_mxu_disable_external_triggers': '在少前2原助手中关闭定时策略、Web 控制、全局热键和独立自动运行，保存并退出后重新检查，由 GachaOps 统一开始。',
     'maaend_disable_launch_preactions': '打开 MaaEnd 的当前日常实例，关闭启动前动作后保存并退出助手；用原生启动器进入游戏，再重新检查。',
     'supervisor_elevation_required': '点击开始运行时在 UAC 弹窗确认；程序会以管理员身份重新打开。',
     'manual_game_requires_exactly_one_running_instance': '先手动进入游戏并只保留一个窗口，再点开始运行。',
@@ -1359,17 +1363,35 @@ def main():
             if len(spec.start_modes) > 1: form.addRow('游戏启动', mode)
             layout.addLayout(form)
             buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+            buttons.button(QDialogButtonBox.StandardButton.Save).setText('保存')
+            buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('取消')
             buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
-            if dialog.exec() != QDialog.DialogCode.Accepted: return
-            try:
-                fields = {field: editor.text().strip() for field, editor in editors.items() if editor.text().strip()}
-                fields['game_start'] = mode.currentData()
-                inspection = inspect_registration(row['adapter'], fields)
-                message = ('检查发现以下阻碍，将保存为禁用状态：\n' + '\n'.join(BLOCKER_TEXT.get(b, b) for b in inspection.blockers)
-                           if inspection.blockers else '路径检查完成，将保留组合顺序和选择；不会开始运行。')
-                if QMessageBox.question(self, '登记预览', message) != QMessageBox.StandardButton.Yes: return
-                self.commit_registration_inspection(identity, inspection)
-            except (OSError, ValueError, TypeError) as error: QMessageBox.warning(self, '登记需要处理', sanitize_detail(error))
+            while dialog.exec() == QDialog.DialogCode.Accepted:
+                if self.busy(): return
+                try:
+                    fields = {field: editor.text().strip() for field, editor in editors.items() if editor.text().strip()}
+                    fields['game_start'] = mode.currentData()
+                    inspection = inspect_registration(row['adapter'], fields)
+                except (OSError, ValueError, TypeError) as error:
+                    warning = QMessageBox(QMessageBox.Icon.Warning, '登记需要处理', sanitize_detail(error),
+                                          QMessageBox.StandardButton.NoButton, dialog)
+                    retry = warning.addButton('重新选择', QMessageBox.ButtonRole.ActionRole)
+                    cancel = warning.addButton('取消', QMessageBox.ButtonRole.RejectRole)
+                    warning.setDefaultButton(cancel); warning.setEscapeButton(cancel)
+                    warning.exec()
+                    if warning.clickedButton() is not retry or self.busy(): return
+                    editor = editors['installation_root']
+                    value = QFileDialog.getExistingDirectory(dialog, '选择助手目录', editor.text())
+                    if value: editor.setText(value)
+                    continue
+                try:
+                    message = ('检查发现以下阻碍，将保存为禁用状态：\n' + '\n'.join(BLOCKER_TEXT.get(b, b) for b in inspection.blockers)
+                               if inspection.blockers else '路径检查完成，将保留组合顺序和选择；不会开始运行。')
+                    if QMessageBox.question(self, '登记预览', message) != QMessageBox.StandardButton.Yes: return
+                    self.commit_registration_inspection(identity, inspection)
+                except (OSError, ValueError, TypeError) as error:
+                    QMessageBox.warning(self, '登记需要处理', sanitize_detail(error))
+                return
 
         def register_local_bettergi(self, identity):
             if self.recovery_locked(): return
@@ -1430,14 +1452,23 @@ def main():
             if self.busy(): return
             identity = self.profile_ids.get(self.profiles.currentData())
             if identity is None: raise ValueError('先保存或导入此组合')
-            self.profile_store.rename_profile(identity, name); self.reload_profiles(identity)
+            self.profile_store.rename_profile(identity, name)
+            # A name change must not reload the saved configuration over edits.
+            self.profile_names[self.profiles.currentData()] = name.strip()
+            self.profiles.setItemText(self.profiles.currentIndex(), name.strip())
+            self.sync_combo_label()
 
         def delete_current_profile(self):
             if self.recovery_locked(): return
             if self.busy(): return
             identity = self.profile_ids.get(self.profiles.currentData())
             if identity is None: raise ValueError('先保存或导入此组合')
-            self.profile_store.delete_profile(identity); self.reload_profiles()
+            result = self.profile_store.delete_profile(identity)
+            self.reload_profiles()
+            if not result['cleanup_complete']:
+                QMessageBox.warning(self, '组合文件未完全删除',
+                    '组合已从列表移除，但部分配置文件未能删除。请检查数据目录中的残留；这不是可恢复备份：\n'
+                    + result['residual_path'])
 
         def prompt_new_profile(self):
             if self.recovery_locked(): return
@@ -1450,7 +1481,11 @@ def main():
         def prompt_rename_profile(self):
             if self.recovery_locked(): return
             if self.busy(): return
-            name, accepted = QInputDialog.getText(self, '修改名称', '组合名称', text=self.profiles.currentText())
+            # The combo may show a transient edited-state label; prefill the
+            # stored name so accepting it unchanged keeps the profile's name.
+            name, accepted = QInputDialog.getText(
+                self, '修改名称', '组合名称',
+                text=self.profile_names.get(self.profiles.currentData(), self.profiles.currentText()))
             if accepted:
                 try: self.rename_profile_named(name)
                 except (OSError, ValueError) as error: QMessageBox.warning(self, '改名失败', str(error))
@@ -1458,7 +1493,13 @@ def main():
         def prompt_delete_profile(self):
             if self.recovery_locked(): return
             if self.busy(): return
-            if QMessageBox.question(self, '删除组合', '组合将移入备份；最后一个组合删除后会建立默认组合。') == QMessageBox.StandardButton.Yes:
+            name = self.profile_names.get(self.profiles.currentData(), self.profiles.currentText())
+            message = (f'永久删除组合“{name}”？此操作不可恢复，不会新增备份。\n'
+                       '仅删除此组合配置，不会删除助手或游戏；既有变更备份保留。\n'
+                       '最后一个组合删除后会建立默认组合。')
+            if QMessageBox.question(self, '删除组合', message,
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                   QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
                 try: self.delete_current_profile()
                 except (OSError, ValueError) as error: QMessageBox.warning(self, '删除失败', str(error))
 
@@ -1894,14 +1935,15 @@ def main():
                         except OSError:
                             pass
                     if 'previous execution has unverified cleanup; manual inspection required' in error:
-                        explanation = '上一轮清理未确认，当前轮未启动。需要核对上一轮进程与清理证据；不会自动解除隔离。'
+                        from .recovery_check import recovery_instructions
+                        explanation = recovery_instructions(self.workspace, NAMES)
                     else:
                         explanation = '当前轮未启动；不会自动重试。'
                     if not error:
                         explanation += '\n运行器未写入错误记录，无法确认具体原因。'
                     self.set_problems([{'name': '本轮', 'summary': '未能完成启动',
                                         'detail': explanation,
-                                        'cause_unknown': not error or 'previous execution has unverified cleanup; manual inspection required' in error,
+                                        'cause_unknown': not error,
                                         'error': ('运行器原始错误：\n' + error) if error else ''}])
             except (OSError, ValueError, KeyError):
                 self.set_problems([{'name': '本轮', 'summary': '结果无法读取',
