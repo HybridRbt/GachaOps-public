@@ -7,8 +7,10 @@ import unittest
 from unittest.mock import patch
 
 from gachaops import bettergi
-from gachaops.assistants import load_assistants, prepare_assistant, run_assistants
-from gachaops.desktop_model import register_bettergi
+from gachaops.assistants import prepare_assistant, run_assistants
+from gachaops.configuration import compose_configuration
+from gachaops.desktop_model import bettergi_inspection
+from gachaops.registry import RegistrationStore
 from gachaops.result_details import details_for
 from gachaops.ok_trial import run_prepared
 from gachaops.recovery import ExecutionSession
@@ -92,20 +94,30 @@ class BetterGITests(unittest.TestCase):
             (self.preset_path.parent / '同名.json').write_bytes(self.preset_path.read_bytes())
             with self.assertRaisesRegex(ValueError, 'duplicate'): self.prepare(row)
 
-    def test_registration_retains_other_rows_selection_and_order(self):
+    def test_registration_writes_global_library_only_and_compose_merges_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
-            row = self.install(Path(tmp))
-            data = {'schema_version': 1, 'assistants': [
-                {'id': 'other', 'adapter': 'ok-ww', 'installation_root': tmp, 'enabled': True},
-                dict(row, installation_root=None, entry_executable=None)]}
+            root = Path(tmp).resolve()
+            row = self.install(root)
+            store = RegistrationStore(root); store.create()
             with patch.object(bettergi, 'prepare', return_value=self.prepare(row)):
-                registered, _ = register_bettergi(data, 'genshin', row['entry_executable'])
-            self.assertEqual(registered['assistants'][0], data['assistants'][0])
-            self.assertEqual([r['id'] for r in registered['assistants']], ['other', 'genshin'])
-            self.assertFalse(registered['assistants'][1]['enabled'])
-            self.assertIsNone(data['assistants'][1]['installation_root'])
-            path = Path(tmp) / 'registration.json'; path.write_text(json.dumps(registered))
-            self.assertEqual(load_assistants(path), registered)
+                inspection = bettergi_inspection(row['entry_executable'])
+            self.assertEqual(inspection.blockers, ())
+            updated = store.commit('bettergi', inspection, store.read()['revision'])
+            self.assertEqual(updated['assistants']['bettergi'],
+                             {'installation_root': str(root), 'entry_executable': str(root / 'BetterGI.exe')})
+            # The library never touches profiles: run rows stay path-free and
+            # composition merges registration fields on demand.
+            profile = {'repeat_limit': 0, 'assistants': [
+                {'id': 'other', 'adapter': 'bettergi', 'enabled': False,
+                 'game_start': 'assistant', 'timeout_seconds': 1800},
+                {'id': 'genshin', 'adapter': 'bettergi', 'enabled': True,
+                 'game_start': 'assistant', 'timeout_seconds': 1800}]}
+            snapshot = compose_configuration(profile, updated)
+            self.assertEqual([r['id'] for r in snapshot['assistants']], ['other', 'genshin'])
+            self.assertEqual(snapshot['assistants'][1]['installation_root'], str(root))
+            self.assertEqual(snapshot['assistants'][1]['entry_executable'], str(root / 'BetterGI.exe'))
+            self.assertEqual(profile['assistants'][1], {'id': 'genshin', 'adapter': 'bettergi', 'enabled': True,
+                                                        'game_start': 'assistant', 'timeout_seconds': 1800})
 
     def test_end_and_exit_zero_alone_are_insufficient(self):
         events = self.fixture_events(None)

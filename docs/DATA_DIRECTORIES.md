@@ -6,6 +6,8 @@ Program resources and runtime data are separate. Source development defaults to 
 
 Data contains `config`, `state`, `runs` and `backups`. Default CLI output goes under that directory's `runs`. No real user data is migrated merely by opening the app. First-run profiles are handled separately from directory resolution.
 
+Configuration is split by ownership. `config/assistant-registry.json` is the global registration library (schema `assistant_registry` 1): one entry per adapter holding only that adapter's registration fields, shared by every profile in the data root. A missing library on a data root with profiles is a migration requirement, never a fact to overwrite; a corrupt library is an error and is never rebuilt. `config/profiles/<uuid>/` stores each profile as a schema 2 document (`name.json` + `config.json`) holding run settings only — selection, order, `enabled`, `game_start`, `timeout_seconds`, `repeat_limit`; registration paths are rejected on save. The GUI composes the worker snapshot from the current profile plus the registry at run/check time. Legacy schema 1 profile configs trigger a migration prompt at startup; migration/import transactions run through `config/registration-migration.json` with staged sources and targets plus `manifest.json` under `backups/registration-migrations/<uuid>/`, and registry commits back up the previous library to `backups/registry/`. Elevation hands the run draft to the replacement window via `runs/gui-setup-<uuid>/handoff.json` (run fields plus provenance only — never registration paths).
+
 To migrate, explicitly choose an existing source and a **new, nonexistent target outside source**:
 
 ```

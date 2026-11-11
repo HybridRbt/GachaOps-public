@@ -1,10 +1,9 @@
-"""Inspect local paths separately from committing a user's profile."""
-from copy import deepcopy
+"""Inspect local paths separately from committing the global registration."""
 from dataclasses import dataclass
 from pathlib import Path
 
 from .adapter_catalog import get_adapter
-from .assistants import prepare_assistant, validate_assistants
+from .assistants import prepare_assistant
 
 
 @dataclass(frozen=True)
@@ -15,11 +14,16 @@ class RegistrationInspection:
     observations: dict
 
 
-def inspect_registration(adapter_id, fields):
+def inspect_registration(adapter_id, fields, game_start=None):
+    """Validate one adapter's registration paths without writing anything.
+
+    game_start only participates in this inspection (adapter start modes); it
+    is a profile run setting and is never stored in the registration library.
+    """
     spec = get_adapter(adapter_id)
-    if not isinstance(fields, dict) or set(fields) - (set(spec.registration_fields) | {'game_start'}):
+    if not isinstance(fields, dict) or set(fields) - set(spec.registration_fields):
         raise ValueError('unknown registration field')
-    mode = fields.get('game_start', 'assistant')
+    mode = game_start if game_start is not None else 'assistant'
     if mode not in spec.start_modes:
         raise ValueError('unsupported game start mode')
     value = fields.get('installation_root')
@@ -29,8 +33,7 @@ def inspect_registration(adapter_id, fields):
     if root.is_symlink() or not root.is_dir():
         raise ValueError('助手未安装或目录不可访问')
     root = root.resolve(strict=True)
-    row = {'id': spec.game_id, 'adapter': adapter_id, 'installation_root': str(root),
-           'game_start': mode, 'enabled': False}
+    row = {'id': spec.game_id, 'adapter': adapter_id, 'installation_root': str(root)}
     for field in ('entry_executable', 'game_path'):
         value = fields.get(field)
         if value is None:
@@ -45,7 +48,7 @@ def inspect_registration(adapter_id, fields):
     if adapter_id == 'zzz-onedragon' and 'game_path' not in row:
         raise ValueError('绝区零需要登记游戏 EXE')
     try:
-        observed = prepare_assistant(row)
+        observed = prepare_assistant(dict(row, game_start=mode))
         blockers = tuple(observed.get('blockers', ()))
     except (OSError, ValueError, SyntaxError, KeyError, TypeError, StopIteration) as error:
         text = str(error)
@@ -54,23 +57,3 @@ def inspect_registration(adapter_id, fields):
         blockers = (category,)
         observed = {'error': text}
     return RegistrationInspection(row, blockers, tuple(observed.get('warnings', ())), observed)
-
-
-def commit_registration(profile, inspection, identity=None):
-    if not isinstance(inspection, RegistrationInspection):
-        raise ValueError('registration inspection required')
-    row = deepcopy(inspection.candidate_row)
-    spec = get_adapter(row['adapter'])
-    if row.get('game_start', 'assistant') not in spec.start_modes:
-        raise ValueError('unsupported game start mode')
-    result = deepcopy(profile)
-    targets = [r for r in result['assistants'] if r['adapter'] == spec.adapter_id
-               and (identity is None or r['id'] == identity)]
-    if len(targets) != 1:
-        raise ValueError('registration target is missing or ambiguous')
-    old = targets[0]
-    enabled = old.get('enabled', True) if not inspection.blockers else False
-    timeout = old.get('timeout_seconds', 1800)
-    old.update(row, id=old['id'], enabled=enabled, timeout_seconds=timeout)
-    validate_assistants(result)
-    return result

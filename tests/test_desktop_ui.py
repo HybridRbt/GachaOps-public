@@ -10,6 +10,17 @@ import unittest
 from unittest.mock import patch
 
 
+def write_registry(root, adapters):
+    """Pre-seed a valid global registration library under a test data root."""
+    from gachaops.registry import empty_registry
+    document = empty_registry()
+    document['assistants'].update(adapters)
+    path = root / 'config' / 'assistant-registry.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding='utf-8')
+    return document
+
+
 @unittest.skipUnless(importlib.util.find_spec('PySide6'), 'optional desktop dependencies unavailable')
 class DesktopUiTests(unittest.TestCase):
     def setUp(self):
@@ -130,7 +141,7 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()
 
-    def test_each_catalog_adapter_has_registration_and_blocked_candidate_stays_disabled(self):
+    def test_each_catalog_adapter_has_registration_and_blocked_registration_never_disables(self):
         from PySide6.QtWidgets import QApplication, QPushButton, QDialog, QLineEdit
         from gachaops import desktop
         from gachaops.registration import RegistrationInspection
@@ -147,16 +158,25 @@ class DesktopUiTests(unittest.TestCase):
                         for field in get_adapter(row['adapter']).registration_fields:
                             self.assertIsNotNone(dialog.findChild(QLineEdit, field))
                         return QDialog.DialogCode.Rejected
-                    before = Path(window.profiles.currentData()).read_bytes()
                     with patch.object(QDialog, 'exec', cancel): window.register_assistant(row['id'])
-                    self.assertEqual(Path(window.profiles.currentData()).read_bytes(), before)
+                self.assertEqual(window.registry['assistants'], {})  # every dialog was cancelled
                 row = window.data['assistants'][0]
+                window.set_selected(row['id'], True)
                 inspection = RegistrationInspection(dict(row, installation_root=str(root)),
                     ('version_unsupported',), (), {})
-                window.commit_registration_inspection(row['id'], inspection)
-                self.assertFalse(window.data['assistants'][0]['enabled'])
+                profile_path = Path(window.profiles.currentData())
+                before = profile_path.read_bytes()
+                window.commit_registration_inspection(inspection)
+                self.assertEqual(window.registry['revision'], 2)
+                self.assertEqual(window.registry['assistants']['ok-ww'], {'installation_root': str(root)})
+                on_disk = json.loads((root / 'config' / 'assistant-registry.json').read_text(encoding='utf-8-sig'))
+                self.assertEqual(on_disk['assistants']['ok-ww'], {'installation_root': str(root)})
+                # A blocked inspection still registers; it never disables the row
+                # and never writes any profile.
+                self.assertTrue(window.data['assistants'][0]['enabled'])
+                self.assertEqual(profile_path.read_bytes(), before)
                 self.assertIsNone(window.process)
-                self.assertEqual(window.profile_store.load_profile(window.profile_ids[window.profiles.currentData()]), window.data)
+                window.recheck_timer.stop()
                 window.close()
             with patch.object(desktop, 'workspace_root', return_value=root), \
                  patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
@@ -170,7 +190,6 @@ class DesktopUiTests(unittest.TestCase):
         from PySide6.QtCore import QProcess
         from PySide6.QtWidgets import QApplication, QComboBox
         from gachaops import desktop
-        from gachaops.assistants import load_assistants
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve(); path = root / 'fixture.json'
             adapters = [('wuthering-waves', 'ok-ww'), ('endfield', 'maa-end'),
@@ -180,6 +199,9 @@ class DesktopUiTests(unittest.TestCase):
                     for identity, adapter in adapters]
             rows[2]['game_path'] = str(root / 'game.exe')
             path.write_text(json.dumps(dict(schema_version=1, assistants=rows)), encoding='utf-8')
+            # The manual-start combo belongs to registered manual-capable adapters.
+            write_registry(root, {'ok-ww': {'installation_root': str(root)},
+                                  'maa-end': {'installation_root': str(root)}})
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
                 controls = {}
@@ -198,7 +220,8 @@ class DesktopUiTests(unittest.TestCase):
                 combo.setCurrentIndex(combo.findData('manual'))
                 self.assertEqual(window.selection()['assistants'][0]['game_start'], 'manual')
                 window.save_selection()
-                saved = load_assistants(Path(window.profiles.currentData()))
+                saved = json.loads(Path(window.profiles.currentData()).read_text(encoding='utf-8-sig'))
+                self.assertEqual(saved['schema_version'], 2)
                 self.assertEqual(saved['assistants'][0]['game_start'], 'manual')
                 # Unsupported adapters cannot be changed through the handler either.
                 window.commit_game_start('nte', combo)
@@ -211,6 +234,7 @@ class DesktopUiTests(unittest.TestCase):
                     combo.setCurrentIndex(combo.findData('assistant'))
                     self.assertEqual(window.data['assistants'][0]['game_start'], 'manual')
                 for cell, _ in controls.values(): cell.deleteLater()
+                window.recheck_timer.stop()
                 window.close()
             with patch.object(desktop, 'workspace_root', return_value=root), \
                  patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
@@ -230,6 +254,7 @@ class DesktopUiTests(unittest.TestCase):
             root = Path(directory).resolve(); path = root / 'fixture.json'
             path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
                 id='endfield', adapter='maa-end', installation_root=str(root), enabled=True)])))
+            write_registry(root, {'maa-end': {'installation_root': str(root)}})
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
                 combo = window.findChild(QComboBox, 'gameStartInput')
@@ -237,13 +262,14 @@ class DesktopUiTests(unittest.TestCase):
                 combo.setCurrentIndex(combo.findData('manual'))
                 self.assertEqual(window.selection()['assistants'][0]['game_start'], 'manual')
                 window.save_selection()
-                saved = json.loads((Path(window.profiles.currentData())).read_text(encoding='utf-8'))
+                saved = json.loads((Path(window.profiles.currentData())).read_text(encoding='utf-8-sig'))
+                self.assertEqual(saved['schema_version'], 2)
                 self.assertEqual(saved['assistants'][0]['game_start'], 'manual')
                 with patch.object(window, 'running', return_value=True):
                     cell = window.game_start_cell(window.data['assistants'][0], False, '')
                     self.assertIsNone(cell.findChild(QComboBox))
                     cell.deleteLater()
-                window.close()
+                window.recheck_timer.stop(); window.close()
             with patch.object(desktop, 'workspace_root', return_value=root), \
                  patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
                  patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
@@ -344,13 +370,18 @@ class DesktopUiTests(unittest.TestCase):
                 with patch.object(ctypes.windll.shell32, 'ShellExecuteW', approve):
                     window.begin_run()
                 self.assertEqual([verb for verb, _ in launches], ['runas'])
-                self.assertIn('--config', launches[0][1])
+                self.assertIn('--handoff', launches[0][1])
                 self.assertIn('--data-root', launches[0][1])
-                snapshots = list((root / 'runs').glob('gui-setup-*/assistants.json'))
-                self.assertEqual(len(snapshots), 2)  # cancelled attempt + approved relaunch
+                handoffs = list((root / 'runs').glob('gui-setup-*/handoff.json'))
+                self.assertEqual(len(handoffs), 2)  # cancelled attempt + approved relaunch
+                for handoff in handoffs:
+                    document = json.loads(handoff.read_text(encoding='utf-8-sig'))
+                    self.assertEqual(document['kind'], 'desktop_handoff')
+                    self.assertEqual(document['draft']['assistants'][0]['adapter'], 'ok-ww')
+                    self.assertNotIn('installation_root', document['draft']['assistants'][0])
                 self.assertFalse(window.isVisible())
                 # Recovery without elevation reuses the same one-key relaunch;
-                # the recovering branch passes --recover and needs no preset
+                # the recovering branch passes --recover and needs no handoff
                 # snapshot (also with an unreadable preset, as on main).
                 with patch.object(window, 'needs_recovery', return_value=True), \
                      patch.object(ctypes.windll.shell32, 'ShellExecuteW', approve):
@@ -358,8 +389,9 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual([verb for verb, _ in launches], ['runas', 'runas'])
                 self.assertIn('--recover', launches[1][1])
                 self.assertNotIn('--config', launches[1][1])
+                self.assertNotIn('--handoff', launches[1][1])
                 self.assertIn('--data-root', launches[1][1])
-                self.assertEqual(list((root / 'runs').glob('gui-setup-*/assistants.json')), snapshots)
+                self.assertEqual(list((root / 'runs').glob('gui-setup-*/handoff.json')), handoffs)
                 self.assertFalse(window.isVisible())
             with patch.object(desktop, 'workspace_root', return_value=root), \
                  patch.object(desktop, 'elevation_report', return_value={'elevated': False}), \
@@ -378,12 +410,13 @@ class DesktopUiTests(unittest.TestCase):
             root = Path(directory).resolve(); path = root / 'fixture.json'
             path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
                 id='one', adapter='ok-ww', installation_root=str(root), enabled=True)])), encoding='utf-8')
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
                 self.assertEqual(window.repeat_input.value(), 0)
                 window.repeat_input.setValue(2)
                 window.save_selection()
-                saved = json.loads((Path(window.profiles.currentData())).read_text(encoding='utf-8'))
+                saved = json.loads((Path(window.profiles.currentData())).read_text(encoding='utf-8-sig'))
                 self.assertEqual(saved['repeat_limit'], 2)
                 window.begin('run-assistants')
                 self.assertEqual(window.data['repeat_limit'], 2)
@@ -470,6 +503,7 @@ class DesktopUiTests(unittest.TestCase):
             rows = [dict(id=f'fixture-{i}', adapter='ok-ww', installation_root=str(root),
                          enabled=True, timeout_seconds=1800) for i in range(7)]
             path.write_text(json.dumps(dict(schema_version=1, assistants=rows)), encoding='utf-8')
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
                 for i in range(7):
@@ -484,7 +518,7 @@ class DesktopUiTests(unittest.TestCase):
                 value = window.table.cellWidget(0, 3).findChild(QLineEdit)
                 value.setText('45')  # Save commits a still-active editor too.
                 window.save_selection()
-                saved = json.loads((Path(window.profiles.currentData())).read_text(encoding='utf-8'))
+                saved = json.loads((Path(window.profiles.currentData())).read_text(encoding='utf-8-sig'))
                 self.assertEqual(saved['assistants'][0]['timeout_seconds'], 2700)
                 window.load_profile()
                 # Reload the saved combination rather than the original fixture.
@@ -573,10 +607,9 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()
 
-    def test_bettergi_registration_link_saves_paths_without_launch_or_selection_changes(self):
+    def test_bettergi_registration_link_saves_registry_without_launch_or_selection_changes(self):
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         from PySide6.QtCore import QProcess
-        from PySide6.QtGui import QDesktopServices
         from PySide6.QtWidgets import QApplication, QCheckBox, QFileDialog, QMessageBox, QPushButton
         from gachaops import desktop
         with tempfile.TemporaryDirectory() as directory:
@@ -584,32 +617,38 @@ class DesktopUiTests(unittest.TestCase):
             rows = [dict(id='wuthering-waves', adapter='ok-ww', installation_root=str(root), enabled=True),
                     dict(id='genshin', adapter='bettergi', installation_root=None, enabled=False)]
             path.write_text(json.dumps(dict(schema_version=1, assistants=rows)), encoding='utf-8')
-            registered = dict(schema_version=1, assistants=[rows[0], dict(rows[1], installation_root=str(root),
-                              entry_executable=str(root / 'BetterGI.exe'), game_start='assistant')])
-            prepared = {'runner_version': '0.66.0.0', 'instance_name': '默认配置',
-                        'game_path': str(root / 'GenshinImpact.exe'), 'blockers': []}
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
+            executable = root / 'BetterGI.exe'; executable.touch()
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop(); window.set_view('all')
-                cell = window.table.cellWidget(1, 0)
-                self.assertFalse(cell.findChild(QCheckBox).isEnabled())
+                registry_path = root / 'config' / 'assistant-registry.json'
+                default_profile = window.profiles.itemData(0)
+                profile_before = Path(default_profile).read_bytes()
+                # An unregistered row stays selectable; nothing disables it.
+                self.assertTrue(window.table.cellWidget(1, 0).findChild(QCheckBox).isEnabled())
                 link = window.table.cellWidget(1, 2).findChild(QPushButton)
                 self.assertEqual(link.text(), '去接入 →')
-                with patch.object(QFileDialog, 'getOpenFileName', return_value=(str(root / 'BetterGI.exe'), '')), \
-                     patch.object(desktop, 'register_bettergi', return_value=(registered, prepared)), \
-                     patch.object(QMessageBox, 'information') as info, \
-                     patch.object(QDesktopServices, 'openUrl') as opened:
+                with patch.object(QFileDialog, 'getOpenFileName', return_value=(str(executable), '')), \
+                     patch('gachaops.registration.prepare_assistant', return_value={'blockers': []}), \
+                     patch.object(QMessageBox, 'information') as info:
                     link.click()
-                    self.assertTrue(info.called); opened.assert_not_called()
-                saved = json.loads((Path(window.profiles.currentData())).read_text(encoding='utf-8'))
-                self.assertEqual(saved, registered)
+                    self.assertTrue(info.called)
+                    self.assertIn('全局登记', info.call_args.args[2])
+                on_disk = json.loads(registry_path.read_text(encoding='utf-8-sig'))
+                self.assertEqual(on_disk['revision'], 2)
+                self.assertEqual(on_disk['assistants']['bettergi'],
+                                 {'installation_root': str(root), 'entry_executable': str(executable.resolve())})
+                self.assertEqual(on_disk['assistants']['ok-ww'], {'installation_root': str(root)})
+                # Registration touches neither the profile nor the selection.
+                self.assertEqual(Path(default_profile).read_bytes(), profile_before)
                 self.assertEqual(window.selected_ids, ['wuthering-waves'])
-                self.assertEqual(Path(window.profiles.currentData()).name, 'config.json')
+                self.assertIsNone(window.process)
                 window.set_view('all')
                 self.assertTrue(window.table.cellWidget(1, 0).findChild(QCheckBox).isEnabled())
                 self.assertEqual(window.table.cellWidget(1, 2).findChild(QPushButton).text(), '设置接入')
                 with patch.object(QFileDialog, 'getOpenFileName', return_value=('', '')):
                     window.register_local_bettergi('genshin')
-                self.assertEqual(json.loads((Path(window.profiles.currentData())).read_text(encoding='utf-8')), saved)
+                self.assertEqual(json.loads(registry_path.read_text(encoding='utf-8-sig')), on_disk)
                 window.recheck_timer.stop(); window.close()
             with patch.object(desktop, 'workspace_root', return_value=root), \
                  patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
@@ -697,6 +736,9 @@ class DesktopUiTests(unittest.TestCase):
                     dict(id='zenless-zone-zero', adapter='zzz-onedragon', installation_root=str(root),
                          game_path=str(root / 'fixture-game.exe'), enabled=False, game_start='assistant')]
             path.write_text(json.dumps(dict(schema_version=1, assistants=rows)), encoding='utf-8')
+            write_registry(root, {'ok-ww': {'installation_root': str(root)},
+                                  'zzz-onedragon': {'installation_root': str(root),
+                                                    'game_path': str(root / 'fixture-game.exe')}})
 
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
@@ -1168,6 +1210,11 @@ class DesktopUiTests(unittest.TestCase):
                     row['game_path'] = str(root / 'fixture-game.exe')
                 rows.append(row)
             path.write_text(json.dumps(dict(schema_version=1, assistants=rows)), encoding='utf-8')
+            write_registry(root, {adapter: ({'installation_root': str(root),
+                                             'game_path': str(root / 'fixture-game.exe')}
+                                            if adapter == 'zzz-onedragon'
+                                            else {'installation_root': str(root)})
+                                  for _, adapter in entries})
 
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
@@ -1226,6 +1273,9 @@ class DesktopUiTests(unittest.TestCase):
                     dict(id='zenless-zone-zero', adapter='zzz-onedragon', installation_root=str(root),
                          game_path=str(root / 'fixture-game.exe'), enabled=True, game_start='assistant')]
             path.write_text(json.dumps(dict(schema_version=1, assistants=rows)), encoding='utf-8')
+            write_registry(root, {'ok-ww': {'installation_root': str(root)},
+                                  'zzz-onedragon': {'installation_root': str(root),
+                                                    'game_path': str(root / 'fixture-game.exe')}})
 
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()

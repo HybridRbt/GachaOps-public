@@ -17,13 +17,12 @@ class RecoveryRequired(RuntimeError):
     pass
 
 
-def save(path, data):
+def save_bytes(path, payload):
     path = Path(path)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     try:
-        with temporary.open("x", encoding="utf-8") as stream:
-            json.dump(data, stream, ensure_ascii=False, indent=2)
-            stream.write("\n")
+        with temporary.open("xb") as stream:
+            stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
         # Windows readers (including sync/indexing software) may briefly hold
@@ -45,6 +44,10 @@ def save(path, data):
                 os.close(directory)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def save(path, data):
+    save_bytes(path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
 
 def read_state(directory):

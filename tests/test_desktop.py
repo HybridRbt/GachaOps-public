@@ -19,20 +19,89 @@ from gachaops.ok_adapter import runner_environment
 
 
 class DesktopTests(unittest.TestCase):
-    def test_selection_is_a_snapshot_and_pending_cannot_be_enabled(self):
+    def test_selection_is_a_snapshot_and_unregistered_rows_stay_selectable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            data = {'schema_version': 1, 'assistants': [
-                {'id': 'first', 'adapter': 'ok-ww', 'installation_root': str(root), 'enabled': True},
-                {'id': 'second', 'adapter': 'ok-ww', 'installation_root': str(root), 'enabled': False},
-                {'id': 'pending', 'adapter': 'bettergi', 'installation_root': None, 'enabled': False}]}
+            data = {'repeat_limit': 0, 'assistants': [
+                {'id': 'first', 'adapter': 'ok-ww', 'enabled': True, 'game_start': 'assistant',
+                 'timeout_seconds': 1800},
+                {'id': 'second', 'adapter': 'ok-ww', 'enabled': False, 'game_start': 'manual',
+                 'timeout_seconds': 900},
+                {'id': 'pending', 'adapter': 'bettergi', 'enabled': False, 'game_start': 'assistant',
+                 'timeout_seconds': 1800}]}
             snapshot = selected_configuration(data, ['second', 'first', 'pending'], ['second'])
             self.assertEqual([r['id'] for r in snapshot['assistants']], ['second', 'first', 'pending'])
+            self.assertTrue(snapshot['assistants'][0]['enabled'])   # second, selected
+            self.assertFalse(snapshot['assistants'][1]['enabled'])  # first, unselected
             self.assertEqual([r['id'] for r in data['assistants']], ['first', 'second', 'pending'])
             self.assertTrue(data['assistants'][0]['enabled'])
-            self.assertEqual(save_configuration(root / 'gui/config.json', snapshot), snapshot)
+            # Selecting an unregistered row is a valid profile state; only the
+            # composed worker snapshot blocks it.
+            selected_configuration(data, ['first', 'second', 'pending'], ['first', 'pending'])
             with self.assertRaises(ValueError): selected_configuration(data, ['first', 'first', 'pending'], [])
-            with self.assertRaises(ValueError): selected_configuration(data, ['first', 'second', 'pending'], ['pending'])
+            with self.assertRaises(ValueError): selected_configuration(data, ['first', 'second'], ['first'])
+            with self.assertRaises(ValueError):
+                selected_configuration(dict(data, assistants=[dict(data['assistants'][0],
+                                                                   installation_root='C:/x')]),
+                                       ['first'], ['first'])
+
+    def test_compose_snapshot_blocks_selected_unregistered_only(self):
+        from gachaops.desktop_model import compose_snapshot
+        from gachaops.profiles import default_profile
+        with tempfile.TemporaryDirectory() as directory:
+            registry = {'schema_version': 1, 'kind': 'assistant_registry', 'revision': 2,
+                        'assistants': {'ok-ww': {'installation_root': str(Path(directory))}}}
+            data = default_profile()
+            rows = {row['adapter']: row for row in data['assistants']}
+            rows['ok-ww']['enabled'] = True
+            rows['bettergi']['enabled'] = False  # unselected: must not block
+            snapshot = compose_snapshot(data, registry)
+            self.assertEqual(snapshot['schema_version'], 1)
+            merged = {row['adapter']: row for row in snapshot['assistants']}
+            self.assertEqual(merged['ok-ww']['installation_root'], str(Path(directory)))
+            rows['bettergi']['enabled'] = True
+            with self.assertRaises(ValueError) as caught:
+                compose_snapshot(data, registry)
+            self.assertIn('genshin', str(caught.exception))
+
+    def test_handoff_round_trip_and_rejects_invalid_provenance(self):
+        from gachaops.desktop_model import read_handoff, write_handoff
+        from gachaops.profiles import default_profile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            draft = default_profile()
+            draft['assistants'][0]['enabled'] = True
+            path = root / 'runs/gui-setup-x/handoff.json'
+            document = write_handoff(path, '11111111-1111-4111-8111-111111111111', 4, 7, draft)
+            self.assertEqual(read_handoff(path), document)
+            smuggled = dict(draft, assistants=[dict(draft['assistants'][0],
+                                                    installation_root='C:/Assistants/ok')])
+            for source_id, source_revision, registry_revision, bad_draft in (
+                    ('not-a-uuid', None, 1, draft), ('11111111-1111-4111-8111-111111111111', 0, 1, draft),
+                    ('11111111-1111-4111-8111-111111111111', None, 0, draft),
+                    (None, None, 1, smuggled)):
+                with self.subTest(source=source_id, revision=source_revision), self.assertRaises(ValueError):
+                    write_handoff(root / 'runs/bad/handoff.json', source_id, source_revision,
+                                  registry_revision, bad_draft)
+            (root / 'tampered.json').write_text(json.dumps(
+                dict(document, extra=1), ensure_ascii=False), encoding='utf-8')
+            with self.assertRaises(ValueError): read_handoff(root / 'tampered.json')
+            (root / 'schema1.json').write_text(json.dumps(
+                {'schema_version': 1, 'assistants': []}), encoding='utf-8')
+            with self.assertRaises(ValueError): read_handoff(root / 'schema1.json')
+
+    def test_bettergi_inspection_validates_entry_point_only(self):
+        from gachaops.desktop_model import bettergi_inspection
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / 'BetterGI.exe'; executable.touch()
+            with patch('gachaops.registration.prepare_assistant', return_value={'blockers': []}):
+                inspection = bettergi_inspection(executable)
+            self.assertEqual(inspection.candidate_row['adapter'], 'bettergi')
+            self.assertEqual(inspection.candidate_row['entry_executable'], str(executable.resolve()))
+            other = root / 'Other.exe'; other.touch()
+            with self.assertRaises(ValueError): bettergi_inspection(other)
+            with self.assertRaises(ValueError): bettergi_inspection(root / 'missing.exe')
 
     def test_packaged_paths_preserve_legacy_journal_and_unbound_copy_uses_local_data(self):
         with tempfile.TemporaryDirectory() as directory:

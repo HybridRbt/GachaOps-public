@@ -12,16 +12,25 @@ import traceback
 import uuid
 
 from .app_paths import workspace_root
-from .desktop_model import NAMES, STATUS, selected_configuration, save_configuration, worker_command, elevation_command, register_bettergi, desktop_command
-from .assistants import load_assistants, PENDING_ADAPTERS
+from .desktop_model import (NAMES, STATUS, selected_configuration, save_configuration, worker_command,
+                            elevation_command, bettergi_inspection, compose_snapshot, write_handoff,
+                            read_handoff, desktop_command)
+from .assistants import load_assistants
 from .windows_observation import elevation_report
 from .result_details import details_for
 from .recovery import read_state, RecoveryRequired
-from .profiles import ProfileStore
+from .profiles import ProfileStore, file_digest, run_content
+from .registry import RegistrationStore, RevisionConflict
+from .planner import ConfigError
+from .config_lock import config_lock
+from .registration_migration import (startup_state, initialize_fresh, preview_registration_migration,
+                                     commit_registration_migration, pending_transaction,
+                                     continue_registration_transaction, preview_registration_import,
+                                     commit_registration_import)
 
 # These adapters implement manual preflight, borrowed game identity and cleanup.
 from .adapter_catalog import list_adapters, get_adapter
-from .registration import inspect_registration, commit_registration
+from .registration import inspect_registration
 
 MANUAL_START_ADAPTERS = frozenset(s.adapter_id for s in list_adapters() if 'manual' in s.start_modes)
 
@@ -54,6 +63,7 @@ ICON_DIR = Path(__file__).parent / 'assets' / 'icons'
 SUBTITLE_IDLE = '选好助手，一次开始。任务沿用各助手中已保存的设置。'
 SUBTITLE_RUNNING = '运行中，配置已锁定。可随时停止并清理。'
 BLOCKER_TEXT = {
+    'not_registered': '尚未接入（无全局登记路径）',
     'version_unsupported': '版本或启动协议尚未核验',
     'permission_or_desktop': '权限或桌面状态需要处理',
     'native_setup_required': '原助手安装或原生设置需要处理',
@@ -77,6 +87,7 @@ BLOCKER_TEXT = {
     'march7_complete_native_first_setup': '请先打开三月七原生 GUI 完成首次设置',
     'march7_info_logging_required': '请在三月七助手中启用 INFO 或 DEBUG 日志'}
 BLOCKER_SUGGESTIONS = {
+    'not_registered': '点击“去接入”登记安装路径；此接入设置对所有组合生效。',
     'maaend_disable_launch_preactions': '打开 MaaEnd 的当前日常实例，关闭启动前动作后保存并退出助手；用原生启动器进入游戏，再重新检查。',
     'supervisor_elevation_required': '点击开始运行时在 UAC 弹窗确认；程序会以管理员身份重新打开。',
     'manual_game_requires_exactly_one_running_instance': '先手动进入游戏并只保留一个窗口，再点开始运行。',
@@ -450,8 +461,16 @@ def main():
             self.workspace = (workspace_root(sys.argv[sys.argv.index('--data-root') + 1])
                               if '--data-root' in sys.argv else workspace_root())
             self.profile_store = ProfileStore(self.workspace)
+            self.registry_store = RegistrationStore(self.workspace)
+            self.registry = None
             self.profile_ids = {}
             self.profile_names = {}
+            self.draft_path = None
+            self.draft_data = None
+            self.draft_source = None
+            self.pending_draft = None
+            self.profile_revision = None
+            self.profile_digest = None
             self.data = None
             self.process = None
             self.session = None
@@ -484,15 +503,6 @@ def main():
             profiles.addWidget(QLabel('运行组合'))
             self.profiles = QComboBox(); self.profiles.setMinimumWidth(280); self.profiles.setSizeAdjustPolicy(
                 QComboBox.SizeAdjustPolicy.AdjustToContents)
-            if '--config' not in sys.argv:
-                for profile in self.profile_store.list_profiles():
-                    self.profiles.addItem(profile['name'], profile['path'])
-                    self.profile_ids[profile['path']] = profile['id']
-                    self.profile_names[profile['path']] = profile['name']
-            if '--config' in sys.argv:
-                path = sys.argv[sys.argv.index('--config') + 1]
-                self.profiles.addItem('已选择的组合', path)
-                self.profiles.setCurrentIndex(self.profiles.count() - 1)
             profiles.addWidget(self.profiles, 1)
             self.choose = QPushButton('导入'); self.choose.clicked.connect(self.browse)
             self.save_button = QPushButton('保存组合'); self.save_button.clicked.connect(self.save_selection)
@@ -634,13 +644,220 @@ def main():
             self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(500)
             self.recheck_timer = QTimer(self); self.recheck_timer.setSingleShot(True)
             self.recheck_timer.timeout.connect(self.auto_recheck)
-            if self.profiles.count(): self.load_profile()
+            self._startup_gate()
+            if self.pending_draft is not None and self.profiles.count():
+                draft, self.pending_draft = self.pending_draft, None
+                self.load_profile()
+                self._apply_draft(draft)
+            elif self.profiles.count():
+                self.load_profile()
             else:
                 self.hint.setText('请打开已有助手配置'); self.start.setEnabled(False)
                 self.choose.setEnabled(False); self.save_button.setEnabled(False)
                 self.recheck.setEnabled(False)
             self.refresh_controls()
             self.refresh_run_card()
+
+        # ---------- startup gate ----------
+
+        def _startup_gate(self):
+            """Pending transaction → continue; legacy profiles → migration; fresh → init."""
+            state = startup_state(self.workspace)
+            if state['status'] == 'prepared':
+                if not self._continue_transaction_flow(state['transaction']):
+                    raise SystemExit(0)
+                state = startup_state(self.workspace)
+            if state['status'] == 'migration_required':
+                if not self._migration_flow():
+                    raise SystemExit(0)
+                state = startup_state(self.workspace)
+            if state['status'] == 'fresh':
+                self.registry = initialize_fresh(self.workspace)
+            elif state['status'] == 'ready':
+                with config_lock(self.workspace):
+                    self.registry = self.registry_store.read_required()
+            # Populate with signals blocked: the first addItem would otherwise
+            # fire load_profile before the id map exists.
+            self.profiles.blockSignals(True)
+            for profile in self.profile_store.list_profiles():
+                self.profiles.addItem(profile['name'], profile['path'])
+                self.profile_ids[profile['path']] = profile['id']
+                self.profile_names[profile['path']] = profile['name']
+            self.profiles.blockSignals(False)
+            self._load_argument_draft()
+
+        def _continue_transaction_flow(self, kind):
+            title = '继续迁移' if kind == 'migration' else '继续导入'
+            question = ('上次迁移在发布前中断，原文件与备份完整保留。选择“Yes”将在锁定状态下核对备份并完成发布；已发布的文件不会重复写入。'
+                        if kind == 'migration' else
+                        '上次导入在发布前中断，原登记与备份完整保留。选择“Yes”将在锁定状态下核对备份并完成发布。')
+            if QMessageBox.question(self, title, question + '\n\n选择“No”退出程序；文件保持现状。') != QMessageBox.StandardButton.Yes:
+                return False
+            try:
+                continue_registration_transaction(self.workspace)
+                return True
+            except (OSError, ValueError) as error:
+                QMessageBox.critical(self, title + '未完成', str(error) + '\n原文件与备份已保留，不会覆盖外部改动。')
+                return False
+
+        def _migration_flow(self):
+            try:
+                preview = preview_registration_migration(self.workspace)
+            except (OSError, ValueError) as error:
+                QMessageBox.critical(self, '无法准备迁移', str(error) + '\n原文件保持可用；请处理后再启动。')
+                return False
+            choices = self._migration_dialog(preview)
+            if choices is None:
+                return False
+            try:
+                commit_registration_migration(self.workspace, preview, choices)
+                return True
+            except (OSError, ValueError) as error:
+                QMessageBox.critical(self, '迁移未完成', str(error) + '\n未做任何部分发布；可重新预览或取消退出。')
+                return False
+
+        def _candidate_label(self, candidate):
+            source = '、'.join(candidate['sources'])
+            fields = candidate['fields']
+            text = fields.get('installation_root', '')
+            if fields.get('entry_executable'):
+                text += f' · 入口 {fields["entry_executable"]}'
+            if fields.get('game_path'):
+                text += f' · 游戏 {fields["game_path"]}'
+            return f'{source}：{text}'
+
+        def _migration_dialog(self, preview):
+            conflicts = [entry for entry in preview['adapters'] if entry['conflict']]
+            singles = [entry for entry in preview['adapters'] if not entry['conflict']]
+            dialog = QDialog(self); dialog.setWindowTitle('助手全局登记迁移')
+            dialog.setMinimumWidth(680)
+            layout = QVBoxLayout(dialog)
+            intro = QLabel('检测到旧版组合配置。迁移会把接入路径集中到全局登记（此接入设置对所有组合生效），'
+                           '组合只保留运行选择与运行设置；原文件将完整备份，可随时取消。')
+            intro.setWordWrap(True)
+            layout.addWidget(intro)
+            if singles:
+                summary = QLabel('唯一候选（自动采用）：'
+                                 + '；'.join(f'{e["display_name"]} ← {self._candidate_label(e["candidates"][0])}'
+                                             for e in singles))
+                summary.setWordWrap(True)
+                layout.addWidget(summary)
+            combos = {}
+            for entry in conflicts:
+                head = QLabel(f'{entry["display_name"]}：发现多个不同接入路径，请选择一个完整候选（不能跨候选拼接字段）：')
+                head.setWordWrap(True)
+                layout.addWidget(head)
+                box = QComboBox(); box.addItem('请选择…', None)
+                for index, candidate in enumerate(entry['candidates']):
+                    box.addItem(self._candidate_label(candidate), index)
+                box.addItem('稍后重新接入（不生成该助手登记，组合选择保留）', 'later')
+                combos[entry['adapter']] = box
+                layout.addWidget(box)
+            note = QLabel('迁移前请关闭其他 GachaOps 窗口；旧版本程序不识别新配置。')
+            note.setStyleSheet('color: #64748b;')
+            layout.addWidget(note)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons.button(QDialogButtonBox.StandardButton.Ok).setText('确认迁移')
+            buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('取消并退出')
+            buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            choices = {}
+            for adapter_id, box in combos.items():
+                value = box.currentData()
+                if value == 'later':
+                    choices[adapter_id] = None
+                elif value is None:
+                    QMessageBox.warning(self, '迁移需要选择',
+                                        '存在未选择的冲突候选；所有冲突都需要选择后才能迁移。')
+                    return self._migration_dialog(preview)
+                else:
+                    choices[adapter_id] = value
+            return choices
+
+        def _load_argument_draft(self):
+            """--handoff elevation draft, or a legacy/external --config draft."""
+            if '--handoff' in sys.argv:
+                try:
+                    document = read_handoff(sys.argv[sys.argv.index('--handoff') + 1])
+                except (OSError, ValueError) as error:
+                    QMessageBox.critical(self, '提权交接无效', str(error))
+                    raise SystemExit(2) from None
+                source_id = document['source_profile_id']
+                if source_id is not None:
+                    self.draft_source = (source_id, document['source_profile_revision'])
+                if source_id is not None and source_id in self.profile_ids.values():
+                    path = next(path for path, identity in self.profile_ids.items() if identity == source_id)
+                    self.profiles.setCurrentIndex(self.profiles.findData(path))
+                    self.pending_draft = document['draft']
+                else:
+                    # Source deleted or never existed: the draft becomes a
+                    # standalone entry saved into a new profile.
+                    self.draft_path = sys.argv[sys.argv.index('--handoff') + 1]
+                    self.draft_data = document['draft']
+                    self.profiles.addItem('提权交接草稿', self.draft_path)
+                    self.profiles.setCurrentIndex(self.profiles.count() - 1)
+                return
+            if '--config' not in sys.argv:
+                return
+            path = sys.argv[sys.argv.index('--config') + 1]
+            try:
+                raw = json.loads(Path(path).read_text(encoding='utf-8-sig'))
+                if isinstance(raw, dict) and raw.get('schema_version') == 2:
+                    from .profiles import validate_profile_document
+                    draft = run_content(validate_profile_document(raw))
+                else:
+                    config = load_assistants(path)
+                    draft = {'repeat_limit': config.get('repeat_limit', 0),
+                             'assistants': [{'id': r['id'], 'adapter': r['adapter'],
+                                             'enabled': r.get('enabled', True),
+                                             'game_start': r.get('game_start', 'assistant'),
+                                             'timeout_seconds': r.get('timeout_seconds', 1800)}
+                                            for r in config['assistants']]}
+                    if any(isinstance(r.get('installation_root'), str) and r['installation_root']
+                           for r in config['assistants']):
+                        QTimer.singleShot(0, lambda: self.flash_hint(
+                            '文件中的接入路径未沿用；运行与检查始终使用全局登记。如需采用这些路径，请用“导入”选择该文件。'))
+            except (OSError, ValueError, TypeError) as error:
+                QMessageBox.critical(self, '配置无法读取', str(error))
+                raise SystemExit(2) from None
+            self.draft_path = path
+            self.draft_data = draft
+            self.profiles.addItem('已选择的组合', self.draft_path)
+            self.profiles.setCurrentIndex(self.profiles.count() - 1)
+
+        def _apply_draft(self, draft):
+            """Overlay an elevation draft as unsaved run selections on the source profile."""
+            self.data = draft
+            self.selected_ids = [r['id'] for r in draft['assistants'] if r.get('enabled', True)]
+            self.check_report = None
+            self.render(); self.refresh_checklist(); self.sync_combo_label()
+
+        def _draft_active(self):
+            return self.draft_path is not None and self.profiles.currentData() == self.draft_path
+
+        def _registered(self, adapter_id):
+            return bool(self.registry is not None and adapter_id in self.registry['assistants'])
+
+        def refresh_registry(self):
+            """Re-read the global registration; changed revisions invalidate check results."""
+            if self.data is None or self.busy():
+                return
+            try:
+                with config_lock(self.workspace):
+                    registry = self.registry_store.read_required()
+            except (OSError, ValueError, RuntimeError):
+                return
+            if registry['revision'] != self.registry['revision']:
+                self.registry = registry
+                self.check_report = None
+                self.render(); self.refresh_checklist()
+
+        def changeEvent(self, event):
+            if event.type() == event.Type.ActivationChange:
+                self.refresh_registry()
+            super().changeEvent(event)
 
         # ---------- helpers ----------
 
@@ -727,7 +944,22 @@ def main():
                 self.check_report = None; self.log.clear(); self.log_seen = 0
                 self.results = {}; self.action = None; self.undo_info = None
                 self.set_problems([])
-                self.data = load_assistants(self.profiles.currentData())
+                if self._draft_active():
+                    self.profile_revision = None; self.profile_digest = None
+                    self.data = self.draft_data
+                else:
+                    identity = self.profile_ids.get(self.profiles.currentData())
+                    if identity is None:
+                        raise ValueError('当前条目不是已保存的组合')
+                    if self.draft_source is not None and not (self.pending_draft is not None
+                                                             and self.draft_source[0] == identity):
+                        # Switching profiles ends the elevation draft overlay.
+                        self.draft_source = None
+                    document = self.profile_store.load_profile(identity)
+                    self.profile_revision = document['revision']
+                    self.profile_digest = file_digest(self.profiles.currentData())
+                    self.data = run_content(document)
+                    self.refresh_registry()
                 self.repeat_input.setValue(self.data.get('repeat_limit', 0))
                 self.selected_ids = [r['id'] for r in self.data['assistants'] if r.get('enabled', True)]
                 self.view = 'selected' if self.selected_ids else 'all'
@@ -763,7 +995,7 @@ def main():
             table.setRowCount(0 if empty else len(rows))
             if not empty:
                 for index, row in enumerate(rows):
-                    pending = row['adapter'] in PENDING_ADAPTERS or not row.get('installation_root')
+                    pending = not self._registered(row['adapter'])
                     table.setRowHeight(index, 52)
                     if self.view == 'selected':
                         tint = '#f0f6ff'
@@ -815,10 +1047,10 @@ def main():
         def checkbox_cell(self, row, selected):
             box = QWidget(); layout = QHBoxLayout(box)
             layout.setContentsMargins(14, 0, 0, 0)
-            pending = row['adapter'] in PENDING_ADAPTERS or not row.get('installation_root')
             checkbox = QCheckBox(); checkbox.setChecked(selected)
-            checkbox.setEnabled(not pending and bool(row.get('installation_root')))
-            if pending or not row.get('installation_root'): checkbox.setToolTip('请先完成本机接入')
+            if not self._registered(row['adapter']):
+                # Selectable while unregistered: composition blocks the run loudly.
+                checkbox.setToolTip('尚未接入；可先勾选，运行前需完成接入')
             checkbox.setProperty('assistant_id', row['id'])
             checkbox.toggled.connect(lambda checked, identity=row['id']: self.set_selected(identity, checked))
             layout.addWidget(checkbox); layout.addStretch()
@@ -859,7 +1091,7 @@ def main():
             return self.tinted(box, tint)
 
         def game_start_cell(self, row, pending, tint):
-            if row['adapter'] in MANUAL_START_ADAPTERS and row.get('installation_root') and not self.running():
+            if row['adapter'] in MANUAL_START_ADAPTERS and self._registered(row['adapter']) and not self.running():
                 box = QWidget(); layout = QHBoxLayout(box); layout.setContentsMargins(4, 0, 4, 0)
                 mode = QComboBox(); mode.setObjectName('gameStartInput')
                 mode.addItem('助手自动启动', 'assistant'); mode.addItem('先手动进入游戏', 'manual')
@@ -877,7 +1109,7 @@ def main():
                 return self.tinted(box, tint)
             if row['adapter'] == 'bettergi' and not self.running():
                 box = QWidget(); layout = QHBoxLayout(box); layout.setContentsMargins(4, 0, 4, 0)
-                link = QPushButton('设置接入' if row.get('installation_root') else '去接入 →')
+                link = QPushButton('设置接入' if self._registered(row['adapter']) else '去接入 →')
                 link.setObjectName('linkButton'); link.setCursor(Qt.PointingHandCursor)
                 link.setEnabled(not self.busy())
                 link.clicked.connect(lambda _, identity=row['id']: self.register_local_bettergi(identity))
@@ -885,7 +1117,7 @@ def main():
                 return self.tinted(box, tint)
             if not self.running():
                 box = QWidget(); layout = QHBoxLayout(box); layout.setContentsMargins(4, 0, 4, 0)
-                link = QPushButton('设置接入' if row.get('installation_root') else '去接入 →'); link.setObjectName('linkButton')
+                link = QPushButton('设置接入' if self._registered(row['adapter']) else '去接入 →'); link.setObjectName('linkButton')
                 link.setCursor(Qt.PointingHandCursor)
                 link.setEnabled(not self.busy())
                 link.clicked.connect(lambda _: self.register_assistant(row['id']))
@@ -956,7 +1188,7 @@ def main():
                 return self.status_cell_running(row, result['status'], result, False, tint)
             box = QWidget(); layout = QVBoxLayout(box); layout.setContentsMargins(4, 5, 4, 5)
             layout.setSpacing(2)
-            if pending or not row.get('installation_root'):
+            if pending:
                 pill = pill_label('待接入', '#fdf3dd', '#a16207')
             elif selected:
                 status = self.checked_status(row['id'])
@@ -1173,19 +1405,29 @@ def main():
             if self.data is None or combo.currentIndex() < 0: return
             path = combo.currentData()
             try:
-                on_disk = json.loads(Path(path).read_text(encoding='utf-8-sig'))
-            except (OSError, ValueError):
-                return
-            disk = [(r.get('id'), bool(r.get('enabled', True))) for r in on_disk.get('assistants', [])]
-            try:
-                current = [(r['id'], bool(r.get('enabled', True))) for r in self.selection()['assistants']]
+                current = [(r['id'], bool(r.get('enabled', True)), r.get('game_start', 'assistant'),
+                            r.get('timeout_seconds', 1800)) for r in self.selection()['assistants']]
             except ValueError:
                 return
+            selected_count = sum(1 for row in current if row[1])
             name = combo.itemText(combo.currentIndex())
-            if disk != current or on_disk.get('repeat_limit', 0) != self.repeat_input.value():
-                label = f'自定义 · 已选 {sum(1 for _, enabled in current if enabled)} 项'
+            if self._draft_active() or (self.draft_source is not None and self.pending_draft is None
+                                        and self.draft_source[0] == self.profile_ids.get(path)):
+                label = f'自定义 · 已选 {selected_count} 项'
             else:
-                label = self.profile_names.get(path, name)
+                identity = self.profile_ids.get(path)
+                if identity is None:
+                    return
+                try:
+                    document = self.profile_store.load_profile(identity)
+                except (OSError, ValueError):
+                    return
+                disk = [(r['id'], bool(r.get('enabled', True)), r.get('game_start', 'assistant'),
+                         r.get('timeout_seconds', 1800)) for r in document['assistants']]
+                if disk != current or document.get('repeat_limit', 0) != self.repeat_input.value():
+                    label = f'自定义 · 已选 {selected_count} 项'
+                else:
+                    label = self.profile_names.get(path, name)
             if label != name:
                 combo.blockSignals(True); combo.setItemText(combo.currentIndex(), label); combo.blockSignals(False)
 
@@ -1220,7 +1462,9 @@ def main():
                 warnings.append(('需要管理员权限', '点击开始运行时确认 UAC；程序会以管理员身份重新打开并替换当前窗口。'))
             for row in self.selected_rows():
                 name = NAMES.get(row['id'], row['id'])
-                if row.get('game_start') == 'manual':
+                if not self._registered(row['adapter']):
+                    warnings.append((f'{name} 尚未接入', '可先保留勾选；点击“去接入”登记路径后才能开始运行。'))
+                elif row.get('game_start') == 'manual':
                     warnings.append((f'请先手动进入{name}', '停在游戏内再点“开始运行”，其余游戏由助手自动启动。'))
             for result in (self.check_report or {}).get('assistants', []):
                 if result.get('status') != 'blocked': continue
@@ -1242,7 +1486,8 @@ def main():
                                 for r in self.check_report.get('assistants', []))
                 passes.append(('没有其他助手或游戏在运行', None) if exclusive
                               else None)
-                passes.append(('已选助手均已接入', None))
+                if all(self._registered(r['adapter']) for r in self.selected_rows()):
+                    passes.append(('已选助手均已接入', None))
                 passes = [p for p in passes if p]
                 ready = [r for r in self.check_report.get('assistants', []) if r.get('status') == 'ready']
                 if ready:
@@ -1310,32 +1555,36 @@ def main():
 
         # ---------- actions ----------
 
-        def persist_profile_data(self, data):
-            if self.recovery_locked(): return
-            identity = self.profile_ids.get(self.profiles.currentData())
-            if identity is None:
-                identity = self.profile_store.create_profile('我的组合', data)['id']
-            else:
-                self.profile_store.save_profile(identity, data)
-            self.reload_profiles(identity)
+        def commit_registration_inspection(self, inspection):
+            """Publish one adapter's registration through the shared commit service.
 
-        def commit_registration_inspection(self, identity, inspection):
+            Writes the global library only: no profile is saved, no checkbox is
+            changed, and run eligibility stays with the next check.
+            """
             if self.recovery_locked(): return
-            if self.busy() or self.data is None: return
-            data = commit_registration(self.selection(), inspection, identity)
-            self.persist_profile_data(data)
+            adapter_id = inspection.candidate_row['adapter']
+            try:
+                self.registry = self.registry_store.commit(adapter_id, inspection, self.registry['revision'])
+            except RevisionConflict:
+                self.refresh_registry()
+                QMessageBox.warning(self, '登记冲突', '全局登记刚被其他窗口修改，已刷新；请重新保存接入。')
+                return
             self.check_report = None
-            self.flash_hint('登记已保存；运行前请重新检查' if not inspection.blockers else '登记已保存为禁用状态，请处理检查阻碍')
+            self.render(); self.refresh_controls(); self.refresh_checklist()
+            self.flash_hint('已接入，此接入设置对所有组合生效；运行前请重新检查' if not inspection.blockers
+                            else '已接入，需处理：' + '；'.join(BLOCKER_TEXT.get(b, b) for b in inspection.blockers))
+            self.recheck_timer.start(900)
 
         def register_assistant(self, identity):
             if self.recovery_locked(): return
             if self.busy() or self.data is None: return
             row = next(r for r in self.data['assistants'] if r['id'] == identity)
             spec = get_adapter(row['adapter'])
+            entry = (self.registry['assistants'].get(row['adapter']) or {}) if self.registry else {}
             dialog = QDialog(self); dialog.setWindowTitle(spec.display_name + ' · 登记已安装助手')
             dialog.setMinimumWidth(620)
             layout = QVBoxLayout(dialog)
-            note = QLabel('仅读取安装和原生设置；登记不会启动游戏或修改原生任务。'); note.setWordWrap(True)
+            note = QLabel('仅读取安装和原生设置；登记不会启动游戏或修改原生任务。此接入设置对所有组合生效。'); note.setWordWrap(True)
             layout.addWidget(note)
             official = QPushButton('官方安装与说明'); official.setObjectName('linkButton')
             official.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(spec.official_url)))
@@ -1343,7 +1592,7 @@ def main():
             form = QFormLayout(); editors = {}
             labels = {'installation_root': '助手安装目录', 'entry_executable': '助手入口（可选）', 'game_path': '游戏 EXE'}
             for field in spec.registration_fields:
-                editor = QLineEdit(row.get(field) or ''); editor.setObjectName(field)
+                editor = QLineEdit(entry.get(field) or ''); editor.setObjectName(field)
                 editors[field] = editor
                 box = QWidget(); line = QHBoxLayout(box); line.setContentsMargins(0, 0, 0, 0)
                 pick = QPushButton('选择')
@@ -1363,12 +1612,18 @@ def main():
             if dialog.exec() != QDialog.DialogCode.Accepted: return
             try:
                 fields = {field: editor.text().strip() for field, editor in editors.items() if editor.text().strip()}
-                fields['game_start'] = mode.currentData()
-                inspection = inspect_registration(row['adapter'], fields)
-                message = ('检查发现以下阻碍，将保存为禁用状态：\n' + '\n'.join(BLOCKER_TEXT.get(b, b) for b in inspection.blockers)
-                           if inspection.blockers else '路径检查完成，将保留组合顺序和选择；不会开始运行。')
+                inspection = inspect_registration(row['adapter'], fields, game_start=mode.currentData())
+                message = ('检查发现以下阻碍；仍可保存接入，界面会显示“已接入，需处理”：\n'
+                           + '\n'.join(BLOCKER_TEXT.get(b, b) for b in inspection.blockers)
+                           if inspection.blockers
+                           else '路径检查完成。接入保存到全局登记，对所有组合生效；不改变任何组合的勾选，也不会开始运行。')
                 if QMessageBox.question(self, '登记预览', message) != QMessageBox.StandardButton.Yes: return
-                self.commit_registration_inspection(identity, inspection)
+                # game_start is a run setting owned by the profile: apply the
+                # chosen mode to the in-memory rows; it is saved with the profile.
+                if row.get('game_start', 'assistant') != mode.currentData():
+                    row['game_start'] = mode.currentData()
+                    self.selection_changed()
+                self.commit_registration_inspection(inspection)
             except (OSError, ValueError, TypeError) as error: QMessageBox.warning(self, '登记需要处理', sanitize_detail(error))
 
         def register_local_bettergi(self, identity):
@@ -1378,37 +1633,86 @@ def main():
                 'C:/BetterGI/BetterGI.exe', 'BetterGI (BetterGI.exe)')
             if not executable: return
             try:
-                data, prepared = register_bettergi(self.selection(), identity, executable)
-                message = ('版本：' + prepared.get('runner_version', '未核验') + '\n已保存的一条龙：' + prepared.get('instance_name', '待处理')
-                    + '\n原神：' + str(prepared.get('game_path', '待处理'))
-                    + '\n结束操作：关闭游戏和软件\n\n仅保存 GachaOps 的本机路径，任务沿用 BetterGI 设置。')
-                if prepared['blockers']:
-                    message += '\n\n运行前需要处理：\n' + '\n'.join(
-                        BLOCKER_TEXT.get(b, b) for b in prepared['blockers'])
-                self.persist_profile_data(data)
-                self.check_report = None
-                self.render(); self.refresh_controls(); self.refresh_checklist()
-                self.flash_hint('本机接入已保存到“我的组合”；游戏顺序和选择保留')
+                inspection = bettergi_inspection(executable)
+                observed = inspection.observations
+                message = ('版本：' + str(observed.get('runner_version', '未核验'))
+                    + '\n已保存的一条龙：' + str(observed.get('instance_name', '待处理'))
+                    + '\n原神：' + str(observed.get('game_path', '待处理'))
+                    + '\n结束操作：关闭游戏和软件\n\n仅保存 GachaOps 的本机路径到全局登记（对所有组合生效）；任务沿用 BetterGI 设置。')
+                if inspection.blockers:
+                    message += '\n\n已接入，需处理：\n' + '\n'.join(
+                        BLOCKER_TEXT.get(b, b) for b in inspection.blockers)
+                self.commit_registration_inspection(inspection)
                 QMessageBox.information(self, 'BetterGI 本机接入', message)
-                self.recheck_timer.start(900)
             except (OSError, ValueError, TypeError, KeyError) as error:
                 QMessageBox.warning(self, 'BetterGI 接入需要处理', sanitize_detail(error))
+
+        def _fields_text(self, fields):
+            parts = []
+            if fields.get('installation_root'): parts.append(fields['installation_root'])
+            if fields.get('entry_executable'): parts.append('入口 ' + fields['entry_executable'])
+            if fields.get('game_path'): parts.append('游戏 ' + fields['game_path'])
+            return '；'.join(parts) or '（空）'
+
+        def _import_choices_dialog(self, preview):
+            """Resolve schema 1 import conflicts against the current registry."""
+            conflicts = [entry for entry in preview['adapters'] if entry['action'] == 'conflict']
+            if not conflicts: return {}
+            dialog = QDialog(self); dialog.setWindowTitle('导入路径冲突')
+            dialog.setMinimumWidth(680)
+            layout = QVBoxLayout(dialog)
+            intro = QLabel('以下助手的导入路径与当前全局登记不同。请为每个助手选择保留哪份路径；'
+                           '取消则组合与全局登记均不变。'); intro.setWordWrap(True)
+            layout.addWidget(intro)
+            boxes = {}
+            for entry in conflicts:
+                head = QLabel(f"{entry['display_name']}\n当前全局：{self._fields_text(entry['current'])}"
+                              f"\n导入文件：{self._fields_text(entry['fields'])}")
+                head.setWordWrap(True); layout.addWidget(head)
+                box = QComboBox()
+                box.addItem('保留当前全局登记', 'keep')
+                box.addItem('使用导入文件的路径', 'import')
+                boxes[entry['adapter']] = box; layout.addWidget(box)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            return {adapter: box.currentData() for adapter, box in boxes.items()}
 
         def browse(self):
             if self.recovery_locked(): return
             if self.busy(): return
-            path, _ = QFileDialog.getOpenFileName(self, '打开 GachaOps 助手配置', str(self.workspace / 'config'), 'JSON 配置 (*.json)')
-            if path:
-                try:
-                    preview = self.profile_store.preview_import(path)
-                    data = preview['configuration']
-                    text = f"将导入 {len(data['assistants'])} 项助手，已选 {sum(r.get('enabled', True) for r in data['assistants'])} 项，重复上限 {data.get('repeat_limit', 0)}。导入后不会开始运行。"
-                    if QMessageBox.question(self, '预览导入', text) != QMessageBox.StandardButton.Yes: return
-                    profile = self.profile_store.import_profile(Path(path).stem, preview)
-                    self.reload_profiles(profile['id'])
-                except (OSError, ValueError, TypeError) as error: QMessageBox.warning(self, '导入失败', str(error))
+            path, _ = QFileDialog.getOpenFileName(self, '导入 GachaOps 助手配置',
+                                                  str(Path.home()), 'JSON 配置 (*.json)')
+            if not path: return
+            try:
+                preview = preview_registration_import(self.workspace, path, Path(path).stem)
+                profile = preview['profile']
+                selected = sum(1 for r in profile['assistants'] if r.get('enabled', True))
+                lines = [f"将新建组合“{preview['name']}”：共 {len(profile['assistants'])} 项，已选 {selected} 项，"
+                         f"重复上限 {profile.get('repeat_limit', 0)}。导入后不会开始运行。"]
+                for entry in preview['adapters']:
+                    if entry['action'] == 'new':
+                        lines.append(f"· {entry['display_name']}：新增全局登记 {self._fields_text(entry['fields'])}")
+                    elif entry['action'] == 'same':
+                        lines.append(f"· {entry['display_name']}：与当前全局登记一致，沿用当前值")
+                if preview['adapters']:
+                    lines.append('组合只保留运行选择与运行设置；接入路径归全局登记。')
+                choices = self._import_choices_dialog(preview)
+                if choices is None: return
+                result = commit_registration_import(self.workspace, preview, choices)
+                self.registry = self.registry_store.read()
+                self.reload_profiles(result['profile_id'])
+                self.flash_hint('导入完成：组合已创建' + ('，全局登记已更新' if preview['schema'] == 1 else ''))
+            except (OSError, ValueError, TypeError) as error:
+                QMessageBox.warning(self, '导入失败', sanitize_detail(error))
 
         def reload_profiles(self, selected=None):
+            # Profile management ends any draft session: the combo is rebuilt
+            # from saved profiles only.
+            self.draft_path = None; self.draft_data = None
+            self.draft_source = None; self.pending_draft = None
             self.profiles.blockSignals(True); self.profiles.clear()
             self.profile_ids.clear(); self.profile_names.clear()
             for profile in self.profile_store.list_profiles():
@@ -1466,15 +1770,28 @@ def main():
             if self.recovery_locked(): return
             if self.busy(): return
             try:
-                identity = self.profile_ids.get(self.profiles.currentData())
-                if identity is None:
-                    profile = self.profile_store.create_profile('我的组合', self.selection())
-                    identity = profile['id']
+                data = self.selection()
+                if self._draft_active():
+                    # An elevation/import draft: save over its source profile when
+                    # one exists, otherwise into a new profile. A changed or deleted
+                    # source raises instead of being silently overwritten.
+                    if self.draft_source is not None:
+                        identity = self.draft_source[0]
+                        self.profile_store.save_profile(identity, data, self.draft_source[1])
+                    else:
+                        identity = self.profile_store.create_profile('我的组合', data)['id']
                 else:
-                    self.profile_store.save_profile(identity, self.selection())
+                    identity = self.profile_ids.get(self.profiles.currentData())
+                    if identity is None:
+                        identity = self.profile_store.create_profile('我的组合', data)['id']
+                    else:
+                        self.profile_store.save_profile(identity, data, self.profile_revision,
+                                                        self.profile_digest)
                 self.reload_profiles(identity)
-                self.flash_hint('组合已保存；旧配置和变更前备份保留')
-            except (OSError, ValueError, TypeError) as error: QMessageBox.warning(self, '保存失败', str(error))
+                self.flash_hint('组合已保存：仅运行选择与运行设置；接入路径来自全局登记')
+            except (OSError, ValueError, TypeError) as error:
+                QMessageBox.warning(self, '保存失败', sanitize_detail(error)
+                                    + '\n如提示组合已被修改，请重新选择该组合以加载最新内容。')
 
         def begin_run(self):
             if self.recovery_locked():
@@ -1499,13 +1816,40 @@ def main():
                 if action == 'run-assistants':
                     self.data = data
                 if data is not None and not any(r['enabled'] for r in data['assistants']): return
+                snapshot = data
+                if data is not None:
+                    # Compose run fields with the registry under the config lock;
+                    # enabled-but-unregistered rows block loudly instead of being
+                    # silently deselected. Unselected rows never block.
+                    with config_lock(self.workspace):
+                        registry = self.registry_store.read_required()
+                    pending = [r for r in data['assistants']
+                               if r['enabled'] and r['adapter'] not in registry['assistants']]
+                    if pending:
+                        names = '、'.join(NAMES.get(r['id'], r['id']) for r in pending)
+                        if action == 'run-assistants':
+                            raise ConfigError('以下助手尚未登记接入，不能运行：' + names)
+                        # The periodic recheck must not spam modal warnings;
+                        # report the pending rows and check the rest.
+                        data = {'repeat_limit': data.get('repeat_limit', 0),
+                                'assistants': [r for r in data['assistants'] if r not in pending]}
+                        if not any(r['enabled'] for r in data['assistants']):
+                            self.check_report = {'assistants': [
+                                {'id': r['id'], 'status': 'blocked', 'blockers': ['not_registered']}
+                                for r in pending]}
+                            self.refresh_checklist()
+                            return
+                        self.check_report = {'assistants': [
+                            {'id': r['id'], 'status': 'blocked', 'blockers': ['not_registered']}
+                            for r in pending]}
+                    snapshot = compose_snapshot(data, registry)
                 self.check_origin = ((self.session, self.summary_path)
                                      if action in {'check-assistants', 'recover-assistants'} else None)
                 self.session = self.workspace / 'runs' / ('gui-' + uuid.uuid4().hex)
                 self.session.mkdir(parents=True)
                 config = self.session / 'assistants.json'
                 if data is not None:
-                    save_configuration(config, data)
+                    save_configuration(config, snapshot)
                 if action == 'recover-assistants':
                     self.recheck_timer.stop()
                 self.action = action; self.undo_info = None
@@ -1560,9 +1904,20 @@ def main():
                 if recovering:
                     args.append('--recover')
                 else:
-                    path = self.workspace / 'runs' / ('gui-setup-' + uuid.uuid4().hex) / 'assistants.json'
-                    save_configuration(path, self.selection())
-                    args.extend(['--config', str(path)])
+                    # Elevation hands over run fields plus provenance only; the
+                    # elevated window re-reads the global registry itself.
+                    directory = self.workspace / 'runs' / ('gui-setup-' + uuid.uuid4().hex)
+                    handoff = directory / 'handoff.json'
+                    if self._draft_active() and self.draft_source is not None:
+                        source_id, source_revision = self.draft_source
+                    elif not self._draft_active():
+                        source_id = self.profile_ids.get(self.profiles.currentData())
+                        source_revision = self.profile_revision if source_id is not None else None
+                    else:
+                        source_id, source_revision = None, None
+                    write_handoff(handoff, source_id, source_revision, self.registry['revision'],
+                                  self.selection())
+                    args.extend(['--handoff', str(handoff)])
                 shell = ctypes.windll.shell32.ShellExecuteW
                 shell.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p,
                                   ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_int]
@@ -1850,7 +2205,7 @@ def main():
         def refresh_status_pills(self):
             if self.data is None: return
             for index, row in enumerate(self.visible_rows()):
-                pending = row['adapter'] in PENDING_ADAPTERS or not row.get('installation_root')
+                pending = not self._registered(row['adapter'])
                 selected = (row['id'] in self.selected_ids if self.selected_ids is not None
                             else row.get('enabled', True))
                 tint = '#f0f6ff' if selected and not pending else None
