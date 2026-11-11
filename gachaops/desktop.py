@@ -646,8 +646,11 @@ def main():
             self.recheck_timer.timeout.connect(self.auto_recheck)
             self._startup_gate()
             if self.pending_draft is not None and self.profiles.count():
-                draft, self.pending_draft = self.pending_draft, None
+                # load_profile must still see pending_draft: it keeps the
+                # handoff provenance (draft_source) only while the draft is
+                # pending, so the overlay later saves over the source revision.
                 self.load_profile()
+                draft, self.pending_draft = self.pending_draft, None
                 self._apply_draft(draft)
             elif self.profiles.count():
                 self.load_profile()
@@ -789,8 +792,11 @@ def main():
                     self.draft_source = (source_id, document['source_profile_revision'])
                 if source_id is not None and source_id in self.profile_ids.values():
                     path = next(path for path, identity in self.profile_ids.items() if identity == source_id)
-                    self.profiles.setCurrentIndex(self.profiles.findData(path))
+                    # pending_draft must be set before setCurrentIndex: the signal
+                    # fires load_profile synchronously, which keeps draft_source
+                    # only while pending_draft is not None.
                     self.pending_draft = document['draft']
+                    self.profiles.setCurrentIndex(self.profiles.findData(path))
                 else:
                     # Source deleted or never existed: the draft becomes a
                     # standalone entry saved into a new profile.
@@ -830,6 +836,11 @@ def main():
         def _apply_draft(self, draft):
             """Overlay an elevation draft as unsaved run selections on the source profile."""
             self.data = draft
+            # Block the repeat signal: sync_combo_label -> selection() would
+            # commit the previous render's timeout editors into the new rows.
+            self.repeat_input.blockSignals(True)
+            self.repeat_input.setValue(draft.get('repeat_limit', 0))
+            self.repeat_input.blockSignals(False)
             self.selected_ids = [r['id'] for r in draft['assistants'] if r.get('enabled', True)]
             self.check_report = None
             self.render(); self.refresh_checklist(); self.sync_combo_label()
@@ -959,10 +970,17 @@ def main():
                     self.profile_revision = document['revision']
                     self.profile_digest = file_digest(self.profiles.currentData())
                     self.data = run_content(document)
-                    self.refresh_registry()
+                # Same signal block as _apply_draft: a repeat change must not
+                # commit the previous profile's timeout editors into this one.
+                self.repeat_input.blockSignals(True)
                 self.repeat_input.setValue(self.data.get('repeat_limit', 0))
+                self.repeat_input.blockSignals(False)
                 self.selected_ids = [r['id'] for r in self.data['assistants'] if r.get('enabled', True)]
                 self.view = 'selected' if self.selected_ids else 'all'
+                # refresh_registry renders; run it only after the selection
+                # state is initialized so its render applies the new rows, not
+                # the previous profile's selected_ids.
+                self.refresh_registry()
                 self.render(); self.refresh_checklist(); self.sync_combo_label()
                 self.recheck_timer.start(900)
             except (OSError, ValueError, TypeError) as error:
@@ -1701,6 +1719,12 @@ def main():
                     lines.append('组合只保留运行选择与运行设置；接入路径归全局登记。')
                 choices = self._import_choices_dialog(preview)
                 if choices is None: return
+                # One explicit confirmation before any write: without conflicts
+                # the summary above would never be shown and the import would
+                # apply (new profile plus registry updates) silently.
+                if QMessageBox.question(self, '确认导入',
+                                        '\n'.join(lines)) != QMessageBox.StandardButton.Yes:
+                    return
                 result = commit_registration_import(self.workspace, preview, choices)
                 self.registry = self.registry_store.read()
                 self.reload_profiles(result['profile_id'])
@@ -1771,10 +1795,12 @@ def main():
             if self.busy(): return
             try:
                 data = self.selection()
-                if self._draft_active():
+                if self.draft_source is not None or self._draft_active():
                     # An elevation/import draft: save over its source profile when
                     # one exists, otherwise into a new profile. A changed or deleted
-                    # source raises instead of being silently overwritten.
+                    # source raises instead of being silently overwritten. The
+                    # draft_source overlay survives after the pending draft is
+                    # applied, so it is checked before the draft entry itself.
                     if self.draft_source is not None:
                         identity = self.draft_source[0]
                         self.profile_store.save_profile(identity, data, self.draft_source[1])
@@ -1822,6 +1848,12 @@ def main():
                     # enabled-but-unregistered rows block loudly instead of being
                     # silently deselected. Unselected rows never block.
                     with config_lock(self.workspace):
+                        # A prepared migration/import journal (an interrupted
+                        # commit) means the registry on disk may be half
+                        # published; running or checking against it is refused
+                        # until the continuation finishes.
+                        if pending_transaction(self.workspace) is not None:
+                            raise ConfigError('存在未完成的迁移/导入事务；请重启程序完成继续后再开始运行或检查')
                         registry = self.registry_store.read_required()
                     pending = [r for r in data['assistants']
                                if r['enabled'] and r['adapter'] not in registry['assistants']]
@@ -1908,13 +1940,17 @@ def main():
                     # elevated window re-reads the global registry itself.
                     directory = self.workspace / 'runs' / ('gui-setup-' + uuid.uuid4().hex)
                     handoff = directory / 'handoff.json'
-                    if self._draft_active() and self.draft_source is not None:
+                    if self.draft_source is not None:
+                        # Covers both the pending draft and the applied overlay
+                        # on its source profile: the handoff carries the draft's
+                        # original revision, so an interim save elsewhere in the
+                        # meantime is detected, not silently clobbered.
                         source_id, source_revision = self.draft_source
-                    elif not self._draft_active():
+                    elif self._draft_active():
+                        source_id, source_revision = None, None
+                    else:
                         source_id = self.profile_ids.get(self.profiles.currentData())
                         source_revision = self.profile_revision if source_id is not None else None
-                    else:
-                        source_id, source_revision = None, None
                     write_handoff(handoff, source_id, source_revision, self.registry['revision'],
                                   self.selection())
                     args.extend(['--handoff', str(handoff)])

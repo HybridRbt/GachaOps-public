@@ -10,10 +10,11 @@ import unittest
 from unittest.mock import patch
 
 
-def write_registry(root, adapters):
+def write_registry(root, adapters, revision=1):
     """Pre-seed a valid global registration library under a test data root."""
     from gachaops.registry import empty_registry
     document = empty_registry()
+    document['revision'] = revision
     document['assistants'].update(adapters)
     path = root / 'config' / 'assistant-registry.json'
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1310,5 +1311,200 @@ class DesktopUiTests(unittest.TestCase):
                  patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
                  patch.object(QApplication, 'exec', return_value=0), \
                  patch('sys.argv', ['desktop-test', '--config', str(path)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_handoff_overlay_keeps_provenance_repeat_and_saves_over_source(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        from gachaops.desktop_model import write_handoff
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
+            store = ProfileStore(root)
+            base_row = {'id': 'one', 'adapter': 'ok-ww', 'enabled': False,
+                        'game_start': 'assistant', 'timeout_seconds': 1800}
+            created = store.create_profile('源组合', {'repeat_limit': 0,
+                                                      'assistants': [dict(base_row)]})
+            source_path = {p['id']: p['path'] for p in store.list_profiles()}[created['id']]
+            draft = {'repeat_limit': 3, 'assistants': [
+                dict(base_row, enabled=True, timeout_seconds=2400)]}
+            handoff = root / 'runs/gui-setup-test/handoff.json'
+            write_handoff(handoff, created['id'], 1, 1, draft)
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                # The overlay keeps its handoff provenance and run fields.
+                self.assertEqual(window.profiles.currentData(), source_path)
+                self.assertEqual(window.draft_source, (created['id'], 1))
+                self.assertEqual(window.repeat_input.value(), 3)
+                self.assertEqual(window.selected_ids, ['one'])
+                window.save_selection()
+                document = store.load_profile(created['id'])
+                self.assertEqual(document['revision'], 2)
+                self.assertEqual(document['repeat_limit'], 3)
+                self.assertTrue(document['assistants'][0]['enabled'])
+                self.assertEqual(document['assistants'][0]['timeout_seconds'], 2400)
+                # Saved over the source; no extra profile appeared.
+                self.assertEqual(len(store.list_profiles()), 1)
+                self.assertIsNone(window.draft_source)
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--handoff', str(handoff)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_prepared_transaction_blocks_run_and_check_until_continued(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from gachaops import desktop, registration_migration
+        from gachaops.profiles import ProfileStore
+        from gachaops.registration_migration import (commit_registration_import,
+                                                     continue_registration_transaction,
+                                                     preview_registration_import)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
+            store = ProfileStore(root)
+            store.create_profile('现组合', {'repeat_limit': 0, 'assistants': [
+                {'id': 'one', 'adapter': 'ok-ww', 'enabled': True,
+                 'game_start': 'assistant', 'timeout_seconds': 1800}]})
+            source = root.parent / 'external-import.json'
+            source.write_text(json.dumps(dict(schema_version=1, repeat_limit=0, assistants=[
+                dict(id='one', adapter='ok-ww', installation_root=str(root / 'imported'),
+                     enabled=True)])), encoding='utf-8')
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                # An import interrupted before any publication leaves its
+                # journal prepared while the window stays open.
+                preview = preview_registration_import(root, source, '导入组合')
+                real_publish = registration_migration._publish_targets
+
+                def flaky(root_arg, targets):
+                    real_publish(root_arg, targets[:0])
+                    raise PermissionError('fixture interruption')
+                with patch.object(registration_migration, '_publish_targets', flaky):
+                    with self.assertRaises(PermissionError):
+                        commit_registration_import(root, preview, {'ok-ww': 'keep'})
+                # Running and checking are both refused against the half-open
+                # transaction instead of composing from a mid-publish library.
+                with patch.object(QMessageBox, 'warning') as warned:
+                    window.begin('run-assistants')
+                    window.begin('check-assistants')
+                self.assertEqual(warned.call_count, 2)
+                self.assertIn('未完成的迁移/导入事务', warned.call_args.args[2])
+                self.assertIsNone(window.process)
+                # Once the continuation completes, begin works again.
+                continue_registration_transaction(root)
+                with patch.object(QProcess, 'start', return_value=None):
+                    window.begin('run-assistants')
+                self.assertEqual(window.action, 'run-assistants')
+                self.assertIsNotNone(window.process)
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_import_shows_summary_and_requires_confirmation(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+        from gachaops import desktop
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            source = root.parent / 'external-schema1.json'
+            source.write_text(json.dumps(dict(schema_version=1, repeat_limit=2, assistants=[
+                dict(id='one', adapter='ok-ww', installation_root=str(root), enabled=True)])),
+                encoding='utf-8')
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                questions = []
+                verdicts = [QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes]
+
+                def answer(*args, **kwargs):
+                    questions.append(args[2])
+                    return verdicts.pop(0)
+                store = ProfileStore(root)
+                with patch.object(QFileDialog, 'getOpenFileName',
+                                  return_value=(str(source), '')), \
+                     patch.object(QMessageBox, 'question', answer):
+                    window.browse()  # declined
+                    # Nothing beyond the default profile startup created.
+                    self.assertEqual([p['name'] for p in store.list_profiles()], ['默认组合'])
+                    window.browse()  # confirmed
+                # The import summary was shown both times, identical.
+                self.assertEqual(len(questions), 2)
+                self.assertIn('将新建组合', questions[0])
+                self.assertEqual(questions[0], questions[1])
+                profiles = store.list_profiles()
+                self.assertEqual(len(profiles), 2)
+                registry = json.loads((root / 'config/assistant-registry.json')
+                                      .read_text(encoding='utf-8-sig'))
+                self.assertEqual(registry['assistants']['ok-ww'],
+                                 {'installation_root': str(root)})
+                imported = next(p for p in profiles if p['name'] != '默认组合')
+                document = store.load_profile(imported['id'])
+                self.assertEqual(document['repeat_limit'], 2)
+                self.assertTrue(document['assistants'][0]['enabled'])
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_profile_switch_with_registry_change_keeps_new_profile_fields(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        from gachaops.profiles import ProfileStore
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
+            store = ProfileStore(root)
+            store.create_profile('甲', {'repeat_limit': 2, 'assistants': [
+                {'id': 'one', 'adapter': 'ok-ww', 'enabled': True,
+                 'game_start': 'assistant', 'timeout_seconds': 1800}]})
+            second = store.create_profile('乙', {'repeat_limit': 5, 'assistants': [
+                {'id': 'one', 'adapter': 'ok-ww', 'enabled': False,
+                 'game_start': 'assistant', 'timeout_seconds': 1800},
+                {'id': 'two', 'adapter': 'zzz-onedragon', 'enabled': True,
+                 'game_start': 'assistant', 'timeout_seconds': 1800}]})
+            paths = {p['id']: p['path'] for p in store.list_profiles()}
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                self.assertEqual(window.repeat_input.value(), 2)
+                # A registry revision change between renders must not leak the
+                # previous profile's repeat limit or selection into 乙.
+                write_registry(root, {'ok-ww': {'installation_root': str(root)},
+                                      'zzz-onedragon': {'installation_root': str(root),
+                                                        'game_path': str(root / 'fixture-game.exe')}},
+                               revision=2)
+                window.profiles.setCurrentIndex(window.profiles.findData(paths[second['id']]))
+                self.assertEqual(window.repeat_input.value(), 5)
+                self.assertEqual(window.selected_ids, ['two'])
+                self.assertFalse(window.data['assistants'][0]['enabled'])
+                self.assertTrue(window.start.isEnabled())
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()

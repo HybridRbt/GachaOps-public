@@ -78,35 +78,61 @@ def scan_profiles(data_root):
     for path in sorted(store.directory.iterdir()):
         if path.name.startswith('.'):
             continue
-        config_path = path / 'config.json'
+        rows.append(_profile_row(store, path))
+    return rows
+
+
+def _profile_row(store, path):
+    """Parse and fully validate one profile directory; reports the exact file."""
+    config_path = path / 'config.json'
+    try:
+        store._path(path.name)
+    except ValueError as error:
+        raise ConfigError(f'{config_path}: {error}') from None
+    metadata = store._read_metadata(path)
+    try:
+        raw = json.loads(config_path.read_text(encoding='utf-8-sig'))
+    except ValueError as error:
+        raise ConfigError(f'{config_path}: 配置损坏（{error}）') from None
+    if not isinstance(raw, dict) or not isinstance(raw.get('schema_version'), int):
+        raise ConfigError(f'{config_path}: 无法识别的配置格式')
+    if raw['schema_version'] == 1:
         try:
-            store._path(path.name)
-        except ValueError as error:
+            config = validate_assistants(raw)
+        except ConfigError as error:
             raise ConfigError(f'{config_path}: {error}') from None
-        metadata = store._read_metadata(path)
+        schema = 1
+    elif raw['schema_version'] == 2:
         try:
-            raw = json.loads(config_path.read_text(encoding='utf-8-sig'))
-        except ValueError as error:
-            raise ConfigError(f'{config_path}: 配置损坏（{error}）') from None
-        if not isinstance(raw, dict) or not isinstance(raw.get('schema_version'), int):
-            raise ConfigError(f'{config_path}: 无法识别的配置格式')
-        if raw['schema_version'] == 1:
-            try:
-                config = validate_assistants(raw)
-            except ConfigError as error:
-                raise ConfigError(f'{config_path}: {error}') from None
-            schema = 1
-        elif raw['schema_version'] == 2:
-            try:
-                config = validate_profile_document(raw)
-            except ConfigError as error:
-                raise ConfigError(f'{config_path}: {error}') from None
-            schema = 2
-        else:
-            raise ConfigError(f'{config_path}: 不支持的 schema_version {raw["schema_version"]}')
-        rows.append({'id': path.name, 'name': metadata['name'], 'created': metadata['created'],
-                     'schema': schema, 'config': config, 'digest': _file_digest(config_path),
-                     'name_digest': _file_digest(path / 'name.json')})
+            config = validate_profile_document(raw)
+        except ConfigError as error:
+            raise ConfigError(f'{config_path}: {error}') from None
+        schema = 2
+    else:
+        raise ConfigError(f'{config_path}: 不支持的 schema_version {raw["schema_version"]}')
+    return {'id': path.name, 'name': metadata['name'], 'created': metadata['created'],
+            'schema': schema, 'config': config, 'digest': _file_digest(config_path),
+            'name_digest': _file_digest(path / 'name.json')}
+
+
+def _continuation_scan(data_root, transaction_ids):
+    """scan_profiles variant that tolerates the transaction's own absent or
+    partially published profile targets (an interrupted import may have created
+    config.json without name.json yet); the publish loop restores the missing
+    files byte for byte after the manifest check."""
+    store = ProfileStore(data_root)
+    rows = []
+    if store.directory.is_symlink():
+        raise ConfigError('external profiles directory')
+    if not store.directory.exists():
+        return rows
+    for path in sorted(store.directory.iterdir()):
+        if path.name.startswith('.'):
+            continue
+        if (path.name in transaction_ids
+                and not ((path / 'name.json').is_file() and (path / 'config.json').is_file())):
+            continue
+        rows.append(_profile_row(store, path))
     return rows
 
 
@@ -429,12 +455,17 @@ def continue_registration_transaction(data_root):
                 if not path.exists() or _digest(path.read_bytes()) != target['sha256']:
                     raise ConfigError(f'目标备份损坏，停止继续：{target["path"]}')
             expected_ids = {row['id'] for row in manifest['profiles']}
+            transaction_ids = set()
             for target in manifest['targets']:
                 parts = target['path'].split('/')
                 if len(parts) == 4 and parts[1] == 'profiles':
-                    expected_ids.add(parts[2])
-            current_ids = {row['id'] for row in scan_profiles(root)}
-            if current_ids != expected_ids:
+                    transaction_ids.add(parts[2])
+            expected_ids |= transaction_ids
+            # The transaction's own target profiles may be absent or partially
+            # published (an interrupted import); anything outside the manifest
+            # still stops the continuation.
+            current_ids = {row['id'] for row in _continuation_scan(root, transaction_ids)}
+            if current_ids - expected_ids:
                 raise ConfigError('组合清单与事务记录不一致（出现未纳入清单的改动），停止继续')
             source_by_path = {source['path']: source for source in manifest['sources']}
             published = []
@@ -528,6 +559,7 @@ def preview_registration_import(data_root, source, name):
             'data_root': str(root), 'created_at': _now(), 'name': name,
             'source': str(path), 'source_sha256': digest,
             'profile': profile, 'adapters': adapters,
+            'registry_sha256': _file_digest(RegistrationStore(root).path),
             'new_uuid': str(uuid.uuid4())}
 
 
@@ -542,6 +574,14 @@ def commit_registration_import(data_root, preview, choices):
     path = Path(preview['source'])
     if not path.exists() or _digest(path.read_bytes()) != preview['source_sha256']:
         raise SourceChanged('导入来源文件已变化，请重新预览')
+    # The chosen conflict resolutions were computed against the registry as it
+    # was at preview time; binding its digest keeps a silently changed library
+    # from being merged under stale choices.
+    registry_path = RegistrationStore(root).path
+    expected_registry = preview.get('registry_sha256')
+    if expected_registry is None or not registry_path.exists() \
+            or _file_digest(registry_path) != expected_registry:
+        raise SourceChanged('全局登记已变化，请重新预览')
     registry = RegistrationStore(root).read_required()
     adapters = {entry['adapter']: entry for entry in preview['adapters']}
     unknown = set(choices) - {adapter for adapter, entry in adapters.items() if entry['action'] == 'conflict'}

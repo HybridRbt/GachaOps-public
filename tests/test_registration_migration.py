@@ -265,6 +265,70 @@ class MigrationContinueTests(unittest.TestCase):
             self.assertEqual(read_journal(root)['state'], 'prepared')
 
 
+class ImportContinueTests(unittest.TestCase):
+    def prepare_interrupted_import(self, root, publish_count):
+        """Stage an import whose publishing stops after `publish_count` targets."""
+        from gachaops import registration_migration
+        initialize_fresh(root)
+        write_registry(root, {'ok-ww': {'installation_root': 'C:/current'}})
+        source = root.parent / 'external-import.json'
+        source.write_text(json.dumps(schema1(root, [ok_row('C:/imported', enabled=True)])),
+                          encoding='utf-8')
+        preview = preview_registration_import(root, source, '导入组合')
+        real_publish = registration_migration._publish_targets
+
+        def flaky(root_arg, targets):
+            real_publish(root_arg, targets[:publish_count])
+            raise PermissionError('fixture interruption')
+        with patch.object(registration_migration, '_publish_targets', flaky):
+            with self.assertRaises(PermissionError):
+                commit_registration_import(root, preview, {'ok-ww': 'keep'})
+        journal = read_journal(root)
+        self.assertIsNotNone(journal)
+        self.assertEqual(journal['state'], 'prepared')
+        return preview
+
+    def test_partially_published_import_target_completes(self):
+        """config.json landed but name.json did not: continuation must finish it
+        instead of crashing on the half-written profile directory."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            preview = self.prepare_interrupted_import(root, 2)
+            profile_dir = root / 'config/profiles' / preview['new_uuid']
+            self.assertTrue((profile_dir / 'config.json').is_file())
+            self.assertFalse((profile_dir / 'name.json').exists())
+            result = continue_registration_transaction(root)
+            self.assertEqual(result['kind'], 'import')
+            document = ProfileStore(root).load_profile(preview['new_uuid'])
+            self.assertTrue(document['assistants'][0]['enabled'])
+            # The conflict choice ('keep') still applies to the merged registry.
+            self.assertEqual(RegistrationStore(root).read_required()['assistants']['ok-ww'],
+                             {'installation_root': 'C:/current'})
+            self.assertIsNone(read_journal(root))
+            self.assertEqual(startup_state(root)['status'], 'ready')
+
+    def test_import_target_absent_altogether_completes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            preview = self.prepare_interrupted_import(root, 0)
+            self.assertFalse(list((root / 'config/profiles').glob('*')))
+            result = continue_registration_transaction(root)
+            self.assertEqual(result['kind'], 'import')
+            self.assertTrue(ProfileStore(root).load_profile(preview['new_uuid'])['assistants'])
+            self.assertIsNone(read_journal(root))
+
+    def test_unrelated_profile_dir_still_blocks_continuation(self):
+        from gachaops.profiles import default_profile, profile_document
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            MigrationContinueTests.prepare_interrupted(self, root)
+            write_profile(root, UUID_B, profile_document(default_profile(), 1), name='外来')
+            with self.assertRaises(ConfigError) as caught:
+                continue_registration_transaction(root)
+            self.assertIn('未纳入清单', str(caught.exception))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+
 class ImportTests(unittest.TestCase):
     def external_schema2(self, root):
         return {'schema_version': 2, 'kind': 'assistant_profile', 'revision': 3,
@@ -327,6 +391,23 @@ class ImportTests(unittest.TestCase):
             source.write_text('{}', encoding='utf-8')
             with self.assertRaises(SourceChanged):
                 commit_registration_import(root, preview, {})
+            self.assertFalse(list(Path(root).glob('config/profiles/*')))
+            self.assertIsNone(read_journal(root))
+
+    def test_registry_change_between_preview_and_commit_blocks(self):
+        """Conflict choices were computed against the previewed registry; a
+        registry change in between must force a fresh preview, not merge."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); initialize_fresh(root)
+            write_registry(root, {'ok-ww': {'installation_root': 'C:/current'}})
+            source = root.parent / 'external.json'
+            source.write_text(json.dumps(schema1(root, [ok_row('C:/imported')])), encoding='utf-8')
+            preview = preview_registration_import(root, source, '旧导出')
+            self.assertIn('registry_sha256', preview)
+            write_registry(root, {'ok-ww': {'installation_root': 'C:/current'},
+                                  'bettergi': {'installation_root': 'C:/bg'}}, revision=2)
+            with self.assertRaisesRegex(SourceChanged, '全局登记已变化'):
+                commit_registration_import(root, preview, {'ok-ww': 'keep'})
             self.assertFalse(list(Path(root).glob('config/profiles/*')))
             self.assertIsNone(read_journal(root))
 
