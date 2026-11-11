@@ -1,0 +1,11 @@
+[
+  {"name": "指定回归 · 场景1 历史拒绝访问后确认退出 → recovered", "status": "passed", "message": "test_historical_access_denial_recovers_only_after_all_fresh_checks：PID 222 计入 process_checks 且 live_identity=None；原记录字节不变"},
+  {"name": "指定回归 · 场景2 活跃未知 PID → blocked", "status": "passed", "message": "test_historical_unknown_live_pid_cannot_be_assumed_reused：提示含 PID 与「导出诊断包」，journal 保持隔离"},
+  {"name": "指定回归 · 场景3 当前查询失败 → blocked", "status": "passed", "message": "test_historical_denial_still_requires_current_empty_scan_and_job_proof（scan/proof 子测）：journal 不变"},
+  {"name": "指定回归 · 场景4 审计写入失败 → blocked", "status": "passed", "message": "同上 audit 子测 + 既有 test_audit_failure_before_commit_keeps_quarantine：隔离保留"},
+  {"name": "指定回归合计（tests/test_recovery_check.py）", "status": "passed", "message": "Ran 16 tests in 1.812s — OK，exit 0（reports/evidence/recovery-tests.log）"},
+  {"name": "全量套件（PySide6 offscreen 实跑）", "status": "passed", "message": "Ran 351 tests in 35.880s — OK, skipped=1（test_preflight_unsupported，Windows 上设计内）；test_desktop_ui 29 项全过（reports/evidence/full-suite.log）"},
+  {"name": "真实 API 演练 · 活跃未知 PID 91704", "status": "passed", "message": "exit 2 blocked：「进程 PID 91704（python.exe）仍在运行或历史身份无法确认…」+ 导出诊断包；journal 保持 quarantined"},
+  {"name": "真实 API 演练 · 已退出未知 PID 107497", "status": "passed", "message": "exit 0 recovered：journal→idle；fresh-inspection.json status=passed，live_identity=null；当前扫描 observed/[]/[]（reports/evidence/drill-result.json）"},
+  {"name": "D2 维护者真实现场验收", "status": "skipped", "message": "由维护者按 reports/issue-2-acceptance-plan.md 第四节模板执行，结果回填 issue #2"}
+]

@@ -1,0 +1,28 @@
+{
+  "live_unknown_pid": {
+    "exit": 2,
+    "status": "blocked",
+    "message": "未能恢复运行资格：进程 PID 91704（python.exe）仍在运行或历史身份无法确认，请先退出相关程序。\n若处理后仍失败，请在“查看原因”点击“导出诊断包”交给维护者核验；无需反复点击开始，不要删除或修改隔离记录。",
+    "journal_phase_after": "quarantined",
+    "workspace": "C:\\Users\\<user>\\AppData\\Local\\Temp\\gachaops-drill-live-42lnw_h5"
+  },
+  "exited_unknown_pid": {
+    "exit": 0,
+    "status": "recovered",
+    "message": "核对通过，运行资格已恢复。请手动开始运行；原失败记录已保留。",
+    "journal_phase_after": "idle",
+    "workspace": "C:\\Users\\<user>\\AppData\\Local\\Temp\\gachaops-drill-gone-ixhgm02h",
+    "audit_status": "passed",
+    "unknown_check": {
+      "pid": 107497,
+      "old_identity": null,
+      "label": "python.exe",
+      "live_identity": null
+    },
+    "scan": {
+      "status": "observed",
+      "matches": [],
+      "uncertain": []
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "signature": "unsigned",
+  "dependencies": {
+    "PyInstaller": "6.22.0",
+    "Shiboken6": "6.10.2",
+    "PySide6_Essentials": "6.10.2"
+  },
+  "executable_sha256": "3D9D909B8D7A7CD93089CA852EB8B6532596493B1CD1F5C4265C0DF00F5B2709",
+  "python": "3.12.10",
+  "commit": "2e9c358ab479d40ffae250dab434b978f36b2834",
+  "version": "0.1.0",
+  "platform": "windows-x64",
+  "dirty": true,
+  "schema_version": 1
+}
