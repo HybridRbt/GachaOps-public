@@ -308,6 +308,67 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows ShellExecute relaunch fixture')
+    def test_elevation_relaunch_replaces_old_window_and_recovery_reuses_it(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        import ctypes
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); path = root / 'fixture.json'
+            path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
+                id='one', adapter='ok-ww', installation_root=str(root), enabled=True)])), encoding='utf-8')
+            launches = []
+            def approve(hwnd, verb, executable, params, directory, show):
+                launches.append((verb, params)); return 42
+            class Running:
+                def state(self): return QProcess.ProcessState.Running
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop(); window.show()
+                # A cancelled UAC keeps this window and starts nothing.
+                with patch.object(ctypes.windll.shell32, 'ShellExecuteW',
+                                  lambda *arguments: 0):
+                    window.begin_run()
+                self.assertTrue(window.isVisible())
+                self.assertIn('未打开', window.hint.text())
+                self.assertEqual(launches, [])
+                # While a run or check is active the relaunch is refused.
+                window.process = Running()
+                with patch.object(ctypes.windll.shell32, 'ShellExecuteW', approve):
+                    window.begin_recovery()
+                self.assertEqual(launches, [])
+                window.process = None
+                # An approved UAC hands over to the elevated replacement and
+                # retires this window instead of leaving two instances behind.
+                with patch.object(ctypes.windll.shell32, 'ShellExecuteW', approve):
+                    window.begin_run()
+                self.assertEqual([verb for verb, _ in launches], ['runas'])
+                self.assertIn('--config', launches[0][1])
+                self.assertIn('--data-root', launches[0][1])
+                snapshots = list((root / 'runs').glob('gui-setup-*/assistants.json'))
+                self.assertEqual(len(snapshots), 2)  # cancelled attempt + approved relaunch
+                self.assertFalse(window.isVisible())
+                # Recovery without elevation reuses the same one-key relaunch;
+                # the recovering branch passes --recover and needs no preset
+                # snapshot (also with an unreadable preset, as on main).
+                with patch.object(window, 'needs_recovery', return_value=True), \
+                     patch.object(ctypes.windll.shell32, 'ShellExecuteW', approve):
+                    window.begin_recovery()
+                self.assertEqual([verb for verb, _ in launches], ['runas', 'runas'])
+                self.assertIn('--recover', launches[1][1])
+                self.assertNotIn('--config', launches[1][1])
+                self.assertIn('--data-root', launches[1][1])
+                self.assertEqual(list((root / 'runs').glob('gui-setup-*/assistants.json')), snapshots)
+                self.assertFalse(window.isVisible())
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': False}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--config', str(path)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
     def test_repeat_control_snapshot_lock_and_active_retry(self):
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         from PySide6.QtCore import QProcess
