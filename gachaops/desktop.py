@@ -489,6 +489,7 @@ def main():
             self.stop_requested = False
             self.row_tints = {}
             self.check_collapsed = False
+            self._pending_migration = False
             self.closing = False
             self.setWindowTitle('GachaOps — 助手编排')
             self.setWindowIcon(QIcon(str(Path(__file__).parent / 'assets/branding/program.png')))
@@ -645,6 +646,66 @@ def main():
             self.recheck_timer = QTimer(self); self.recheck_timer.setSingleShot(True)
             self.recheck_timer.timeout.connect(self.auto_recheck)
             self._startup_gate()
+            self._finish_startup()
+
+        # ---------- startup gate ----------
+
+        def _startup_gate(self):
+            if not self._run_startup_gate():
+                raise SystemExit(0)
+
+        def _run_startup_gate(self):
+            """Pending transaction → continue; legacy profiles → migration; fresh → init.
+
+            Both the transaction continuation and the migration commit refuse to
+            run while the previous execution is unverified, but recovery needs
+            the window's controls. A recovery-blocked gate therefore opens the
+            window recovery-only (no profile list, no registry) and resumes via
+            _resume_startup_gate after recovery succeeds; cancelling there
+            closes the window instead of exiting mid-construction.
+            """
+            state = startup_state(self.workspace)
+            if state['status'] == 'prepared':
+                if self.needs_recovery():
+                    self._pending_migration = True
+                    return True
+                if not self._continue_transaction_flow(state['transaction']):
+                    return False
+                state = startup_state(self.workspace)
+            if state['status'] == 'migration_required':
+                if self.needs_recovery():
+                    self._pending_migration = True
+                    return True
+                if not self._migration_flow():
+                    return False
+                state = startup_state(self.workspace)
+            if state['status'] == 'fresh':
+                self.registry = initialize_fresh(self.workspace)
+            elif state['status'] == 'ready':
+                with config_lock(self.workspace):
+                    self.registry = self.registry_store.read_required()
+            self._populate_profiles()
+            return True
+
+        def _resume_startup_gate(self):
+            """Recovery finished: finish the deferred gate, or close on decline."""
+            self._pending_migration = False
+            if not self._run_startup_gate():
+                self.close(); return
+            self._finish_startup()
+
+        def _populate_profiles(self):
+            # Populate with signals blocked: the first addItem would otherwise
+            # fire load_profile before the id map exists.
+            self.profiles.blockSignals(True)
+            for profile in self.profile_store.list_profiles():
+                self.profiles.addItem(profile['name'], profile['path'])
+                self.profile_ids[profile['path']] = profile['id']
+                self.profile_names[profile['path']] = profile['name']
+            self.profiles.blockSignals(False)
+            self._load_argument_draft()
+
+        def _finish_startup(self):
             if self.pending_draft is not None and self.profiles.count():
                 # load_profile must still see pending_draft: it keeps the
                 # handoff provenance (draft_source) only while the draft is
@@ -660,34 +721,6 @@ def main():
                 self.recheck.setEnabled(False)
             self.refresh_controls()
             self.refresh_run_card()
-
-        # ---------- startup gate ----------
-
-        def _startup_gate(self):
-            """Pending transaction → continue; legacy profiles → migration; fresh → init."""
-            state = startup_state(self.workspace)
-            if state['status'] == 'prepared':
-                if not self._continue_transaction_flow(state['transaction']):
-                    raise SystemExit(0)
-                state = startup_state(self.workspace)
-            if state['status'] == 'migration_required':
-                if not self._migration_flow():
-                    raise SystemExit(0)
-                state = startup_state(self.workspace)
-            if state['status'] == 'fresh':
-                self.registry = initialize_fresh(self.workspace)
-            elif state['status'] == 'ready':
-                with config_lock(self.workspace):
-                    self.registry = self.registry_store.read_required()
-            # Populate with signals blocked: the first addItem would otherwise
-            # fire load_profile before the id map exists.
-            self.profiles.blockSignals(True)
-            for profile in self.profile_store.list_profiles():
-                self.profiles.addItem(profile['name'], profile['path'])
-                self.profile_ids[profile['path']] = profile['id']
-                self.profile_names[profile['path']] = profile['name']
-            self.profiles.blockSignals(False)
-            self._load_argument_draft()
 
         def _continue_transaction_flow(self, kind):
             title = '继续迁移' if kind == 'migration' else '继续导入'
@@ -879,7 +912,9 @@ def main():
             return self.busy() and self.action == 'run-assistants'
 
         def recovery_locked(self):
-            return not self.running() and self.needs_recovery()
+            # A recovery-deferred migration keeps the window locked even after
+            # the journal turns idle: the registry only exists post-migration.
+            return not self.running() and (self._pending_migration or self.needs_recovery())
 
         def can_reorder(self):
             return (self.data is not None and not self.busy() and not self.recovery_locked()
@@ -2261,7 +2296,12 @@ def main():
                     QMessageBox.information(self, '运行资格核验', report['message'])
                     if report['status'] in {'recovered', 'already_ready'}:
                         self.check_report = None
-                        self.recheck_timer.start(900)
+                        if self._pending_migration:
+                            # Recovery-first startup: cleanup is verified, so
+                            # the deferred migration/continuation resumes now.
+                            self._resume_startup_gate()
+                        else:
+                            self.recheck_timer.start(900)
                 elif self.action == 'check-assistants':
                     report = json.loads((self.session / 'worker.log').read_text(encoding='utf-8'))
                     self.check_report = report

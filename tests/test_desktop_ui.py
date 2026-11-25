@@ -1508,3 +1508,124 @@ class DesktopUiTests(unittest.TestCase):
                  patch('sys.argv', ['desktop-test']):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()
+
+    @staticmethod
+    def write_legacy_profile(root, identity, enabled=True):
+        """Seed a schema 1 profile the way pre-registry versions stored it."""
+        directory = root / 'config/profiles' / identity
+        directory.mkdir(parents=True)
+        (directory / 'config.json').write_text(json.dumps(dict(
+            schema_version=1, repeat_limit=0, assistants=[
+                dict(id='wuthering-waves', adapter='ok-ww',
+                     installation_root=str(root), enabled=enabled)]),
+            ensure_ascii=False), encoding='utf-8')
+        (directory / 'name.json').write_text(json.dumps(
+            {'name': '旧组合', 'created': '2026-01-01T00:00:00+00:00'}),
+            encoding='utf-8')
+
+    @staticmethod
+    def write_execution_journal(root, document):
+        path = root / 'state' / 'execution.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document), encoding='utf-8')
+
+    def test_quarantined_execution_defers_migration_until_recovery(self):
+        """Legacy profiles plus a quarantined journal must not deadlock startup:
+        the migration commit refuses to run before recovery, while recovery only
+        became reachable after the window was built (issue #5)."""
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from gachaops import desktop
+        from gachaops.registry import RegistrationStore
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.write_legacy_profile(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+            self.write_execution_journal(root, {
+                'schema_version': 1, 'phase': 'quarantined', 'run_id': 'fixture'})
+            resumed = []
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                # The gate opened recovery-only: no migration was attempted, the
+                # registry does not exist yet, and the window stays locked.
+                self.assertTrue(window._pending_migration)
+                self.assertIsNone(window.registry)
+                self.assertFalse((root / 'config/assistant-registry.json').exists())
+                self.assertEqual(window.profiles.count(), 0)
+                self.assertFalse(window.choose.isEnabled())
+                self.assertFalse(window.save_button.isEnabled())
+                self.assertEqual(window.start.text(), '检查并恢复运行资格')
+                self.assertTrue(window.recovery_locked())
+                # Running and checking stay unreachable; start routes to recovery.
+                with patch.object(window, 'begin') as begin, \
+                     patch.object(QMessageBox, 'warning') as warned:
+                    window.begin_run()
+                    begin.assert_called_once_with('recover-assistants')
+                    window.begin('run-assistants')
+                    window.begin('check-assistants')
+                    warned.assert_not_called()
+                self.assertIsNone(window.process)
+                # Simulate a completed recovery: journal idle, cleanup verified.
+                self.write_execution_journal(root, {
+                    'schema_version': 1, 'phase': 'idle', 'run_id': 'fixture',
+                    'cleanup_verified': True})
+                with patch.object(type(window), '_migration_dialog',
+                                  return_value={}) as dialog:
+                    window._resume_startup_gate()
+                self.assertEqual(dialog.call_count, 1)
+                resumed.append(True)
+                # The deferred migration published the registry, converted the
+                # legacy profile and unlocked the window.
+                self.assertFalse(window._pending_migration)
+                self.assertIsNotNone(window.registry)
+                registry = RegistrationStore(root).read_required()
+                self.assertEqual(registry['assistants']['ok-ww'],
+                                 {'installation_root': str(root)})
+                document = window.profile_store.load_profile(
+                    window.profile_ids[window.profiles.itemData(0)])
+                self.assertEqual(document['schema_version'], 2)
+                self.assertEqual(window.profiles.count(), 1)
+                self.assertIsNotNone(window.data)
+                self.assertTrue(window.choose.isEnabled())
+                self.assertTrue(window.save_button.isEnabled())
+                self.assertFalse(window.recovery_locked())
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+            self.assertTrue(resumed)
+        self._release_qt()
+
+    def test_recovery_deferred_migration_closes_when_declined(self):
+        """Declining the deferred migration after recovery must end the program
+        the same way declining the migration at startup would."""
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.write_legacy_profile(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+            self.write_execution_journal(root, {
+                'schema_version': 1, 'phase': 'quarantined', 'run_id': 'fixture'})
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                self.assertTrue(window._pending_migration)
+                self.write_execution_journal(root, {
+                    'schema_version': 1, 'phase': 'idle', 'run_id': 'fixture',
+                    'cleanup_verified': True})
+                with patch.object(type(window), '_migration_flow',
+                                  return_value=False):
+                    window._resume_startup_gate()
+                self.assertFalse(window.isVisible())
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
