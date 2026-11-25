@@ -19,16 +19,26 @@ from .onedragon_bridge import creation_ticks
 from .app_paths import workspace_root
 
 SUPPORTED_VERSION = 'v2026.9.30'
-# v2026.10.16 and v2026.11.8 were reviewed against v2026.9.30: CLI, pause
-# control and completion markers are unchanged. Unknown builds still require
-# review.
-SUPPORTED_VERSIONS = frozenset({SUPPORTED_VERSION, 'v2026.10.16', 'v2026.11.8'})
+# v2026.10.16 and v2026.11.8 were reviewed against v2026.9.30: CLI entry,
+# GUI-started skip and the full-run markers are unchanged. v2026.11.24 was
+# reviewed offline against its published source: the same lifecycle surface
+# is unchanged, the daily-training report text changed (both formats are
+# parsed), and its config gained platform keys that are read and gated to
+# the reviewed local-PC mode. GachaOps does not integrate March7th's native
+# pause/resume/stop file protocol; stopping and timeouts rely on owned-Job
+# cleanup. Unknown builds still require review.
+SUPPORTED_VERSIONS = frozenset({SUPPORTED_VERSION, 'v2026.10.16', 'v2026.11.8',
+                                'v2026.11.24'})
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
 
 def launch_metadata(path):
-    # Read only five top-level lifecycle scalars. Tasks/accounts stay opaque.
-    keys = {'game_path', 'cloud_game_enable', 'after_finish', 'auto_update', 'log_level'}
+    # Read only top-level lifecycle scalars. Tasks/accounts stay opaque. The
+    # five lifecycle keys are required; the platform keys added by
+    # v2026.11.24 are optional so older reviewed configs keep working, and
+    # prepare() gates them fail-closed whenever they are present.
+    required = {'game_path', 'cloud_game_enable', 'after_finish', 'auto_update', 'log_level'}
+    keys = required | {'ui_profile', 'control_backend', 'local_control_mode', 'no_run_immediately'}
     values = {}
     for line in Path(path).read_text(encoding='utf-8-sig').splitlines():
         match = re.fullmatch(r'([a-z_]+):\s*(.*?)\s*', line)
@@ -50,7 +60,7 @@ def launch_metadata(path):
         else:
             value = re.split(r'\s+#', value, maxsplit=1)[0].strip()
         values[key] = value
-    if set(values) != keys:
+    if not required.issubset(values):
         raise ValueError('missing March7 launch metadata')
     return values
 
@@ -69,7 +79,21 @@ def prepare(row):
         raise ValueError(f'三月七版本尚未核验：{version}。请更新 GachaOps 兼容支持后重新检查。')
     meta = launch_metadata(config)
     blockers = []
-    if meta['cloud_game_enable'] != 'false':
+    backend = meta.get('control_backend')
+    if backend is not None and backend not in (None, 'null', 'local'):
+        # An explicit backend wins over cloud_game_enable upstream; anything
+        # but local (cloud, adb, unknown) is outside the reviewed surface.
+        blockers.append('march7_local_backend_required')
+    profile = meta.get('ui_profile')
+    if profile is not None and profile != 'pc_1080':
+        blockers.append('march7_local_pc_profile_required')
+    control_mode = meta.get('local_control_mode')
+    if control_mode is not None and control_mode != 'foreground':
+        blockers.append('march7_local_foreground_control_required')
+    no_run = meta.get('no_run_immediately')
+    if no_run is not None and no_run != 'false':
+        blockers.append('march7_run_immediately_required')
+    if meta['cloud_game_enable'] != 'false' and backend != 'local':
         blockers.append('march7_local_game_required')
     if meta['after_finish'] != 'Exit':
         blockers.append('march7_select_exit_in_assistant_gui')
@@ -174,6 +198,21 @@ def task_details(lines):
         match = re.search(r'(?:当前累计分数|当前分数)[:：]\s*(\d+/\d+)', message)
         if match:
             score = match[1]
+        claim = re.search(r'已领取实训奖励，活跃度\s*(\d+)/(\d+)', message)
+        if claim:
+            # v2026.11.24 reports the plain activity line only when the
+            # training is not complete; a full completion uses the notify
+            # template instead.
+            score = f'{claim[1]}/{claim[2]}'
+            if int(claim[1]) < int(claim[2]):
+                daily_incomplete = True
+                failed['每日实训活跃度'] = line
+            else:
+                daily_incomplete = False
+                failed.clear()
+        match = re.fullmatch(r'实训未完成[:：]\s*(.+)', message)
+        if match:
+            failed[match[1].strip()] = line
         if message == '每日实训未完成':
             daily_incomplete = True
         elif message == '每日实训已完成':

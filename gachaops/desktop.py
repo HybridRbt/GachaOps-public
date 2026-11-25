@@ -87,7 +87,11 @@ BLOCKER_TEXT = {
     'march7_local_game_required': '三月七目前只接入本地游戏模式，请在助手中关闭云游戏',
     'march7_select_exit_in_assistant_gui': '请在三月七助手中将任务完成后操作设为 Exit（退出）',
     'march7_complete_native_first_setup': '请先打开三月七原生 GUI 完成首次设置',
-    'march7_info_logging_required': '请在三月七助手中启用 INFO 或 DEBUG 日志'}
+    'march7_info_logging_required': '请在三月七助手中启用 INFO 或 DEBUG 日志',
+    'march7_local_backend_required': '三月七的云端或设备（ADB）控制模式尚未接入；请在助手中改回本地控制',
+    'march7_local_pc_profile_required': '三月七的触屏（720p）界面模式尚未接入；请在助手中改回 PC（1080p）界面',
+    'march7_local_foreground_control_required': '三月七的后台操作模式尚未审阅；请在助手中改回前台操作模式',
+    'march7_run_immediately_required': '请在三月七助手中关闭「启动时先等待」设置'}
 BLOCKER_SUGGESTIONS = {
     'not_registered': '点击“去接入”登记安装路径；此接入设置对所有组合生效。',
     'maagf2_mxu_unsafe_native_action': '在少前2原助手中关闭按名称结束进程、外部程序、关机等特殊任务，保存并退出后重新检查；GachaOps 不会代改预设。',
@@ -105,7 +109,11 @@ BLOCKER_SUGGESTIONS = {
     'march7_local_game_required': '在三月七助手中关闭云游戏模式。',
     'march7_select_exit_in_assistant_gui': '把任务完成后操作设为 Exit（退出）后点“重新检查”。',
     'march7_complete_native_first_setup': '先打开三月七原生 GUI 完成首次设置。',
-    'march7_info_logging_required': '在三月七助手中启用 INFO 或 DEBUG 日志。'}
+    'march7_info_logging_required': '在三月七助手中启用 INFO 或 DEBUG 日志。',
+    'march7_local_backend_required': '打开三月七助手的设置，把控制方式改回本地后点“重新检查”。',
+    'march7_local_pc_profile_required': '在三月七助手中把界面切回 PC（1080p）后点“重新检查”。',
+    'march7_local_foreground_control_required': '在三月七助手中把本地操作模式改回前台后点“重新检查”。',
+    'march7_run_immediately_required': '在三月七助手中关闭「启动时先等待」并保存后点“重新检查”。'}
 
 STATUS_VERB = {'success': '任务完成', 'partial_failure': '任务完成，含失败项', 'failed': '任务失败',
                'timeout': '任务超时', 'completion_unconfirmed': '结果未确认', 'cancelled': '已停止',

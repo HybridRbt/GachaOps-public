@@ -202,5 +202,89 @@ class March7Tests(unittest.TestCase):
                 self.assertTrue((root/'march7-error.txt').exists())
 
 
+    def test_v2026_11_24_prepare_worker_and_platform_guards(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            row = self.installation(root)
+            version = root / 'assets/config/version.txt'
+            config = root / 'config.yaml'
+            original = config.read_text(encoding='utf-8')
+            with patch.object(march7, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(march7, 'desktop_report', return_value={'status': 'observed_available'}), \
+                 patch.object(march7, 'find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                # The new tag is admitted; old configs without the platform
+                # keys keep working with no new blockers.
+                version.write_text('v2026.11.24', encoding='utf-8')
+                self.assertEqual(march7.prepare(row)['blockers'], [])
+                # Local explicit backend wins over cloud_game_enable.
+                config.write_text(original + 'ui_profile: pc_1080\ncontrol_backend: local\n'
+                                  'local_control_mode: foreground\nno_run_immediately: false\n',
+                                  encoding='utf-8')
+                self.assertEqual(march7.prepare(row)['blockers'], [])
+                config.write_text(original.replace('cloud_game_enable: false', 'cloud_game_enable: true')
+                                  + 'control_backend: local\n', encoding='utf-8')
+                self.assertNotIn('march7_local_game_required', march7.prepare(row)['blockers'])
+                # Fail-closed guards, each with its user-facing blocker code.
+                for addition, expected in (
+                        ('control_backend: cloud\n', 'march7_local_backend_required'),
+                        ('control_backend: adb\n', 'march7_local_backend_required'),
+                        ('control_backend: teleport\n', 'march7_local_backend_required'),
+                        ('ui_profile: touch_720\n', 'march7_local_pc_profile_required'),
+                        ('ui_profile: arcade\n', 'march7_local_pc_profile_required'),
+                        ('local_control_mode: background\n', 'march7_local_foreground_control_required'),
+                        ('no_run_immediately: true\n', 'march7_run_immediately_required')):
+                    config.write_text(original + addition, encoding='utf-8')
+                    with self.subTest(addition=addition.strip()):
+                        self.assertIn(expected, march7.prepare(row)['blockers'])
+
+    def test_worker_accepts_v2026_11_24_when_prepared_version_matches(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); self.installation(root)
+            (root / 'assets/config/version.txt').write_text('v2026.11.24', encoding='utf-8')
+            descriptor = dict(installation_root=str(root), cwd=str(root), token='t',
+                argv_candidate=[str(root / 'March7th Assistant.exe'), 'main'],
+                runner_version='v2026.11.24',
+                config_sha256=hashlib.sha256((root / 'config.yaml').read_bytes()).hexdigest())
+            launch = root / 'march7-launch.json'
+            launch.write_text(json.dumps(descriptor), encoding='utf-8')
+            identity = {'image': str(root / 'March7th Assistant.exe'), 'pid': 4242,
+                        'creation_ticks': 10}
+            with patch.object(march7.subprocess, 'Popen') as popen, \
+                 patch.object(march7, 'creation_ticks', return_value=10), \
+                 patch.object(march7, 'observation_api', return_value=object()), \
+                 patch.object(march7, 'process_identity', return_value=identity):
+                instance = popen.return_value.__enter__.return_value
+                instance.wait.return_value = 0
+                instance.pid = 4242
+                march7.run_child(['--launch', str(launch)])
+            self.assertTrue(popen.called)
+            receipt = json.loads((root / 'march7-result.json').read_text(encoding='utf-8'))
+            self.assertEqual(receipt['exit_code'], 0)
+            self.assertEqual(receipt['native_identity']['pid'], 4242)
+
+    def test_v2026_11_24_training_report_text_is_parsed_both_ways(self):
+        # 活跃度不满：plain claim line means the daily training is incomplete
+        # even though start/stop markers and the exit code are clean.
+        partial = ('| 开始运行 |\n'
+                   '16:34:30 | WARNING | 实训未完成：清除冗余单元\n'
+                   '16:34:40 | WARNING | 实训「模拟宇宙」未完成后无法返回实训页：超时\n'
+                   '16:35:00 | INFO | 已领取实训奖励，活跃度 200/500\n'
+                   '| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(partial, 0)
+        self.assertEqual(result['status'], 'partial_failure')
+        self.assertIn('清除冗余单元', result['failed_applications'])
+        self.assertIn('每日实训活跃度', result['failed_applications'])
+        self.assertEqual(result['daily_training_score'], '200/500')
+        self.assertTrue(result['daily_training_incomplete'])
+        self.assertTrue(any('无法返回实训页' in line for line in result['failure_warnings']))
+        self.assertEqual(result['evidence'], 'owned_native_full_run_and_stop_completed')
+        # A healthy new-format run stays a clean success.
+        healthy = ('| 开始运行 |\n| 停止运行 |\n--- 完成 ---\n')
+        self.assertEqual(march7.evaluate(healthy, 0)['status'], 'success')
+        self.assertFalse(march7.evaluate(healthy, 0)['daily_training_incomplete'])
+        # Non-zero exit still dominates.
+        self.assertEqual(march7.evaluate(partial, 1)['status'], 'runner_failed')
+
+
 if __name__ == '__main__':
     unittest.main()
