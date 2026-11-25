@@ -23,7 +23,7 @@ from .migration_journal import (JOURNAL_KIND, archive_journal, backup_root, jour
 from .planner import ConfigError
 from .profiles import ProfileStore, profile_document, run_content, validate_profile_document
 from .recovery import RecoveryRequired, read_state, save, save_bytes
-from .registry import RegistrationStore, validate_registry
+from .registry import RegistrationStore, registration_complete, validate_registry
 
 REGISTRATION_FIELDS = ('installation_root', 'entry_executable', 'game_path')
 REGISTRY_RELATIVE = 'config/assistant-registry.json'
@@ -151,6 +151,13 @@ def _collect_candidates(rows, registry):
             spec = get_adapter(adapter_id)
             fields = {field: row[field] for field in spec.registration_fields
                       if isinstance(row.get(field), str) and row[field]}
+            if not registration_complete(adapter_id, fields):
+                # Old schema 1 profiles may legitimately record a partial
+                # registration (an absolute root without the game EXE the
+                # registry requires, for example). Auto-adopting it would make
+                # validate_registry reject the commit and dead-end startup, so
+                # the adapter stays 待接入 and the row keeps its run settings.
+                continue
             key = candidate_key(adapter_id, fields)
             slot = by_adapter.setdefault(adapter_id, {})
             if key in slot:
@@ -187,13 +194,21 @@ def _preview_adapters(by_adapter):
 def startup_state(data_root):
     """Startup gate: pending transaction, required migration, fresh root or ready."""
     root = Path(data_root).resolve()
-    journal = read_journal(root)
-    if journal is not None:
-        if journal['state'] == 'prepared':
+    with config_lock(root):
+        journal = read_journal(root)
+        if journal is not None:
+            if journal['state'] == 'prepared':
+                return {'status': 'prepared', 'transaction': journal['transaction']}
+            archive_journal(root, journal)
+            # Another window may have archived this journal and started a new
+            # transaction while this window was between the read and the
+            # archive; the lock alone cannot help a stale handle, so re-read:
+            # a prepared journal must never be unlinked by an older archive.
+            journal = read_journal(root)
+        if journal is not None:
             return {'status': 'prepared', 'transaction': journal['transaction']}
-        archive_journal(root, journal)
-    registry_exists = (root / REGISTRY_RELATIVE).exists()
-    rows = scan_profiles(root)
+        registry_exists = (root / REGISTRY_RELATIVE).exists()
+        rows = scan_profiles(root)
     if any(row['schema'] == 1 for row in rows):
         return {'status': 'migration_required'}
     if not registry_exists:
@@ -209,24 +224,31 @@ def initialize_fresh(data_root):
 def preview_registration_migration(data_root):
     """Read-only migration preview with per-adapter candidates and conflicts."""
     root = Path(data_root).resolve()
-    journal = read_journal(root)
-    if journal is not None:
-        if journal['state'] == 'prepared':
-            raise ConfigError('存在未完成的迁移/导入事务；请先继续该事务')
-        archive_journal(root, journal)
-    rows = scan_profiles(root)
-    store = RegistrationStore(root)
-    registry = store.read()
-    sources = []
-    for profile in rows:
-        if profile['schema'] != 1:
-            continue
-        sources.append({'path': f'config/profiles/{profile["id"]}/config.json',
-                        'exists': True, 'sha256': profile['digest']})
-        sources.append({'path': f'config/profiles/{profile["id"]}/name.json',
-                        'exists': True, 'sha256': profile['name_digest']})
-    sources.append({'path': REGISTRY_RELATIVE, 'exists': registry is not None,
-                    **({'sha256': _file_digest(store.path)} if registry is not None else {})})
+    with config_lock(root):
+        journal = read_journal(root)
+        if journal is not None:
+            if journal['state'] == 'prepared':
+                raise ConfigError('存在未完成的迁移/导入事务；请先继续该事务')
+            archive_journal(root, journal)
+            # Same stale-archive race as startup_state: re-read so a prepared
+            # journal written by another window in between is surfaced, never
+            # silently unlinked by this archive.
+            journal = read_journal(root)
+            if journal is not None:
+                raise ConfigError('存在未完成的迁移/导入事务；请先继续该事务')
+        rows = scan_profiles(root)
+        store = RegistrationStore(root)
+        registry = store.read()
+        sources = []
+        for profile in rows:
+            if profile['schema'] != 1:
+                continue
+            sources.append({'path': f'config/profiles/{profile["id"]}/config.json',
+                            'exists': True, 'sha256': profile['digest']})
+            sources.append({'path': f'config/profiles/{profile["id"]}/name.json',
+                            'exists': True, 'sha256': profile['name_digest']})
+        sources.append({'path': REGISTRY_RELATIVE, 'exists': registry is not None,
+                        **({'sha256': _file_digest(store.path)} if registry is not None else {})})
     return {'schema_version': 1, 'kind': 'registration_migration_preview', 'data_root': str(root),
             'created_at': _now(), 'sources': sources,
             'profiles': [{'id': row['id'], 'name': row['name'], 'created': row['created'],
@@ -511,6 +533,10 @@ def _split_schema1(config):
         spec = get_adapter(row['adapter'])
         fields = {field: row[field] for field in spec.registration_fields
                   if isinstance(row.get(field), str) and row[field]}
+        if not registration_complete(row['adapter'], fields):
+            # Same rule as the migration preview: an incomplete candidate is
+            # never offered or auto-applied; the adapter stays 待接入.
+            continue
         previous = candidates.get(row['adapter'])
         if previous is not None and candidate_key(row['adapter'], previous) != candidate_key(row['adapter'], fields):
             raise ConfigError(f'导入文件中 {spec.display_name} 存在多个不同接入路径，请先统一后再导入')

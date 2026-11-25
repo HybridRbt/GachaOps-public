@@ -61,6 +61,28 @@ def empty_registry():
             'revision': 1, 'assistants': {}}
 
 
+def registration_complete(adapter_id, fields):
+    """True when `fields` satisfy this adapter's registry requirements.
+
+    Mirrors the per-entry checks in validate_registry (keep the two in sync).
+    Migration/import candidates that fail it stay unregistered (待接入) instead
+    of being auto-adopted into a commit that validate_registry would reject.
+    """
+    try:
+        spec = get_adapter(adapter_id)
+    except ValueError:
+        return False
+    if (not isinstance(fields, dict) or not fields
+            or set(fields) - set(spec.registration_fields)):
+        return False
+    if any(not isinstance(value, str) or not value or not Path(value).is_absolute()
+           for value in fields.values()):
+        return False
+    if adapter_id == 'zzz-onedragon' and 'game_path' not in fields:
+        return False
+    return True
+
+
 class RegistrationStore:
     def __init__(self, data_root):
         self.root = Path(data_root).resolve()

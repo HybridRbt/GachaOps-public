@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from gachaops.registry import (RegistrationStore, RegistryMissing, RevisionConflict, empty_registry,
-                               validate_registry)
+                               registration_complete, validate_registry)
 from gachaops.profiles import default_profile, run_content
 from gachaops.configuration import compose_configuration, registration_of
 from gachaops.registration import inspect_registration
@@ -67,6 +67,27 @@ class RegistryTests(unittest.TestCase):
             backups = list((root / 'backups/registry').glob('*.json'))
             self.assertEqual(len(backups), 2)
             with self.assertRaises(ConfigError): store.commit('bettergi', 'not-an-inspection', 3)
+
+    def test_registration_complete_mirrors_registry_validation(self):
+        """Whatever the predicate accepts must validate, and anything an old
+        schema 1 profile could legally record but the registry rejects must be
+        reported incomplete (so migration leaves it 待接入)."""
+        complete = [('ok-ww', {'installation_root': absolute('ok')}),
+                    ('zzz-onedragon', {'installation_root': absolute('zzz'),
+                                       'game_path': absolute('zzz', 'game.exe')})]
+        for adapter_id, fields in complete:
+            self.assertTrue(registration_complete(adapter_id, fields))
+            validate_registry({'schema_version': 1, 'kind': 'assistant_registry',
+                               'revision': 1, 'assistants': {adapter_id: fields}})
+        incomplete = [('ok-ww', {'installation_root': 'relative/path'}),
+                      ('ok-ww', {'game_path': absolute('game.exe')}),
+                      ('ok-ww', {'installation_root': absolute('ok'), 'unknown': absolute('x')}),
+                      ('ok-ww', {}),
+                      ('zzz-onedragon', {'installation_root': absolute('zzz')}),
+                      ('no-such-adapter', {'installation_root': absolute('x')})]
+        for adapter_id, fields in incomplete:
+            with self.subTest(adapter=adapter_id, fields=sorted(fields)):
+                self.assertFalse(registration_complete(adapter_id, fields))
 
     def test_reregister_without_optional_entry_clears_stale_registry_paths(self):
         """A registration commit is a complete snapshot of the form: re-registering

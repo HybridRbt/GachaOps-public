@@ -5,9 +5,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from gachaops.migration_journal import backup_root, journal_path, read_journal
+from gachaops.migration_journal import JOURNAL_KIND, backup_root, journal_path, read_journal
 from gachaops.planner import ConfigError
 from gachaops.profiles import ProfileStore
+from gachaops.recovery import save
 from gachaops.registration_migration import (
     SourceChanged, commit_registration_import, commit_registration_migration,
     continue_registration_transaction, initialize_fresh, preview_registration_import,
@@ -429,6 +430,107 @@ class ImportTests(unittest.TestCase):
                              {'installation_root': absolute('imported')})
             self.assertTrue(list(backup_root(root).glob('*/complete.json')))
             self.assertIsNone(read_journal(root))
+
+
+class IncompleteCandidateTests(unittest.TestCase):
+    """A partial registration must stay 待接入, never dead-end the commit."""
+
+    def test_incomplete_zzz_single_candidate_is_not_auto_adopted_and_migration_succeeds(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_profile(root, UUID_A, schema1(root, [
+                {'id': 'zenless', 'adapter': 'zzz-onedragon', 'installation_root': str(root),
+                 'enabled': False}]), name='旧z')
+            preview = preview_registration_migration(root)
+            self.assertEqual(preview['adapters'], [])
+            commit_registration_migration(root, preview, {})
+            registry = RegistrationStore(root).read_required()
+            self.assertNotIn('zzz-onedragon', registry['assistants'])
+            # Run fields and selection survive; the row is not auto-disabled.
+            document = ProfileStore(root).load_profile(UUID_A)
+            self.assertFalse(document['assistants'][0]['enabled'])
+            self.assertEqual(document['assistants'][0]['timeout_seconds'], 1800)
+            self.assertEqual(startup_state(root)['status'], 'ready')
+            # A complete candidate for the same adapter still auto-adopts.
+            write_profile(root, UUID_B, schema1(root, [
+                {'id': 'zenless2', 'adapter': 'zzz-onedragon', 'installation_root': str(root),
+                 'game_path': str(root / 'ZenlessZoneZero.exe'), 'enabled': True}]), name='新z')
+            preview = preview_registration_migration(root)
+            commit_registration_migration(root, preview, {})
+            registry = RegistrationStore(root).read_required()
+            self.assertEqual(registry['assistants']['zzz-onedragon'],
+                             {'installation_root': str(root),
+                              'game_path': str(root / 'ZenlessZoneZero.exe')})
+
+    def test_incomplete_import_candidate_is_not_applied_and_import_succeeds(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); initialize_fresh(root)
+            source = root.parent / 'external-zzz.json'
+            source.write_text(json.dumps(schema1(root, [
+                {'id': 'zenless', 'adapter': 'zzz-onedragon',
+                 'installation_root': str(root), 'enabled': False}])), encoding='utf-8')
+            preview = preview_registration_import(root, source, '导入z')
+            self.assertEqual(preview['adapters'], [])
+            result = commit_registration_import(root, preview, {})
+            self.assertEqual(RegistrationStore(root).read_required()['assistants'], {})
+            document = ProfileStore(root).load_profile(result['profile_id'])
+            self.assertFalse(document['assistants'][0]['enabled'])
+            self.assertIsNone(read_journal(root))
+
+
+class JournalArchiveRaceTests(unittest.TestCase):
+    """startup/preview archive a completed journal; a concurrent window may
+    replace it with a new prepared transaction between the read and the
+    archive. The stale archive must never unlink the newer journal."""
+
+    @staticmethod
+    def journal(backup, state, transaction):
+        return {'schema_version': 1, 'kind': JOURNAL_KIND, 'state': state,
+                'transaction': transaction, 'backup': backup,
+                'manifest_sha256': '0' * 64, 'created_at': '2026-01-01T00:00:00+00:00'}
+
+    @staticmethod
+    def interleaved_archive(root):
+        """Window B archives the complete journal and its new import is
+        interrupted right after publishing: a prepared journal sits in the
+        journal file. Runs without taking the config lock so it can execute
+        inside the function under test."""
+        from gachaops import registration_migration
+        real_archive = registration_migration.archive_journal
+        def stale_archive(data_root, journal):
+            real_archive(data_root, journal)
+            save(journal_path(root), JournalArchiveRaceTests.journal(
+                'd' * 32, 'prepared', 'import'))
+        return stale_archive
+
+    def test_startup_state_surfaces_a_newer_prepared_journal_instead_of_unlinking_it(self):
+        from gachaops import registration_migration
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            save(journal_path(root), self.journal('a' * 32, 'complete', 'migration'))
+            with patch.object(registration_migration, 'archive_journal',
+                              self.interleaved_archive(root)):
+                state = startup_state(root)
+            self.assertEqual(state, {'status': 'prepared', 'transaction': 'import'})
+            journal = read_journal(root)
+            self.assertIsNotNone(journal)
+            self.assertEqual(journal['backup'], 'd' * 32)
+
+    def test_migration_preview_surfaces_a_newer_prepared_journal_instead_of_unlinking_it(self):
+        from gachaops import registration_migration
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            save(journal_path(root), self.journal('b' * 32, 'complete', 'migration'))
+            with patch.object(registration_migration, 'archive_journal',
+                              self.interleaved_archive(root)):
+                with self.assertRaises(ConfigError) as caught:
+                    preview_registration_migration(root)
+            self.assertIn('未完成的迁移/导入事务', str(caught.exception))
+            journal = read_journal(root)
+            self.assertIsNotNone(journal)
+            self.assertEqual(journal['backup'], 'd' * 32)
 
 
 if __name__ == '__main__':
