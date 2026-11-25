@@ -64,9 +64,10 @@ SUBTITLE_IDLE = '选好助手，一次开始。任务沿用各助手中已保存
 SUBTITLE_RUNNING = '运行中，配置已锁定。可随时停止并清理。'
 # How long a started run worker may stay without a first summary (which is
 # only written inside the admission gate) before the window says so instead
-# of sitting there silently. Cold interpreter start plus lock/journal scan
-# stays well inside this budget.
+# of sitting there silently. This is a notice threshold, not an abort: a
+# slow cold start may still be confirmed after it fires.
 RUN_CONFIRM_TIMEOUT_MS = 30000
+RUN_UNCONFIRMED_TEXT = '尚未确认开始运行（可能在检查上一轮恢复或执行锁）；确认开始前窗口保持显示'
 BLOCKER_TEXT = {
     'not_registered': '尚未接入（无全局登记路径）',
     'version_unsupported': '版本或启动协议尚未核验',
@@ -2173,7 +2174,7 @@ def main():
             self.set_problems(self.problem_entries(
                 [self.results.get(r['id'], {}) for r in participants]))
             if self.run_confirm_warned and not self.run_confirmed_minimized:
-                self.running_title.setText('尚未确认开始运行（可能在检查上一轮恢复或执行锁）；窗口保持前台')
+                self.running_title.setText(RUN_UNCONFIRMED_TEXT)
                 self.running_title.setStyleSheet('color: #d97706; font-size: 15px; font-weight: 600;')
             if self.stop_requested:
                 self.running_title.setText('停止中，等待清理确认…')
@@ -2353,7 +2354,7 @@ def main():
             if self.run_confirmed_minimized or not self.running():
                 return
             self.run_confirm_warned = True
-            self.running_title.setText('尚未确认开始运行（可能在检查上一轮恢复或执行锁）；窗口保持前台')
+            self.running_title.setText(RUN_UNCONFIRMED_TEXT)
             self.running_title.setStyleSheet('color: #d97706; font-size: 15px; font-weight: 600;')
 
         # ---------- completion ----------
