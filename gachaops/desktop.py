@@ -773,7 +773,8 @@ def main():
             dialog.setMinimumWidth(680)
             layout = QVBoxLayout(dialog)
             intro = QLabel('检测到旧版组合配置。迁移会把接入路径集中到全局登记（此接入设置对所有组合生效），'
-                           '组合只保留运行选择与运行设置；原文件将完整备份，可随时取消。')
+                           '组合只保留运行选择与运行设置；接入路径不完整的条目不会自动登记，迁移后可随时“去接入”；'
+                           '原文件将完整备份，可随时取消。')
             intro.setWordWrap(True)
             layout.addWidget(intro)
             if singles:
@@ -1612,25 +1613,30 @@ def main():
 
         # ---------- actions ----------
 
-        def commit_registration_inspection(self, inspection):
+        def commit_registration_inspection(self, inspection, expected_revision):
             """Publish one adapter's registration through the shared commit service.
 
             Writes the global library only: no profile is saved, no checkbox is
-            changed, and run eligibility stays with the next check.
+            changed, and run eligibility stays with the next check. The expected
+            revision is pinned by the caller when its entry point opens, so a
+            registry refresh while a form is up cannot turn this commit into a
+            silent overwrite of another window's newer paths. Returns True when
+            published, False when refused (stale revision or locked state).
             """
-            if self.recovery_locked(): return
+            if self.recovery_locked(): return False
             adapter_id = inspection.candidate_row['adapter']
             try:
-                self.registry = self.registry_store.commit(adapter_id, inspection, self.registry['revision'])
+                self.registry = self.registry_store.commit(adapter_id, inspection, expected_revision)
             except RevisionConflict:
                 self.refresh_registry()
-                QMessageBox.warning(self, '登记冲突', '全局登记刚被其他窗口修改，已刷新；请重新保存接入。')
-                return
+                QMessageBox.warning(self, '登记冲突', '全局登记刚被其他窗口修改，已刷新；请重新打开“去接入”并再次保存。')
+                return False
             self.check_report = None
             self.render(); self.refresh_controls(); self.refresh_checklist()
             self.flash_hint('已接入，此接入设置对所有组合生效；运行前请重新检查' if not inspection.blockers
                             else '已接入，需处理：' + '；'.join(BLOCKER_TEXT.get(b, b) for b in inspection.blockers))
             self.recheck_timer.start(900)
+            return True
 
         def register_assistant(self, identity):
             if self.recovery_locked(): return
@@ -1638,6 +1644,10 @@ def main():
             row = next(r for r in self.data['assistants'] if r['id'] == identity)
             spec = get_adapter(row['adapter'])
             entry = (self.registry['assistants'].get(row['adapter']) or {}) if self.registry else {}
+            # Pin the revision the form was opened against: an activation-driven
+            # refresh_registry while the modal dialog is up must not let this
+            # older form silently commit over another window's newer paths.
+            expected_revision = self.registry['revision'] if self.registry is not None else None
             dialog = QDialog(self); dialog.setWindowTitle(spec.display_name + ' · 登记已安装助手')
             dialog.setMinimumWidth(620)
             layout = QVBoxLayout(dialog)
@@ -1682,12 +1692,16 @@ def main():
                 if row.get('game_start', 'assistant') != mode.currentData():
                     row['game_start'] = mode.currentData()
                     self.selection_changed()
-                self.commit_registration_inspection(inspection)
+                self.commit_registration_inspection(inspection, expected_revision)
             except (OSError, ValueError, TypeError) as error: QMessageBox.warning(self, '登记需要处理', sanitize_detail(error))
 
         def register_local_bettergi(self, identity):
             if self.recovery_locked(): return
             if self.busy() or self.data is None: return
+            # Same pin as the registration form: the file chooser can sit open
+            # while another window publishes; commit against the revision seen
+            # at entry, never the refreshed one.
+            expected_revision = self.registry['revision'] if self.registry is not None else None
             executable, _ = QFileDialog.getOpenFileName(self, '选择已安装的 BetterGI.exe',
                 'C:/BetterGI/BetterGI.exe', 'BetterGI (BetterGI.exe)')
             if not executable: return
@@ -1701,8 +1715,8 @@ def main():
                 if inspection.blockers:
                     message += '\n\n已接入，需处理：\n' + '\n'.join(
                         BLOCKER_TEXT.get(b, b) for b in inspection.blockers)
-                self.commit_registration_inspection(inspection)
-                QMessageBox.information(self, 'BetterGI 本机接入', message)
+                if self.commit_registration_inspection(inspection, expected_revision):
+                    QMessageBox.information(self, 'BetterGI 本机接入', message)
             except (OSError, ValueError, TypeError, KeyError) as error:
                 QMessageBox.warning(self, 'BetterGI 接入需要处理', sanitize_detail(error))
 

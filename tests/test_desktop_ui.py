@@ -302,7 +302,7 @@ class DesktopUiTests(unittest.TestCase):
                     ('version_unsupported',), (), {})
                 profile_path = Path(window.profiles.currentData())
                 before = profile_path.read_bytes()
-                window.commit_registration_inspection(inspection)
+                window.commit_registration_inspection(inspection, window.registry['revision'])
                 self.assertEqual(window.registry['revision'], 2)
                 self.assertEqual(window.registry['assistants']['ok-ww'], {'installation_root': str(root)})
                 on_disk = json.loads((root / 'config' / 'assistant-registry.json').read_text(encoding='utf-8-sig'))
@@ -1773,4 +1773,125 @@ class DesktopUiTests(unittest.TestCase):
                  patch.object(QApplication, 'exec', return_value=0), \
                  patch('sys.argv', ['desktop-test']):
                 self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_registration_form_pins_revision_against_concurrent_publication(self):
+        """A form opened before another window published must not commit over
+        the newer paths: the expected revision is pinned at open time and a
+        stale commit is refused loudly (review finding H)."""
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication, QDialog, QLineEdit, QMessageBox
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); path = root / 'fixture.json'
+            rows = [dict(id='wuthering-waves', adapter='ok-ww',
+                         installation_root=str(root), enabled=True)]
+            path.write_text(json.dumps(dict(schema_version=1, assistants=rows)), encoding='utf-8')
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
+            other_path = str(root / 'elsewhere')
+            mine = root / 'mine'; mine.mkdir()
+            reopened = []
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                registry_path = root / 'config' / 'assistant-registry.json'
+                def open_then_interleave(dialog):
+                    dialog.findChild(QLineEdit, 'installation_root').setText(str(mine))
+                    # Another window publishes while this form sits open; the
+                    # activation change then refreshes this window's copy.
+                    write_registry(root, {'ok-ww': {'installation_root': other_path}}, revision=2)
+                    window.refresh_registry()
+                    self.assertEqual(window.registry['revision'], 2)
+                    return QDialog.DialogCode.Accepted
+                with patch.object(QDialog, 'exec', open_then_interleave), \
+                     patch('gachaops.registration.prepare_assistant', return_value={'blockers': []}), \
+                     patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes), \
+                     patch.object(QMessageBox, 'warning') as warned:
+                    window.register_assistant('wuthering-waves')
+                warned.assert_called_once()
+                self.assertEqual(warned.call_args.args[1], '登记冲突')
+                self.assertIn('重新打开', warned.call_args.args[2])
+                # The stale form never reached the disk: the other window's
+                # paths and revision are intact.
+                on_disk = json.loads(registry_path.read_text(encoding='utf-8-sig'))
+                self.assertEqual(on_disk['revision'], 2)
+                self.assertEqual(on_disk['assistants']['ok-ww'], {'installation_root': other_path})
+                self.assertEqual(window.registry['revision'], 2)
+                # After the conflict the normal flow still works: reopen and
+                # commit against the refreshed revision.
+                def accept_only(dialog):
+                    dialog.findChild(QLineEdit, 'installation_root').setText(str(mine))
+                    return QDialog.DialogCode.Accepted
+                with patch.object(QDialog, 'exec', accept_only), \
+                     patch('gachaops.registration.prepare_assistant', return_value={'blockers': []}), \
+                     patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes), \
+                     patch.object(QMessageBox, 'warning') as warned_again:
+                    window.register_assistant('wuthering-waves')
+                warned_again.assert_not_called()
+                on_disk = json.loads(registry_path.read_text(encoding='utf-8-sig'))
+                self.assertEqual(on_disk['revision'], 3)
+                self.assertEqual(on_disk['assistants']['ok-ww'],
+                                 {'installation_root': str(mine)})
+                reopened.append(True)
+                window.recheck_timer.stop(); window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QProcess, 'start', side_effect=AssertionError('no process launch')), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+            self.assertTrue(reopened)
+        self._release_qt()
+
+    def test_bettergi_link_pins_revision_against_concurrent_publication(self):
+        """The BetterGI entry point pins the revision before its file chooser:
+        a publication that lands while it is open turns the commit into a
+        refused conflict instead of a silent overwrite."""
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); path = root / 'fixture.json'
+            rows = [dict(id='wuthering-waves', adapter='ok-ww', installation_root=str(root), enabled=True),
+                    dict(id='genshin', adapter='bettergi', installation_root=None, enabled=False)]
+            path.write_text(json.dumps(dict(schema_version=1, assistants=rows)), encoding='utf-8')
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
+            executable = root / 'BetterGI.exe'; executable.touch()
+            other_entry = {'installation_root': str(root), 'entry_executable': str(root / 'other.exe')}
+            refused = []
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop(); window.set_view('all')
+                registry_path = root / 'config' / 'assistant-registry.json'
+                def chooser(*args, **kwargs):
+                    # The other window publishes while the file dialog is open.
+                    write_registry(root, dict({'ok-ww': {'installation_root': str(root)}},
+                                              bettergi=other_entry), revision=2)
+                    window.refresh_registry()
+                    self.assertEqual(window.registry['revision'], 2)
+                    return (str(executable), '')
+                with patch.object(QFileDialog, 'getOpenFileName', side_effect=chooser), \
+                     patch('gachaops.registration.prepare_assistant', return_value={'blockers': []}), \
+                     patch.object(QMessageBox, 'warning') as warned, \
+                     patch.object(QMessageBox, 'information') as info:
+                    window.register_local_bettergi('genshin')
+                warned.assert_called_once()
+                self.assertEqual(warned.call_args.args[1], '登记冲突')
+                info.assert_not_called()  # the stale commit was refused outright
+                on_disk = json.loads(registry_path.read_text(encoding='utf-8-sig'))
+                self.assertEqual(on_disk['revision'], 2)
+                self.assertEqual(on_disk['assistants']['bettergi'], other_entry)
+                refused.append(True)
+                window.recheck_timer.stop(); window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QProcess, 'start', side_effect=AssertionError('no process launch')), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+            self.assertTrue(refused)
         self._release_qt()
