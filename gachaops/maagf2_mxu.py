@@ -80,12 +80,11 @@ def _pe_file_version(exe):
 
 
 def _redirected(path):
-    # A missing path is not a redirection; the presence checks downstream
-    # report it as an incomplete installation.
-    try:
-        info = path.lstat()
-    except (OSError, ValueError):
-        return False
+    # Strict on purpose: this predicate also guards every ancestor of the game
+    # path and the installation tree walk, where a missing entry must fail
+    # loudly rather than pass as "not a link". Callers that need to report a
+    # missing file as an incomplete installation check presence themselves.
+    info = path.lstat()
     return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
 
@@ -99,7 +98,11 @@ def _inside(root, value, directory=False):
     current = root
     for name in part.parts:
         current = current / name
-        if _redirected(current):
+        try:
+            redirected = _redirected(current)
+        except OSError as error:
+            raise ValueError(INCOMPLETE_TEXT) from error
+        if redirected:
             raise ValueError(PATH_ANOMALY_TEXT)
     try:
         inside = path.resolve(strict=True).is_relative_to(root)
@@ -240,7 +243,10 @@ def prepare(row, *, root, exe, launcher_sha256):
     if _redirected(Path(row['installation_root'])):
         raise ValueError(PATH_ANOMALY_TEXT)
     consumed = {}
-    interface = _json(root, 'interface.json', consumed)
+    # Order matters: prove this is a reviewed build before trusting anything
+    # it contains. Every expected component is hashed first (interface.json
+    # included); only a fully matching set proceeds to the version, project
+    # and configuration checks that read the installation's own content.
     mismatches = []
     for name, expected in EXPECTED_COMPONENTS.items():
         # A missing expected component is drift too (an old or foreign layout,
@@ -255,26 +261,39 @@ def prepare(row, *, root, exe, launcher_sha256):
             mismatches.append({'component': name,
                                'actual_sha256': actual[:12],
                                'expected_sha256': expected[:12]})
-    resource_version = interface.get('version')
-    read_versions = {'resource_interface': resource_version if isinstance(resource_version, str) else None,
-                     'entry_file_version': _pe_file_version(exe)}
-    versions = {key: value for key, value in read_versions.items() if isinstance(value, str)}
-    project = interface.get('name')
-    if (mismatches or resource_version != RESOURCE_VERSION or interface.get('interface_version') != 2
-            or not isinstance(project, str) or not re.fullmatch(r'[^<>:"/\\|?*\x00-\x1f]{1,100}', project)):
+    if not (root / 'interface.json').is_file():
+        # Core metadata missing outranks drift: reinstalling fixes both, while
+        # waiting for an adaptation cannot bring a missing file back.
+        raise ValueError(INCOMPLETE_TEXT)
+    if mismatches:
         # Any drift from the reviewed baseline means this build is not yet
-        # adapted; say that to the user, list every drifted component for the
-        # diagnostics channel, and never carry a stale version constant.
+        # adapted: say that to the user, list every drifted component for the
+        # diagnostics channel, and never carry a stale version constant. The
+        # entry EXE's version is safe to read here; it never gates a decision.
         raise BuildIdentityError(NOT_ADAPTED_TEXT,
                                  {'reason': 'component_or_version_mismatch',
-                                  'components': mismatches, 'versions': versions})
+                                  'components': mismatches,
+                                  'versions': {'entry_file_version': _pe_file_version(exe)}})
+    interface = _json(root, 'interface.json', consumed)
+    resource_version = interface.get('version')
+    project = interface.get('name')
+    if (resource_version != RESOURCE_VERSION or interface.get('interface_version') != 2
+            or not isinstance(project, str) or not re.fullmatch(r'[^<>:"/\\|?*\x00-\x1f]{1,100}', project)):
+        versions = {key: value for key, value in
+                    {'resource_interface': resource_version, 'entry_file_version': _pe_file_version(exe)}.items()
+                    if isinstance(value, str)}
+        raise BuildIdentityError(NOT_ADAPTED_TEXT,
+                                 {'reason': 'component_or_version_mismatch',
+                                  'components': [], 'versions': versions})
     task_names = _imports(root, interface, consumed)
     config_file = 'config/mxu-' + project + '.json'
     config = _json(root, config_file, consumed)
     if config.get('version') != '1.0':
         raise BuildIdentityError(NOT_ADAPTED_TEXT,
                                  {'reason': 'component_or_version_mismatch',
-                                  'components': [], 'versions': versions})
+                                  'components': [],
+                                  'versions': {'resource_interface': resource_version,
+                                               'entry_file_version': _pe_file_version(exe)}})
     instance, instances = _instance(config)
     controller = _unique(interface.get('controller'), 'name', instance.get('controllerName'))
     options = controller.get('win32', {})

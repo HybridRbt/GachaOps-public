@@ -353,9 +353,34 @@ class MxuPreparationTests(unittest.TestCase):
         (self.root / 'agent/main.py').unlink()
         with self.assertRaisesRegex(ValueError, '尚未适配'):
             prepare_assistant(self.row)
+        # Both missing at once: the incomplete install wins, because
+        # reinstalling fixes both while waiting for an adaptation does not.
         (self.root / 'interface.json').unlink()
         with self.assertRaisesRegex(ValueError, '重新安装'):
             prepare_assistant(self.row)
+
+    def test_missing_interface_alone_reports_reinstall_before_any_content_is_read(self):
+        (self.root / 'interface.json').unlink()
+        with patch.object(self.mxu, '_json', side_effect=AssertionError('content read before identity')):
+            with self.assertRaisesRegex(ValueError, '重新安装'):
+                prepare_assistant(self.row)
+
+    def test_drifted_build_is_rejected_before_its_configuration_is_parsed(self):
+        # Order matters: a build outside the reviewed baseline must be refused
+        # on its hashes, without parsing the instance/controller data it ships.
+        (self.root / 'maafw/MaaFramework.dll').write_bytes(b'drifted-framework')
+        (self.root / 'interface.json').write_text('{"version": "v9.9.9", "name": "x",'
+                                                  ' "interface_version": 2}', encoding='utf-8')
+        with patch.object(self.mxu, '_imports', side_effect=AssertionError('imports read before identity')), \
+             patch.object(self.mxu, '_instance', side_effect=AssertionError('instance read before identity')):
+            with self.assertRaisesRegex(ValueError, '尚未适配'):
+                prepare_assistant(self.row)
+
+    def test_missing_entry_in_installation_tree_fails_instead_of_passing_as_unredirected(self):
+        # _redirected stays strict: a missing path must raise, never read as
+        # "not a link", because it also guards the installation tree walk.
+        with self.assertRaises(OSError):
+            self.mxu._redirected(self.root / 'no-such-entry')
 
     def test_check_panel_row_carries_user_text_and_build_diagnostics(self):
         (self.root / 'MaaGF2Exilium.exe').write_bytes(b'drifted-exe')
@@ -391,6 +416,42 @@ class MxuPreparationTests(unittest.TestCase):
         exported = json.dumps(payload)
         self.assertNotIn(self.mxu.EXPECTED_COMPONENTS['MaaGF2Exilium.exe'], exported)
         self.assertNotIn(self._digest_of('MaaGF2Exilium.exe'), exported)
+
+    def test_diagnostics_export_refuses_path_like_or_free_form_fields(self):
+        # Component names, versions and the reason all originate in data read
+        # from the installation, which is unreviewed. The export whitelist
+        # must let through only the package-relative name, 12 hex characters
+        # and a version-like shape - never a drive, a parent reference, an
+        # absolute prefix, a path separator or free-form text.
+        from gachaops.diagnostics import _allowed
+        hostile = {
+            'build_diagnostics': {
+                'reason': 'C:\\Users\\someone\\secret',
+                'components': [
+                    {'component': 'C:\\Users\\someone\\AppData\\x.dll', 'actual_sha256': 'a' * 12},
+                    {'component': '../../etc/passwd', 'actual_sha256': 'b' * 12},
+                    {'component': '/usr/local/bin/x', 'actual_sha256': 'c' * 12},
+                    {'component': '.hidden', 'actual_sha256': 'd' * 12},
+                    {'component': 'maafw\\MaaFramework.dll', 'actual_sha256': 'e' * 12},
+                    {'component': 'maafw/MaaFramework.dll', 'actual_sha256': 'f' * 64},
+                    {'component': 'python/python.exe', 'actual_sha256': '0123456789ab'},
+                ],
+                'versions': {'resource_interface': 'v2.8.8 C:\\Users\\someone',
+                             'entry_file_version': '2.11.2',
+                             'C:\\Users\\someone': 'x',
+                             'extra': '1.0'},
+            }}
+        allowed = _allowed(hostile)['build_diagnostics']
+        self.assertIsNone(allowed['reason'])
+        # A legitimate relative name survives on its own when its hash field
+        # is not a 12-hex prefix; anything path-like is dropped entirely.
+        self.assertEqual(allowed['components'],
+                         [{'component': 'maafw/MaaFramework.dll'},
+                          {'component': 'python/python.exe', 'actual_sha256': '0123456789ab'}])
+        self.assertEqual(allowed['versions'], {'entry_file_version': '2.11.2'})
+        exported = json.dumps(allowed)
+        for needle in ('Users', 'someone', 'passwd', '..', 'f' * 64):
+            self.assertNotIn(needle, exported)
 
 
 class MxuCompletionTests(unittest.TestCase):
