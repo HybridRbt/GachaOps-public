@@ -24,8 +24,10 @@ blocks every composition, 'timeout' resets every imported run timeout,
 'timeout2' resets only the conflict source's distinctive 3000s row,
 'compose_runs' lets every composition succeed but rewrites run fields
 (repeat limit, timeouts, game start), 'repeat' silently rewrites the
-stored document repeat limit to 5 on every profile write, and
-'inventory' deletes a profile file and plants a fake backup receipt.
+stored document repeat limit to 5 on every profile write, 'reopen_load'
+makes only the reopen subprocess read a rewritten 乙 (repeat 9, timeouts
+1800), and 'inventory' deletes a profile file and plants a fake backup
+receipt.
 Interactive surfaces are answered through one state-driven patch per
 surface (no nested shadowing);
 QProcess.start raises immediately and records any launch attempt. Results
@@ -202,6 +204,22 @@ def assert_profile_matches_source(profile, source_document, label):
     assert_rows_match_source(profile['rows'], source_document['assistants'], label)
     check(profile['repeat_limit'] == source_document['repeat_limit'],
           f'{label}: repeat_limit {profile["repeat_limit"]!r} != source {source_document["repeat_limit"]!r}')
+
+
+def assert_snapshot_fidelity(snapshot, sources, label):
+    """Snapshot-level owner of run-field fidelity: every profile that has a
+    known source document must still match it (rows + repeat, hop1) and its
+    composed execution must match the source rows under this snapshot's
+    registry (hop2). Profiles absent from `sources` are skipped; callers pin
+    those with their own expectations."""
+    for profile in snapshot['profiles']:
+        source = sources.get(profile['name'])
+        if source is None:
+            continue
+        assert_profile_matches_source(profile, source, f'{label}/{profile["name"]}')
+        assert_composed(profile['composed'], snapshot['registry']['entries'],
+                        source['assistants'], f'{label}/{profile["name"]}',
+                        repeat_limit=profile['repeat_limit'])
 
 
 def compare_inventory(before, after, phase):
@@ -497,10 +515,7 @@ def run_r1(out, state):
             check(converted['uuid'] == UUID_A, 'converted profile uuid changed')
             check(converted['registered_rows'] == 0,
                   'profile still carries registration paths after migration')
-            assert_profile_matches_source(converted, source, 'R1/旧七登记组合')
-            assert_composed(converted['composed'], registry['entries'],
-                            source['assistants'], 'R1/旧七登记组合',
-                            repeat_limit=converted['repeat_limit'])
+            assert_snapshot_fidelity(snapshot, {'旧七登记组合': source}, 'R1')
             out['snapshot'] = snapshot
             window.close()
 
@@ -621,9 +636,7 @@ def run_r2(out, state):
             check(startup['registry']['count'] == 1
                   and startup['registry']['entries'].get('ok-ww') == {'installation_root': path_a},
                   f"startup registry {startup['registry']}")
-            default_profile = next(profile for profile in startup['profiles']
-                                   if profile['name'] == '默认组合')
-            assert_profile_matches_source(default_profile, startup_source, 'R2/默认组合')
+            assert_snapshot_fidelity(startup, {'默认组合': startup_source}, 'R2')
             out['after_startup'] = startup
 
             # Import one: same ok-ww path, six new adapters.
@@ -658,12 +671,8 @@ def run_r2(out, state):
                   f"zzz not adopted completely: {registry['entries'].get('zzz-onedragon')}")
             check(confirmed['selected']['name'] == '旧七登记配置',
                   f"selected {confirmed['selected']['name']} != 旧七登记配置")
-            imported = next(profile for profile in confirmed['profiles']
-                            if profile['name'] == '旧七登记配置')
-            assert_profile_matches_source(imported, source1, 'R2/旧七登记配置')
-            assert_composed(imported['composed'], registry['entries'],
-                            source1['assistants'], 'R2/旧七登记配置',
-                            repeat_limit=imported['repeat_limit'])
+            assert_snapshot_fidelity(
+                confirmed, {'默认组合': startup_source, '旧七登记配置': source1}, 'R2')
             assert_import_delta(root, before_import1, file_inventory(root), 'import-one')
             check(file1.read_bytes() == file1_bytes,
                   'import-one changed the external source file')
@@ -709,18 +718,11 @@ def run_r2(out, state):
             check(confirmed2['registry']['entries']['ok-ww'] == {'installation_root': path_a},
                   f"keep lost the current path: {confirmed2['registry']['entries'].get('ok-ww')}")
             check(file2.read_bytes() == source2_before, 'confirmed import changed the source file')
-            default_after = next(profile for profile in confirmed2['profiles']
-                                 if profile['name'] == '默认组合')
-            assert_profile_matches_source(default_after, startup_source, 'R2/默认组合-after')
             assert_import_delta(root, inventory_before_keep, file_inventory(root), 'keep')
-            # The conflict import creates its own combination; its stored run
-            # fields must still line up with the external source document.
-            conflict_import = next(profile for profile in confirmed2['profiles']
-                                   if profile['name'] == '冲突接入配置')
-            assert_profile_matches_source(conflict_import, source2, 'R2/冲突接入配置')
-            assert_composed(conflict_import['composed'], registry['entries'],
-                            source2['assistants'], 'R2/冲突接入配置',
-                            repeat_limit=conflict_import['repeat_limit'])
+            assert_snapshot_fidelity(
+                confirmed2,
+                {'默认组合': startup_source, '旧七登记配置': source1, '冲突接入配置': source2},
+                'R2')
             out['after_confirm_keep'] = confirmed2
             out['after_confirm_keep']['events'] = list(events)
             window.close()
@@ -899,12 +901,9 @@ def run_r5(out, state):
                   f"incomplete zzz was adopted: {registry['entries'].get('zzz-onedragon')}")
             check(registry['entries']['ok-ww'] == {'installation_root': str(base_a / 'ok-ww')},
                   f"ok-ww is not candidate 1: {registry['entries'].get('ok-ww')}")
-            for name, source in (('组合甲', source_a), ('组合乙', source_b)):
+            assert_snapshot_fidelity(snapshot, {'组合甲': source_a, '组合乙': source_b}, 'R5')
+            for name in ('组合甲', '组合乙'):
                 profile = next(p for p in snapshot['profiles'] if p['name'] == name)
-                assert_profile_matches_source(profile, source, f'R5/{name}')
-                assert_composed(profile['composed'], registry['entries'],
-                                source['assistants'], f'R5/{name}',
-                                repeat_limit=profile['repeat_limit'])
                 zzz = next(row for row in profile['rows'] if row['adapter'] == 'zzz-onedragon')
                 check('zzz-onedragon' not in registry['entries'],
                       'zzz row exists in the profile but not in the registry (待接入)')
@@ -952,12 +951,7 @@ def run_r5b(out, state):
                   f"complete zzz not adopted: {registry['entries'].get('zzz-onedragon')}")
             check(registry['entries'].get('ok-ww') == {'installation_root': str(base_a / 'ok-ww')},
                   f"ok-ww not adopted: {registry['entries'].get('ok-ww')}")
-            for name, source in (('组合甲', source_a), ('组合乙', source_b)):
-                profile = next(p for p in snapshot['profiles'] if p['name'] == name)
-                assert_profile_matches_source(profile, source, f'R5b/{name}')
-                assert_composed(profile['composed'], registry['entries'],
-                                source['assistants'], f'R5b/{name}',
-                                repeat_limit=profile['repeat_limit'])
+            assert_snapshot_fidelity(snapshot, {'组合甲': source_a, '组合乙': source_b}, 'R5b')
             out['snapshot'] = snapshot
             window.close()
 
@@ -973,7 +967,23 @@ def run_r6(out, state):
     one, and a reopen in a separate OS process (different PID) finds the
     same registry and combinations. Launch attempts are kept per phase."""
     runner_path = Path(tempfile.gettempdir()) / f'issue4-reopen-{os.getpid()}.py'
-    runner_path.write_text(REOPEN_RUNNER, encoding='utf-8')
+    reopen_runner_text = REOPEN_RUNNER
+    if os.environ.get('REPRO_NEGATIVE') == 'reopen_load':
+        reopen_runner_text = reopen_runner_text.replace(
+            "from repro_registry_link import drive, window_snapshot",
+            "from repro_registry_link import drive, window_snapshot, UUID_B\n"
+            "from unittest.mock import patch\n"
+            "from gachaops.profiles import ProfileStore\n"
+            "real_load = ProfileStore.load_profile\n"
+            "def _load_with_tampered_yi(self, identity):\n"
+            "    document = real_load(self, identity)\n"
+            "    if identity == UUID_B:\n"
+            "        document = dict(document, repeat_limit=9,\n"
+            "                       assistants=[dict(row, timeout_seconds=1800)\n"
+            "                                   for row in document['assistants']])\n"
+            "    return document\n"
+            "patch.object(ProfileStore, 'load_profile', _load_with_tampered_yi).start()")
+    runner_path.write_text(reopen_runner_text, encoding='utf-8')
 
     with tempfile.TemporaryDirectory() as temp:
         base = Path(temp) / 'old-install'
@@ -999,9 +1009,9 @@ def run_r6(out, state):
                 (UUID_B, {'name': '组合乙', 'repeat': 0, 'first_timeout': 1800}, source_b),
                 (new_uuid, {'name': '新组合', 'repeat': 0, 'first_timeout': 1800}, None))
             for identity, expected, source_document in switch_plan:
-                # 新组合 has no external source; 甲 and 乙 must still match
-                # their source documents after every migration hop.
-                source_rows = source_document['assistants'] if source_document else []
+                # 新组合 has no external source and is pinned separately
+                # below; 甲 and 乙 are checked against their source
+                # documents by the snapshot coordinator.
                 path_by_uuid = {value: key for key, value in window.profile_ids.items()}
                 index = window.profiles.findData(path_by_uuid[identity])
                 check(index >= 0, f"profile {expected['name']} missing from the combo")
@@ -1019,11 +1029,14 @@ def run_r6(out, state):
                 # shared registry with the expected paths; a blocked compose
                 # fails here instead of hiding behind the run fields.
                 profile = next(p for p in snapshot['profiles'] if p['name'] == expected['name'])
-                if source_document is not None:
-                    assert_profile_matches_source(profile, source_document, f"R6/{expected['name']}")
-                assert_composed(profile['composed'], snapshot['registry']['entries'],
-                                source_rows or profile['rows'], f"R6/{expected['name']}",
-                                repeat_limit=expected['repeat'])
+                assert_snapshot_fidelity(snapshot, {'组合甲': source_a, '组合乙': source_b},
+                                         f"R6/{expected['name']}")
+                if source_document is None:
+                    # 新组合 has no external source; pin its stored rows as
+                    # the composed expectation.
+                    assert_composed(profile['composed'], snapshot['registry']['entries'],
+                                    profile['rows'], f"R6/{expected['name']}/新组合",
+                                    repeat_limit=expected['repeat'])
                 snapshots.append(snapshot)
             expected_registry = snapshots[0]['registry']
             check(all(snapshot['registry'] == expected_registry for snapshot in snapshots),
@@ -1065,7 +1078,10 @@ def run_r6(out, state):
         check({profile['uuid'] for profile in snapshot['profiles']}
               == {UUID_A, UUID_B} | {profile['uuid'] for profile in out['switch_snapshots'][2]['profiles']},
               'reopen combination uuids differ')
+        assert_snapshot_fidelity(snapshot, {'组合甲': source_a, '组合乙': source_b}, 'R6/reopen')
         for profile in snapshot['profiles']:
+            if profile['name'] != '新组合':
+                continue
             composed = profile['composed'] or {}
             check('blocked' not in composed,
                   f"reopen compose blocked for {profile['name']}: {profile['composed']!r}")
@@ -1074,9 +1090,6 @@ def run_r6(out, state):
                     check(row['installation_root']
                           == snapshot['registry']['entries'].get(row['adapter'], {}).get('installation_root'),
                           f"reopen/{profile['name']}/{row['adapter']}: composed path != registry path")
-        check(next(profile for profile in snapshot['profiles']
-                   if profile['name'] == '组合甲')['repeat_limit'] == 2,
-              'reopen lost 甲 run settings')
         out['reopen'] = snapshot
         out['reopen_pid'] = recorded['pid']
         out['launches_reopen'] = recorded.get('launches', [])
