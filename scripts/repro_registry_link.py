@@ -1,28 +1,36 @@
 """Reproducible synthetic investigation for GitHub issue #4.
 
 Builds temporary, clearly synthetic data roots and drives the real desktop
-entry headlessly (Qt offscreen, QProcess refused) to compare how the old
-seven-registration configurations connect with the global registry model:
+entry headlessly (Qt offscreen) to compare how the old seven-registration
+configurations connect with the global registry model. Every scenario
+asserts its core invariants directly and exits non-zero on any violated
+expectation; a return code alone is never treated as passing.
 
 R1  legacy schema 1 profile with all seven registrations -> startup migration
-R2  issue state: default profile with one registration + old seven-registration
-    file next to it -> startup migration, then import preview/confirm/cancel
-R3  explicit --config draft of a legacy file -> run fields only, zero writes
-R4  migration prompt cancelled -> zero writes
-R5  conflicting candidates and an incomplete zzz registration during migration
-R6  after migration: shared registry across profiles and across reopen
+R2  issue state: default profile with one registration plus external legacy
+    files -> startup migration, then import same/confirm, import
+    conflict/cancel/confirm, with exact file-set deltas
+R3  explicit --config draft saved through the real save-selection path
+R4  migration prompt cancelled -> exact zero-write over the whole inventory
+R5  conflicting ok-ww candidates: without a choice the commit is refused,
+    with an explicit choice it succeeds; an incomplete-only zzz defers while
+    a complete zzz elsewhere is adopted
+R6  after migration: switching through every profile composes each one, and
+    a reopen in a separate OS process (different PID) finds identical state
 
-Every scenario records a root label, the selected combination, the global
-registration count and per-assistant selection/order/timeout/repeat_limit.
-Temporary and sample paths are masked to <data-root>/<sample> in the results;
-no real installation paths, accounts or games are involved. Never starts an
-assistant or a game: QProcess.start is refused and recorded.
+Set REPRO_NEGATIVE=1 to run R1 with a deliberately wrong expected registry
+count as evidence that the checks fail loudly. Interactive surfaces are
+answered through one state-driven patch per surface (no nested shadowing);
+QProcess.start raises immediately and records any launch attempt. Results
+are masked recursively before anything is written: temporary and sample
+path prefixes become <tmp>/<sample>, a leak check refuses to publish any
+surviving prefix, and the parent masks stderr with the system temp prefix.
+Real paths may appear only in private local logs.
 
 Usage: python scripts/repro_registry_link.py --all --out issue4-results.json
        python scripts/repro_registry_link.py --scenario R1 --out R1.json
 """
 import argparse
-import contextlib
 import json
 import os
 from pathlib import Path
@@ -32,149 +40,155 @@ import tempfile
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+
 ADAPTERS = ('ok-ww', 'bettergi', 'ok-nte', 'maa-end', 'march7', 'maa-gf2', 'zzz-onedragon')
+UUID_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+UUID_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+# Distinct, non-default run values so preservation checks pin real behavior.
+TIMEOUTS = (1800, 2400, 3600, 1500, 2700, 3300, 2100)
+MANUAL_ADAPTERS = ('ok-ww', 'maa-end')
 
 
-def sample_root(base):
-    """Sample installation directories; existence is never required."""
-    return base / 'SampleAssistants'
+class ScenarioFailure(AssertionError):
+    """A scenario invariant did not hold."""
 
 
-def legacy_rows(base, enabled=False, registered=ADAPTERS, game_for_zzz=True):
+def check(condition, message):
+    if not condition:
+        raise ScenarioFailure(message)
+
+
+def legacy_rows(base, plan):
+    """Rows for one legacy configuration. `plan` maps adapter -> row options:
+    registered (bool), enabled (bool), timeout (int), game (bool, zzz only),
+    game_start (str). Defaults: registered, disabled, TIMEOUTS[index], no
+    game EXE, 'assistant'."""
     rows = []
     for index, adapter in enumerate(ADAPTERS):
+        options = plan.get(adapter, {})
         row = {'id': f'assistant-{index}', 'adapter': adapter,
-               'enabled': enabled if not isinstance(enabled, dict) else enabled.get(adapter, False),
-               'game_start': 'assistant', 'timeout_seconds': 1800}
-        if adapter in registered:
-            row['installation_root'] = str(sample_root(base) / adapter)
-        if adapter == 'zzz-onedragon' and game_for_zzz and adapter in registered:
-            row['game_path'] = str(sample_root(base) / adapter / 'ZenlessZoneZero.exe')
+               'enabled': options.get('enabled', False),
+               'game_start': options.get('game_start', 'assistant'),
+               'timeout_seconds': options.get('timeout', TIMEOUTS[index])}
+        if options.get('registered', True):
+            row['installation_root'] = str(base / adapter)
+        if adapter == 'zzz-onedragon' and options.get('game'):
+            row['game_path'] = str(base / adapter / 'ZenlessZoneZero.exe')
         rows.append(row)
     return rows
 
 
-def write_legacy_config(path, base, **kwargs):
-    document = {'schema_version': 1, 'repeat_limit': 0,
-                'assistants': legacy_rows(base, **kwargs)}
+def write_legacy_config(path, base, plan, repeat_limit, reverse=False):
+    rows = legacy_rows(base, plan)
+    document = {'schema_version': 1, 'repeat_limit': repeat_limit,
+                'assistants': list(reversed(rows)) if reverse else rows}
     path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding='utf-8')
     return document
 
 
-def write_legacy_profile(root, identity, name, base, **kwargs):
+def write_legacy_profile(root, identity, name, base, plan, repeat_limit, reverse=False):
     directory = root / 'config/profiles' / identity
     directory.mkdir(parents=True)
-    document = {'schema_version': 1, 'repeat_limit': 0,
-                'assistants': legacy_rows(base, **kwargs)}
+    rows = legacy_rows(base, plan)
+    document = {'schema_version': 1, 'repeat_limit': repeat_limit,
+                'assistants': list(reversed(rows)) if reverse else rows}
     (directory / 'config.json').write_text(json.dumps(document, ensure_ascii=False), encoding='utf-8')
     (directory / 'name.json').write_text(json.dumps(
         {'name': name, 'created': '2026-01-01T00:00:00+00:00'}), encoding='utf-8')
+    return document
 
 
-def mask(path, root, base):
-    text = str(path)
-    for prefix, label in ((str(root), '<data-root>'), (str(sample_root(base)), '<sample>')):
-        if prefix and text.startswith(prefix):
-            return label + text[len(prefix):]
-    return text
+def seal(out, temp, sample_bases):
+    """Register the prefixes that must never appear in published output."""
+    out['_private'] = {'tmp': str(Path(temp)), 'samples': [str(base) for base in sample_bases]}
 
 
 def registry_snapshot(root):
     path = root / 'config/assistant-registry.json'
     if not path.exists():
-        return {'exists': False, 'revision': None, 'count': 0, 'adapters': []}
+        return {'exists': False, 'revision': None, 'count': 0, 'adapters': [], 'entries': {}}
     document = json.loads(path.read_text(encoding='utf-8-sig'))
     return {'exists': True, 'revision': document['revision'],
-            'count': len(document['assistants']), 'adapters': sorted(document['assistants'])}
+            'count': len(document['assistants']), 'adapters': sorted(document['assistants']),
+            'entries': document['assistants']}
 
 
-def profile_snapshot(window, root, base):
+def composed_rows(document, registry_entries):
+    """What a run would actually use: registration fields merged into rows."""
+    from gachaops.configuration import compose_configuration
+    registry = {'schema_version': 1, 'kind': 'assistant_registry',
+                'revision': 1, 'assistants': registry_entries}
+    try:
+        composed = compose_configuration(document, registry)
+    except Exception as error:  # a blocked compose is evidence, not a crash
+        return {'blocked': str(error)}
+    return {row['adapter']: {'enabled': row.get('enabled', True),
+                             'installation_root': row.get('installation_root'),
+                             'game_path': row.get('game_path')}
+            for row in composed['assistants']}
+
+
+def profile_snapshot(window, root, label):
+    from gachaops.profiles import run_content
+    entries = registry_snapshot(root)['entries']
     rows = []
     for profile in window.profile_store.list_profiles():
         document = window.profile_store.load_profile(profile['id'])
-        rows.append({'name': profile['name'], 'id': mask(profile['id'], root, base),
+        rows.append({'name': profile['name'], 'uuid': profile['id'],
                      'revision': document['revision'],
                      'repeat_limit': document['repeat_limit'],
                      'registered_rows': sum(1 for r in document['assistants']
                                             if r.get('installation_root') or r.get('game_path')),
-                     'assistants': [
-                         {'adapter': r['adapter'], 'enabled': r.get('enabled', True),
-                          'order': index, 'game_start': r.get('game_start', 'assistant'),
-                          'timeout_seconds': r.get('timeout_seconds')}
-                         for index, r in enumerate(document['assistants'])]})
+                     'rows': [{'id': r['id'], 'adapter': r['adapter'], 'order': index,
+                               'enabled': r.get('enabled', True),
+                               'game_start': r.get('game_start', 'assistant'),
+                               'timeout_seconds': r.get('timeout_seconds')}
+                              for index, r in enumerate(document['assistants'])],
+                     'composed': composed_rows(run_content(document), entries)})
     return rows
 
 
-def window_snapshot(window, root, base):
-    return {'selected_profile': window.profile_names.get(window.profiles.currentData()),
-            'registry': registry_snapshot(root),
-            'profiles': profile_snapshot(window, root, base)}
+def window_snapshot(window, label):
+    return {'root_label': label,
+            'selected': {'uuid': window.profile_ids.get(window.profiles.currentData()),
+                         'name': window.profile_names.get(window.profiles.currentData())},
+            'draft': {'active': window._draft_active(), 'source': window.draft_source,
+                      'has_data': window.draft_data is not None,
+                      'data': window.draft_data if window._draft_active() else None},
+            'registry': registry_snapshot(window.workspace),
+            'profiles': profile_snapshot(window, window.workspace, label)}
 
 
-def drive(root, scenario, exercise, argv=(), question='Yes', dialog='Accept'):
-    """Run the real desktop entry headlessly; never launches anything.
+def preview_snapshot(root):
+    """Candidate fields and sources exactly as the migration dialog sees them."""
+    from gachaops.registration_migration import preview_registration_migration
+    preview = preview_registration_migration(root)
+    return [{'adapter': entry['adapter'], 'conflict': entry['conflict'],
+             'candidates': entry['candidates']} for entry in preview['adapters']]
 
-    Modal dialogs are answered mechanically (question Yes/No, dialog
-    Accept/Reject) so the gate can run without a user; scenarios that need
-    finer control patch the specific dialogs inside their exercise hook.
-    """
-    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    from unittest.mock import patch
-    from PySide6.QtCore import QProcess
-    from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
-    from gachaops import desktop
-    launched = []
-    messages = []
-    answers = {'Yes': QMessageBox.StandardButton.Yes, 'No': QMessageBox.StandardButton.No}
-    codes = {'Accept': QDialog.DialogCode.Accepted, 'Reject': QDialog.DialogCode.Rejected}
 
-    def record(kind):
-        def handler(*args, **kwargs):
-            messages.append({'kind': kind, 'title': args[1] if len(args) > 1 else '',
-                             'text': args[2] if len(args) > 2 else ''})
-            return answers[question] if kind == 'question' else None
-        return handler
+def file_inventory(root):
+    return {path.relative_to(root).as_posix(): path.read_bytes()
+            for path in sorted(root.rglob('*')) if path.is_file()}
 
-    def answer_dialog(dialog_instance):
-        # Resolve unresolved conflict combinations like a user choosing the
-        # first candidate, then accept/reject; otherwise the migration dialog
-        # would recurse on an unresolved conflict.
-        from PySide6.QtWidgets import QComboBox
-        for box in dialog_instance.findChildren(QComboBox):
-            if box.currentData() is None and box.count() > 1:
-                box.setCurrentIndex(1)
-        return codes[dialog]
 
-    if os.environ.get('REPRO_DEBUG'):
-        import faulthandler
-        faulthandler.dump_traceback_later(30, exit=True)
+def expected_import_delta(before, after, phase):
+    """An import may only add one profile directory and one transaction
+    backup receipt, and may only rewrite the registry file."""
+    new = set(after) - set(before)
+    changed = {name for name in set(before) & set(after) if before[name] != after[name]}
+    new_profiles = {name for name in new if name.startswith('config/profiles/')}
+    new_backups = {name for name in new if name.startswith('backups/registration-migrations/')}
+    check(changed == {'config/assistant-registry.json'},
+          f"unexpected changed files after {phase}: {sorted(changed)}")
+    check(len(new_profiles) == 2 and new_backups and new == new_profiles | new_backups,
+          f"unexpected new files after {phase}: {sorted(new)}")
+    return new, changed
 
-    def wrapped(window):
-        exercise(window)
-        # Closing the window synchronously (before app.exec starts) consumes
-        # quitOnLastWindowClosed too early; schedule a real quit inside the
-        # loop. 200 ms stays below the 900 ms auto-recheck so nothing launches.
-        from PySide6.QtCore import QTimer
-        live = QApplication.instance()
-        if live is not None:
-            QTimer.singleShot(200, live.quit)
 
-    with patch.object(QProcess, 'start',
-                      side_effect=lambda *a, **k: launched.append(a) or None):
-        with patch.object(QMessageBox, 'question', record('question')), \
-             patch.object(QMessageBox, 'critical', record('critical')), \
-             patch.object(QMessageBox, 'warning', record('warning')), \
-             patch.object(QMessageBox, 'information', record('information')), \
-             patch.object(QDialog, 'exec', answer_dialog):
-            with patch.object(sys, 'argv',
-                              ['desktop'] + list(argv) + ['--data-root', str(root)]):
-                with patch.object(desktop, 'PREVIEW_FACTORY', wrapped, create=True):
-                    try:
-                        code = desktop.main()
-                    except SystemExit as exit_code:  # the gate's decline path
-                        code = exit_code.code
-    release_qt()
-    return {'exit_code': code, 'launches': launched, 'dialogs': messages}
+def store_rows(root):
+    from gachaops.profiles import ProfileStore
+    return len(ProfileStore(root).list_profiles())
 
 
 def release_qt():
@@ -191,6 +205,133 @@ def release_qt():
     gc.collect()
 
 
+def drive(root, exercise, argv=(), state=None):
+    """Run the real desktop entry headlessly.
+
+    All interactive surfaces are answered through `state`; there is exactly
+    one patch per surface and scenarios never re-patch over it:
+      state['question']       'Yes'/'No' answer for QMessageBox.question
+      state['dialog_result']  'Accept'/'Reject' fallback for QDialog.exec
+      state['dialog_handler'] callable(dialog) -> DialogCode, overriding the
+                              fallback (combination boxes are the handler's job)
+      state['open_file_path'] file returned by QFileDialog.getOpenFileName
+    drive records every interaction in state['dialog_log'] and makes any
+    process launch attempt raise immediately.
+    """
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from unittest.mock import patch
+    from PySide6.QtCore import QProcess, QTimer
+    from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
+    from gachaops import desktop
+    state = state if state is not None else {}
+    launches = []
+    messages = []
+    state.setdefault('dialog_log', [])
+    answers = {'Yes': QMessageBox.StandardButton.Yes, 'No': QMessageBox.StandardButton.No}
+    codes = {'Accept': QDialog.DialogCode.Accepted, 'Reject': QDialog.DialogCode.Rejected}
+
+    def record_launch(*args, **kwargs):
+        launches.append([str(argument) for argument in args])
+        raise AssertionError('unexpected process launch in an offline scenario')
+
+    def answer_question(*args, **kwargs):
+        messages.append({'kind': 'question', 'title': args[1] if len(args) > 1 else '',
+                         'text': args[2] if len(args) > 2 else ''})
+        return answers[state.get('question', 'Yes')]
+
+    def record_message(kind):
+        def handler(*args, **kwargs):
+            messages.append({'kind': kind, 'title': args[1] if len(args) > 1 else '',
+                             'text': args[2] if len(args) > 2 else ''})
+            return None
+        return handler
+
+    def default_dialog(dialog_instance):
+        from PySide6.QtWidgets import QComboBox
+        for box in dialog_instance.findChildren(QComboBox):
+            if box.currentData() is None and box.count() > 1:
+                box.setCurrentIndex(1)
+        return codes[state.get('dialog_result', 'Accept')]
+
+    def answer_dialog(dialog_instance):
+        state['dialog_log'].append(type(dialog_instance).__name__)
+        handler = state.get('dialog_handler')
+        if handler is not None:
+            return handler(dialog_instance)
+        return default_dialog(dialog_instance)
+
+    def pick_file(*args, **kwargs):
+        return (state['open_file_path'], '') if 'open_file_path' in state else ('', '')
+
+    def wrapped(window):
+        exercise(window)
+        # Closing the window synchronously (before app.exec starts) consumes
+        # quitOnLastWindowClosed too early; schedule a real quit inside the
+        # loop. 200 ms stays below the 900 ms auto-recheck so nothing launches.
+        live = QApplication.instance()
+        if live is not None:
+            QTimer.singleShot(200, live.quit)
+
+    if os.environ.get('REPRO_DEBUG'):
+        import faulthandler
+        faulthandler.dump_traceback_later(60, exit=True)
+    with patch.object(QProcess, 'start', side_effect=record_launch), \
+         patch.object(QMessageBox, 'question', answer_question), \
+         patch.object(QMessageBox, 'critical', record_message('critical')), \
+         patch.object(QMessageBox, 'warning', record_message('warning')), \
+         patch.object(QMessageBox, 'information', record_message('information')), \
+         patch.object(QDialog, 'exec', answer_dialog), \
+         patch.object(QFileDialog, 'getOpenFileName', pick_file):
+        with patch.object(sys, 'argv',
+                          ['desktop'] + list(argv) + ['--data-root', str(root)]):
+            with patch.object(desktop, 'PREVIEW_FACTORY', wrapped, create=True):
+                try:
+                    code = desktop.main()
+                except SystemExit as exit_code:  # the gate's decline path
+                    code = exit_code.code
+    release_qt()
+    return {'exit_code': code, 'launches': launches, 'dialogs': messages}
+
+
+def select_combo(dialog, data):
+    """Select the entry with `data` in every combination box that has it."""
+    from PySide6.QtWidgets import QComboBox
+    chosen = []
+    for box in dialog.findChildren(QComboBox):
+        index = next((i for i in range(box.count()) if box.itemData(i) == data), None)
+        if index is not None and box.currentIndex() != index:
+            box.setCurrentIndex(index)
+            chosen.append(box.itemText(index))
+    return chosen
+
+
+REOPEN_RUNNER = '''\
+"""Reopen the data root in a separate OS process and record what is shown."""
+import json
+import os
+from pathlib import Path
+import sys
+
+repo, root, out_path = (Path(arg) for arg in sys.argv[1:4])
+sys.path.insert(0, str(repo))
+sys.path.insert(0, str(repo / 'scripts'))
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+from repro_registry_link import drive, window_snapshot
+
+recorded = {}
+
+def exercise(window):
+    window.timer.stop(); window.recheck_timer.stop()
+    recorded['pid'] = os.getpid()
+    recorded['snapshot'] = window_snapshot(window, 'R6-reopen')
+    window.close()
+
+result = drive(root, exercise)
+recorded.update(result)
+out_path.write_text(json.dumps(recorded, ensure_ascii=False), encoding='utf-8')
+'''
+
+
 SCENARIOS = {}
 
 
@@ -202,247 +343,616 @@ def scenario(name):
 
 
 @scenario('R1')
-def run_r1(out):
-    """Old profile with all seven registrations: normal startup migration."""
-    from PySide6.QtWidgets import QDialog
+def run_r1(out, state):
+    """Old profile with all seven registrations: startup migration adopts
+    every entry with the exact input paths and preserves run fields."""
+    plan = {'ok-ww': {'enabled': True, 'game_start': 'manual', 'timeout': 2400},
+            'maa-end': {'enabled': True, 'timeout': 2700},
+            'zzz-onedragon': {'game': True, 'timeout': 2000}}
+    expected_timeouts = {f'assistant-{index}': TIMEOUTS[index] for index in range(7)}
+    expected_timeouts.update({'assistant-0': 2400, 'assistant-3': 2700, 'assistant-6': 2000})
+
     with tempfile.TemporaryDirectory() as temp:
         base = Path(temp) / 'old-install'
         base.mkdir()
-        root = Path(temp) / 'data-root'; root.mkdir()
-        write_legacy_profile(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '旧七登记组合', base)
-        before = registry_snapshot(root)
+        root = Path(temp) / 'data-root'
+        root.mkdir()
+        seal(out, temp, [base])
+        source = write_legacy_profile(root, UUID_A, '旧七登记组合', base, plan, repeat_limit=3)
+        out['before'] = {'registry': registry_snapshot(root)}
 
         def exercise(window):
             window.timer.stop(); window.recheck_timer.stop()
-            snapshot = window_snapshot(window, root, base)
-            snapshot['notes'] = '启动闸门迁移确认后：七项全部进入全局登记；组合转为运行字段'
-            window.close()
+            snapshot = window_snapshot(window, 'R1/data-root')
+            check(snapshot['selected'] == {'uuid': UUID_A, 'name': '旧七登记组合'},
+                  f"selected changed: {snapshot['selected']}")
+            registry = snapshot['registry']
+            expected_count = 6 if os.environ.get('REPRO_NEGATIVE') else 7
+            check(registry['count'] == expected_count,
+                  f"registry count {registry['count']} != {expected_count}: {registry['adapters']}")
+            check(set(registry['adapters']) == set(ADAPTERS),
+                  f"registry adapters wrong: {registry['adapters']}")
+            for row in source['assistants']:
+                entry = registry['entries'][row['adapter']]
+                check(entry.get('installation_root') == row.get('installation_root')
+                      and entry.get('game_path') == row.get('game_path'),
+                      f"{row['adapter']} adopted {entry} instead of the input paths")
+            profiles = {profile['name']: profile for profile in snapshot['profiles']}
+            check(set(profiles) == {'旧七登记组合'}, f'unexpected profiles: {set(profiles)}')
+            converted = profiles['旧七登记组合']
+            check(converted['uuid'] == UUID_A, 'converted profile uuid changed')
+            check(converted['registered_rows'] == 0,
+                  'profile still carries registration paths after migration')
+            check(converted['repeat_limit'] == 3,
+                  f"repeat_limit {converted['repeat_limit']} != 3")
+            check([row['id'] for row in converted['rows']]
+                  == [row['id'] for row in source['assistants']], 'row order changed')
+            for row in converted['rows']:
+                check(row['timeout_seconds'] == expected_timeouts[row['id']],
+                      f"{row['id']} timeout {row['timeout_seconds']} "
+                      f"!= {expected_timeouts[row['id']]}")
+                source_row = next(r for r in source['assistants'] if r['id'] == row['id'])
+                check(row['enabled'] == source_row['enabled'],
+                      f"{row['id']} enabled {row['enabled']} != {source_row['enabled']}")
+                check(row['game_start'] == source_row['game_start'],
+                      f"{row['id']} game_start changed")
+            composed = converted['composed']
+            check(isinstance(composed, dict) and composed.get('ok-ww', {}).get('installation_root')
+                  == str(base / 'ok-ww'),
+                  f"composition does not use the adopted ok-ww path: {composed}")
             out['snapshot'] = snapshot
+            window.close()
 
-        result = drive(root, 'R1', exercise)
+        result = drive(root, exercise, state=state)
         out.update(result)
-        out['registry_before'] = before
-        out['registry_after'] = registry_snapshot(root)
+        check(result['exit_code'] == 0, f"desktop exit {result['exit_code']} != 0")
+        check(not state['dialog_log'] or 'QMessageBox' not in str(state['dialog_log']),
+              f"unexpected message dialogs: {state['dialog_log']}")
+        out['after'] = {'registry': registry_snapshot(root)}
+        check(out['after']['registry']['count'] == 7, 'final registry count != 7')
+        check(not out['launches'], f"process launches recorded: {out['launches']}")
 
 
 @scenario('R2')
-def run_r2(out):
-    """Issue #4 state: default profile with one registration plus the old
-    seven-registration file; startup migration then import preview/cancel/confirm."""
-    from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
+def run_r2(out, state):
+    """Issue #4 state: default profile with one registration plus external
+    legacy files. Startup migrates one entry. Import one: same ok-ww path
+    plus six new rows (counts asserted). Import two: a genuinely different
+    ok-ww path conflicts; cancelling writes nothing over the whole inventory;
+    confirming with keep keeps the current path authoritative. The external
+    sources and the existing profile never change."""
+    from gachaops.registration_migration import (commit_registration_import,
+                                                 preview_registration_import)
+    from gachaops.planner import ConfigError
+    from PySide6.QtWidgets import QDialog, QMessageBox
+
     with tempfile.TemporaryDirectory() as temp:
-        base = Path(temp) / 'old-install'
-        base.mkdir()
-        root = Path(temp) / 'data-root'; root.mkdir()
-        # Default combination with only ok-ww registered (the observed state).
-        write_legacy_profile(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '默认组合', base, registered=('ok-ww',))
-        # The old complete configuration survives next to the data root.
-        old_file = Path(temp) / '旧七登记配置.json'
-        old_document = write_legacy_config(old_file, base)
+        base_default = Path(temp) / 'default-install'
+        base_default.mkdir()
+        base_file1 = Path(temp) / 'file1-install'
+        base_file1.mkdir()
+        base_file2 = Path(temp) / 'file2-install'
+        base_file2.mkdir()
+        root = Path(temp) / 'data-root'
+        root.mkdir()
+        seal(out, temp, [base_default, base_file1, base_file2])
+        write_legacy_profile(root, UUID_A, '默认组合', base_default,
+                             {'ok-ww': {'timeout': 1800},
+                              'bettergi': {'registered': False},
+                              'ok-nte': {'registered': False},
+                              'maa-end': {'registered': False},
+                              'march7': {'registered': False},
+                              'maa-gf2': {'registered': False},
+                              'zzz-onedragon': {'registered': False}},
+                             repeat_limit=1)
+        path_a = str(base_default / 'ok-ww')
+        file1 = Path(temp) / '旧七登记配置.json'
+        source1 = write_legacy_config(file1, base_file1,
+                                      {'ok-ww': {'timeout': 2400},
+                                       'zzz-onedragon': {'game': True, 'timeout': 2100}},
+                                      repeat_limit=2)
+        # file1's ok-ww carries the SAME installation path as the default
+        # profile's registration, so the preview must classify it as 'same'.
+        document1 = json.loads(file1.read_text(encoding='utf-8'))
+        next(row for row in document1['assistants']
+             if row['adapter'] == 'ok-ww')['installation_root'] = path_a
+        file1.write_text(json.dumps(document1, ensure_ascii=False, indent=2), encoding='utf-8')
+        source1 = document1
+        file1_bytes = file1.read_bytes()
+        file2 = Path(temp) / '冲突接入配置.json'
+        write_legacy_config(
+            file2, base_file2,
+            {'bettergi': {'registered': False}, 'ok-nte': {'registered': False},
+             'maa-end': {'registered': False}, 'march7': {'registered': False},
+             'maa-gf2': {'registered': False}, 'zzz-onedragon': {'registered': False},
+             'ok-ww': {'enabled': True, 'timeout': 3000}}, repeat_limit=0)
+        path_c = str(base_file2 / 'ok-ww')
+        check(len({path_a, str(base_file1 / 'ok-ww'), path_c}) == 3,
+              'fixture failed to build three distinct ok-ww paths')
+
+        mode = {'phase': 'idle'}
         events = []
+
+        def on_dialog(dialog_instance):
+            events.append(f"对话框[{mode['phase']}] {type(dialog_instance).__name__}")
+            if mode['phase'] in {'cancel-conflict', 'confirm-keep'}:
+                chosen = select_combo(dialog_instance, 'keep' if mode['phase'] == 'confirm-keep'
+                                      else None)
+                if chosen:
+                    events.append(f'冲突选择: {chosen}')
+            return QDialog.DialogCode.Accepted
 
         def exercise(window):
             window.timer.stop(); window.recheck_timer.stop()
-            out['after_startup'] = window_snapshot(window, root, base)
-            # 导入 -> 预览 -> 取消: zero writes.
-            digests = {p: p.read_bytes() for p in [
-                root / 'config/assistant-registry.json', root / 'config/profiles' / 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' / 'config.json']}
-            with contextlib.ExitStack() as stack:
-                for manager in patch_dialogs(events, file_path=str(old_file),
-                                             question=QMessageBox.StandardButton.No,
-                                             import_dialog=False):
-                    stack.enter_context(manager)
-                window.browse()
-            out['after_cancel'] = {'zero_write': all(
-                p.read_bytes() == d for p, d in digests.items()),
-                'events': list(events)}
-            # 导入 -> 预览 -> 冲突选择"使用导入路径" -> 确认.
+            startup = window_snapshot(window, 'R2/data-root')
+            check(startup['selected'] == {'uuid': UUID_A, 'name': '默认组合'},
+                  f"selected {startup['selected']} != 默认组合")
+            check(startup['registry']['count'] == 1
+                  and startup['registry']['entries'].get('ok-ww') == {'installation_root': path_a},
+                  f"startup registry {startup['registry']}")
+            check(next(profile for profile in startup['profiles']
+                       if profile['name'] == '默认组合')['repeat_limit'] == 1,
+                  'default repeat_limit not preserved')
+            out['after_startup'] = startup
+
+            # Import one: same ok-ww path, six new adapters.
+            preview = preview_registration_import(root, file1, Path(file1).stem)
+            actions1 = {entry['adapter']: entry['action'] for entry in preview['adapters']}
+            check(actions1.get('ok-ww') == 'same', f"file1 ok-ww action {actions1.get('ok-ww')} != same")
+            check(sum(1 for action in actions1.values() if action == 'new') == 6,
+                  f"file1 new-count {actions1} != 6 new")
+            before_import1 = file_inventory(root)
+            mode['phase'] = 'import-same'
+            state['open_file_path'] = str(file1)
+            state['question'] = 'Yes'
+            state['dialog_handler'] = on_dialog
+            window.browse()
+            confirmed = window_snapshot(window, 'R2/data-root')
+            registry = confirmed['registry']
+            check(registry['count'] == 7, f"after import-one count {registry['count']} != 7")
+            check(registry['entries']['ok-ww'] == {'installation_root': path_a},
+                  f"same path changed: {registry['entries'].get('ok-ww')}")
+            for adapter in ('bettergi', 'ok-nte', 'maa-end', 'march7', 'maa-gf2'):
+                check(registry['entries'][adapter] == {'installation_root': str(base_file1 / adapter)},
+                      f"{adapter} not adopted from file1")
+            check(registry['entries']['zzz-onedragon'].get('installation_root') == str(base_file1 / 'zzz-onedragon')
+                  and registry['entries']['zzz-onedragon'].get('game_path') == str(base_file1 / 'zzz-onedragon' / 'ZenlessZoneZero.exe'),
+                  f"zzz not adopted completely: {registry['entries'].get('zzz-onedragon')}")
+            check(confirmed['selected']['name'] == '旧七登记配置',
+                  f"selected {confirmed['selected']['name']} != 旧七登记配置")
+            imported = next(profile for profile in confirmed['profiles']
+                            if profile['name'] == '旧七登记配置')
+            check(imported['repeat_limit'] == 2, 'imported repeat_limit != 2')
+            after_import1 = file_inventory(root)
+            new_files, changed = expected_import_delta(before_import1, after_import1, 'import-one')
+            check(file1.read_bytes() == file1_bytes,
+                  'import-one changed the external source file')
+            out['after_import_same'] = confirmed
+            out['after_import_same']['events'] = list(events)
             events.clear()
-            with contextlib.ExitStack() as stack:
-                for manager in patch_dialogs(events, file_path=str(old_file),
-                                             question=QMessageBox.StandardButton.Yes,
-                                             import_dialog=True, conflict_choice='import'):
-                    stack.enter_context(manager)
-                window.browse()
-            out['after_confirm'] = window_snapshot(window, root, base)
-            out['after_confirm']['events'] = list(events)
+
+            # Import two: genuinely different ok-ww path -> conflict.
+            preview2 = preview_registration_import(root, file2, Path(file2).stem)
+            actions2 = {entry['adapter']: entry['action'] for entry in preview2['adapters']}
+            check(actions2 == {'ok-ww': 'conflict'}, f"file2 preview actions {actions2} != 1 conflict")
+            out['preview_actions_conflict'] = actions2
+            # Without a choice the commit is refused outright.
+            try:
+                commit_registration_import(root, preview2, {})
+                raise ScenarioFailure('conflict commit without a choice unexpectedly succeeded')
+            except ConfigError as error:
+                check('选择' in str(error), f"unexpected no-choice error: {error}")
+                out['no_choice_refused'] = str(error)
+
+            # 取消: the whole inventory plus the external source stay identical.
+            inventory_before_cancel = file_inventory(root)
+            source2_before = file2.read_bytes()
+            mode['phase'] = 'cancel-conflict'
+            state['open_file_path'] = str(file2)
+            state['question'] = 'No'
+            window.browse()
+            state['question'] = 'Yes'
+            check(file_inventory(root) == inventory_before_cancel,
+                  'cancelled import changed the data root inventory')
+            check(file2.read_bytes() == source2_before, 'cancelled import changed the source file')
+            out['after_cancel'] = {'inventory_zero_delta': True, 'events': list(events)}
+            events.clear()
+
+            # 确认（保留当前值）: registry keeps pathA; source and 默认组合 unchanged.
+            inventory_before_keep = file_inventory(root)
+            mode['phase'] = 'confirm-keep'
+            state['open_file_path'] = str(file2)
+            window.browse()
+            mode['phase'] = 'idle'
+            state.pop('open_file_path')
+            confirmed2 = window_snapshot(window, 'R2/data-root')
+            check(confirmed2['registry']['entries']['ok-ww'] == {'installation_root': path_a},
+                  f"keep lost the current path: {confirmed2['registry']['entries'].get('ok-ww')}")
+            check(file2.read_bytes() == source2_before, 'confirmed import changed the source file')
+            check(next(profile for profile in confirmed2['profiles']
+                       if profile['name'] == '默认组合')['repeat_limit'] == 1,
+                  'default profile changed by import')
+            after_keep = file_inventory(root)
+            expected_import_delta(inventory_before_keep, after_keep, 'keep')
+            out['after_confirm_keep'] = confirmed2
+            out['after_confirm_keep']['events'] = list(events)
             window.close()
 
-        result = drive(root, 'R2', exercise)
+        result = drive(root, exercise, state=state)
         out.update(result)
-        out['old_file_rows'] = len(old_document['assistants'])
+        check(result['exit_code'] == 0, f"desktop exit {result['exit_code']} != 0")
         out['registry_after_all'] = registry_snapshot(root)
-
-
-def patch_dialogs(events, file_path, question, import_dialog, conflict_choice=None):
-    from PySide6.QtWidgets import QComboBox, QDialog, QFileDialog, QMessageBox
-    from unittest.mock import patch
-
-    def open_file(*args, **kwargs):
-        events.append('文件选择')
-        return (file_path, '')
-
-    def ask(*args, **kwargs):
-        events.append(f'确认对话框: {"Yes" if question == QMessageBox.StandardButton.Yes else "No"}')
-        return question
-
-    def exec_dialog(dialog):
-        for box in dialog.findChildren(QComboBox):
-            if conflict_choice is not None:
-                index = next((i for i in range(box.count())
-                              if box.itemData(i) == conflict_choice), None)
-                if index is not None and box.currentIndex() != index:
-                    box.setCurrentIndex(index)
-                    events.append(f'冲突选择: {conflict_choice}')
-        events.append('迁移/导入对话框: 确认')
-        return QDialog.DialogCode.Accepted
-
-    return patch.object(QFileDialog, 'getOpenFileName', open_file), \
-        patch.object(QMessageBox, 'question', ask), \
-        patch.object(QDialog, 'exec', exec_dialog)
+        check(not out['launches'], f"process launches recorded: {out['launches']}")
 
 
 @scenario('R3')
-def run_r3(out):
-    """Explicit --config draft of a legacy file: run fields only, zero writes."""
-    from PySide6.QtWidgets import QApplication
+def run_r3(out, state):
+    """Explicit --config draft saved through the real save-selection path:
+    run fields only, order/enabled/game_start/timeouts/repeat preserved,
+    registry untouched, paths never carried."""
+    from gachaops.profiles import ProfileStore
+    from gachaops.registry import RegistrationStore
+
     with tempfile.TemporaryDirectory() as temp:
         base = Path(temp) / 'old-install'
         base.mkdir()
-        root = Path(temp) / 'data-root'; root.mkdir()
-        from gachaops.registry import RegistrationStore
+        root = Path(temp) / 'data-root'
+        root.mkdir()
+        seal(out, temp, [base])
         RegistrationStore(root).create()
-        from gachaops.profiles import ProfileStore
         ProfileStore(root).create_profile('默认组合')
         legacy = Path(temp) / '旧七登记配置.json'
-        write_legacy_config(legacy, base)
+        plan = {'ok-ww': {'enabled': True, 'game_start': 'manual', 'timeout': 2400},
+                'maa-end': {'enabled': True, 'timeout': 2700}}
+        source = write_legacy_config(legacy, base, plan, repeat_limit=3, reverse=True)
         before = registry_snapshot(root)
 
         def exercise(window):
             window.timer.stop(); window.recheck_timer.stop()
-            snapshot = window_snapshot(window, root, base)
-            snapshot['draft_active'] = window._draft_active()
-            # Saving the draft creates a new profile without touching the registry.
-            window.create_profile_named('草稿保存组合')
-            snapshot['after_save'] = window_snapshot(window, root, base)
-            window.close()
+            check(window._draft_active(), '--config draft is not active')
+            draft = window.draft_data
+            check(draft['repeat_limit'] == 3, f"draft repeat_limit {draft['repeat_limit']} != 3")
+            check([row['id'] for row in draft['assistants']]
+                  == [row['id'] for row in source['assistants']],
+                  'draft row order does not match the file order')
+            for row in draft['assistants']:
+                source_row = next(r for r in source['assistants'] if r['id'] == row['id'])
+                check(row['timeout_seconds'] == source_row['timeout_seconds'],
+                      f"{row['id']} draft timeout changed")
+                check(row['enabled'] == source_row['enabled'], f"{row['id']} enabled changed")
+                check(row['game_start'] == source_row['game_start'],
+                      f"{row['id']} game_start changed")
+                check('installation_root' not in row and 'game_path' not in row,
+                      f"{row['id']} draft carries registration paths")
+            out['draft'] = window_snapshot(window, 'R3/data-root')['draft']
+            window.save_selection()
+            snapshot = window_snapshot(window, 'R3/data-root')
+            saved = next(profile for profile in snapshot['profiles']
+                         if profile['name'] == '我的组合')
+            check(saved['registered_rows'] == 0, 'saved profile carries registration paths')
+            check(saved['repeat_limit'] == 3, f"saved repeat_limit {saved['repeat_limit']} != 3")
+            check([row['id'] for row in saved['rows']]
+                  == [row['id'] for row in source['assistants']], 'saved row order changed')
+            for row in saved['rows']:
+                source_row = next(r for r in source['assistants'] if r['id'] == row['id'])
+                check(row['timeout_seconds'] == source_row['timeout_seconds'],
+                      f"{row['id']} saved timeout changed")
+                check(row['enabled'] == source_row['enabled'], f"{row['id']} enabled changed")
+                check(row['game_start'] == source_row['game_start'],
+                      f"{row['id']} game_start changed")
+            check(snapshot['selected'] == {'uuid': saved['uuid'], 'name': '我的组合'},
+                  f"selected {snapshot['selected']} after saving draft")
+            check(snapshot['draft']['active'] is False, 'draft still active after save')
             out['snapshot'] = snapshot
+            window.close()
 
-        result = drive(root, 'R3', exercise, argv=['--config', str(legacy)])
+        result = drive(root, exercise, argv=['--config', str(legacy)], state=state)
         out.update(result)
-        out['registry_before'] = before
-        out['registry_after'] = registry_snapshot(root)
+        check(result['exit_code'] == 0, f"desktop exit {result['exit_code']} != 0")
+        after = registry_snapshot(root)
+        check(after == before, f"registry changed by draft save: {before} -> {after}")
+        check(store_rows(root) == 2, f"profile count {store_rows(root)} != 2")
+        check(not out['launches'], f"process launches recorded: {out['launches']}")
 
 
 @scenario('R4')
-def run_r4(out):
-    """Declining the migration prompt: zero writes, program exits."""
-    from PySide6.QtWidgets import QDialog, QMessageBox
+def run_r4(out, state):
+    """Declining the migration prompt: program exits 0 and the whole file
+    inventory (names and bytes) is identical afterwards."""
     with tempfile.TemporaryDirectory() as temp:
         base = Path(temp) / 'old-install'
         base.mkdir()
-        root = Path(temp) / 'data-root'; root.mkdir()
-        write_legacy_profile(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '旧组合', base)
-        tracked = sorted(root.rglob('*.json'))
-        digests = {p: p.read_bytes() for p in tracked}
+        root = Path(temp) / 'data-root'
+        root.mkdir()
+        seal(out, temp, [base])
+        write_legacy_profile(root, UUID_A, '旧组合', base,
+                             {'ok-ww': {'enabled': True, 'timeout': 2400},
+                              'zzz-onedragon': {'game': True}}, repeat_limit=3)
+        inventory = file_inventory(root)
+        check(len(inventory) >= 2, f"fixture inventory too small: {len(inventory)}")
+        dialog_log = state.setdefault('dialog_log', [])
 
-        def exercise(window):  # never reached: the gate exits on decline
-            out['unreachable'] = True
+        def exercise(window):
+            raise ScenarioFailure('a declined startup must not build a window')
 
-        result = drive(root, 'R4', exercise, dialog='Reject')
+        state['dialog_result'] = 'Reject'
+        result = drive(root, exercise, state=state)
         out.update(result)
-        out['zero_write'] = all(p.read_bytes() == d for p, d in digests.items())
-        out['files_tracked'] = len(tracked)
+        after = file_inventory(root)
+        check(after == inventory, 'file inventory (names/bytes) changed after decline')
+        check(result['exit_code'] == 0, f"decline exit {result['exit_code']} != 0")
+        check(dialog_log == ['QDialog'], f"unexpected dialogs at decline: {dialog_log}")
+        out['zero_write'] = True
+        out['files_tracked'] = len(inventory)
+        check(not out['launches'], f"process launches recorded: {out['launches']}")
 
 
 @scenario('R5')
-def run_r5(out):
-    """Conflicting candidates need an explicit choice; an incomplete zzz
-    registration stays 待接入 without blocking."""
-    from PySide6.QtWidgets import QDialog, QMessageBox
+def run_r5(out, state):
+    """Two profiles disagree on ok-ww: without a choice the migration commit
+    is refused, and the dialog path needs an explicit selection. A schema-1
+    legal disabled zzz row with a root but no game EXE defers when no
+    complete candidate exists anywhere, and run fields survive."""
+    from gachaops.registration_migration import (commit_registration_migration,
+                                                 preview_registration_migration)
+    from gachaops.planner import ConfigError
+    from PySide6.QtWidgets import QDialog
+
     with tempfile.TemporaryDirectory() as temp:
-        base = Path(temp) / 'old-install'
-        base.mkdir()
-        root = Path(temp) / 'data-root'; root.mkdir()
-        write_legacy_profile(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '组合甲', base,
-                             enabled=True, registered=ADAPTERS)
-        write_legacy_profile(root, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '组合乙', base,
-                             registered=('ok-ww',), game_for_zzz=False)
-        # 组合乙's ok-ww row carries a different path than 组合甲's.
-        document = json.loads((root / 'config/profiles' / 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' / 'config.json').read_text(encoding='utf-8'))
-        document['assistants'][0]['installation_root'] = str(sample_root(base) / 'ok-ww-other')
-        (root / 'config/profiles' / 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' / 'config.json').write_text(
-            json.dumps(document, ensure_ascii=False), encoding='utf-8')
+        base_a = Path(temp) / 'install-a'
+        base_a.mkdir()
+        base_b = Path(temp) / 'install-b'
+        base_b.mkdir()
+        root = Path(temp) / 'data-root'
+        root.mkdir()
+        seal(out, temp, [base_a, base_b])
+        plan_a = {'ok-ww': {'enabled': True, 'game_start': 'manual', 'timeout': 2400},
+                  'zzz-onedragon': {'timeout': 2000}}  # registered, disabled, NO game EXE
+        source_a = write_legacy_profile(root, UUID_A, '组合甲', base_a, plan_a, repeat_limit=2)
+        source_b = write_legacy_profile(root, UUID_B, '组合乙', base_b,
+                                        {'ok-ww': {'timeout': 3000}}, repeat_limit=0)
+        # 乙's ok-ww carries a genuinely different root than 甲's.
+        document_b = json.loads((root / 'config/profiles' / UUID_B / 'config.json').read_text(encoding='utf-8'))
+        document_b['assistants'][0]['installation_root'] = str(base_b / 'ok-ww-other')
+        (root / 'config/profiles' / UUID_B / 'config.json').write_text(
+            json.dumps(document_b, ensure_ascii=False), encoding='utf-8')
+
+        # Candidate census and the no-choice refusal, at the API level.
+        preview = preview_registration_migration(root)
+        adapters = {entry['adapter']: entry for entry in preview['adapters']}
+        check('zzz-onedragon' not in adapters,
+              'incomplete-only zzz appeared as an adoptable candidate')
+        check(adapters['ok-ww']['conflict'] is True, 'ok-ww candidates did not conflict')
+        candidate_paths = [candidate['fields']['installation_root']
+                           for candidate in adapters['ok-ww']['candidates']]
+        check(candidate_paths == [str(base_a / 'ok-ww'), str(base_b / 'ok-ww-other')],
+              f"candidate order/paths unexpected: {candidate_paths}")
+        try:
+            commit_registration_migration(root, preview, {})
+            raise ScenarioFailure('migration without choices unexpectedly succeeded')
+        except ConfigError as error:
+            check('选择' in str(error), f"unexpected no-choice error: {error}")
+            out['no_choice_refused'] = str(error)
+        out['preview'] = preview_snapshot(root)
         events = []
+
+        def on_dialog(dialog_instance):
+            chosen = select_combo(dialog_instance, 0)  # explicit candidate 1
+            if chosen:
+                events.append(f'冲突选择: {chosen}')
+            return QDialog.DialogCode.Accepted
 
         def exercise(window):
             window.timer.stop(); window.recheck_timer.stop()
-            snapshot = window_snapshot(window, root, base)
-            zzz = next(row for profile in snapshot['profiles'] for row in profile['assistants']
-                       if row['adapter'] == 'zzz-onedragon')
-            snapshot['zzz_after'] = zzz
-            snapshot['events'] = list(events)
-            window.close()
+            snapshot = window_snapshot(window, 'R5/data-root')
+            registry = snapshot['registry']
+            check(registry['count'] == 6,
+                  f"registry count {registry['count']} != 6 (zzz must defer): {registry['adapters']}")
+            check('zzz-onedragon' not in registry['entries'],
+                  f"incomplete zzz was adopted: {registry['entries'].get('zzz-onedragon')}")
+            check(registry['entries']['ok-ww'] == {'installation_root': str(base_a / 'ok-ww')},
+                  f"ok-ww is not candidate 1: {registry['entries'].get('ok-ww')}")
+            for name, source in (('组合甲', source_a), ('组合乙', source_b)):
+                profile = next(p for p in snapshot['profiles'] if p['name'] == name)
+                for row in profile['rows']:
+                    source_row = next(r for r in source['assistants'] if r['id'] == row['id'])
+                    check(row['timeout_seconds'] == source_row['timeout_seconds'],
+                          f"{name}/{row['id']} timeout changed")
+                    check(row['enabled'] == source_row['enabled'],
+                          f"{name}/{row['id']} enabled changed")
+                zzz = next(row for row in profile['rows'] if row['adapter'] == 'zzz-onedragon')
+                check(zzz['adapter'] == 'zzz-onedragon' and 'zzz-onedragon' not in registry['entries'],
+                      'zzz row exists in the profile but not in the registry (待接入)')
+            composed_a = next(profile for profile in snapshot['profiles']
+                              if profile['name'] == '组合甲')['composed']
+            check(isinstance(composed_a, dict)
+                  and composed_a.get('ok-ww', {}).get('installation_root') == str(base_a / 'ok-ww'),
+                  f"甲 composition does not use the adopted path: {composed_a}")
             out['snapshot'] = snapshot
+            out['events'] = list(events)
+            check(events, 'conflict choice was never recorded')
+            window.close()
 
-        def exec_dialog(dialog):
-            from PySide6.QtWidgets import QComboBox
-            for box in dialog.findChildren(QComboBox):
-                if box.count() > 1 and box.currentData() is None:
-                    box.setCurrentIndex(1)  # first explicit candidate
-                    events.append(f'冲突选择: 候选1 {box.itemText(1)[:20]}')
-            return QDialog.DialogCode.Accepted
-
-        from unittest.mock import patch
-        with patch.object(QDialog, 'exec', exec_dialog), \
-             patch.object(QMessageBox, 'question',
-                          return_value=QMessageBox.StandardButton.Yes):
-            result = drive(root, 'R5', exercise)
+        result = drive(root, exercise, state={'dialog_handler': on_dialog})
         out.update(result)
+        check(result['exit_code'] == 0, f"desktop exit {result['exit_code']} != 0")
         out['registry_after'] = registry_snapshot(root)
+        check('zzz-onedragon' not in out['registry_after']['entries'],
+              'zzz leaked into the registry after the run')
+        check(not out['launches'], f"process launches recorded: {out['launches']}")
+
+
+@scenario('R5b')
+def run_r5b(out, state):
+    """When a complete zzz candidate exists elsewhere, the complete one is
+    adopted even though another profile only has the partial row."""
+    with tempfile.TemporaryDirectory() as temp:
+        base_a = Path(temp) / 'install-a'
+        base_a.mkdir()
+        base_b = Path(temp) / 'install-b'
+        base_b.mkdir()
+        root = Path(temp) / 'data-root'
+        root.mkdir()
+        seal(out, temp, [base_a, base_b])
+        write_legacy_profile(root, UUID_A, '组合甲', base_a,
+                             {'ok-ww': {'enabled': True, 'timeout': 2400},
+                              'zzz-onedragon': {'timeout': 2000}}, repeat_limit=2)
+        write_legacy_profile(root, UUID_B, '组合乙', base_b,
+                             {'zzz-onedragon': {'game': True, 'timeout': 2100}}, repeat_limit=0)
+
+        def exercise(window):
+            window.timer.stop(); window.recheck_timer.stop()
+            snapshot = window_snapshot(window, 'R5b/data-root')
+            registry = snapshot['registry']
+            check(registry['count'] == 7, f"registry count {registry['count']} != 7")
+            check(registry['entries'].get('zzz-onedragon')
+                  == {'installation_root': str(base_b / 'zzz-onedragon'),
+                      'game_path': str(base_b / 'zzz-onedragon' / 'ZenlessZoneZero.exe')},
+                  f"complete zzz not adopted: {registry['entries'].get('zzz-onedragon')}")
+            check(registry['entries'].get('ok-ww') == {'installation_root': str(base_a / 'ok-ww')},
+                  f"ok-ww not adopted: {registry['entries'].get('ok-ww')}")
+            out['snapshot'] = snapshot
+            window.close()
+
+        result = drive(root, exercise, state=state)
+        out.update(result)
+        check(result['exit_code'] == 0, f"desktop exit {result['exit_code']} != 0")
+        check(not out['launches'], f"process launches recorded: {out['launches']}")
 
 
 @scenario('R6')
-def run_r6(out):
-    """After migration the registry is shared across combinations and reopen."""
-    from PySide6.QtWidgets import QDialog
+def run_r6(out, state):
+    """After migration: switching through every combination composes each
+    one, and a reopen in a separate OS process (different PID) finds the
+    same registry and combinations. Launch attempts are kept per phase."""
+    runner_path = Path(tempfile.gettempdir()) / f'issue4-reopen-{os.getpid()}.py'
+    runner_path.write_text(REOPEN_RUNNER, encoding='utf-8')
+
     with tempfile.TemporaryDirectory() as temp:
         base = Path(temp) / 'old-install'
         base.mkdir()
-        root = Path(temp) / 'data-root'; root.mkdir()
-        write_legacy_profile(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '组合甲', base, enabled=True)
-        write_legacy_profile(root, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '组合乙', base)
+        root = Path(temp) / 'data-root'
+        root.mkdir()
+        seal(out, temp, [base])
+        write_legacy_profile(root, UUID_A, '组合甲', base,
+                             {'ok-ww': {'enabled': True, 'game_start': 'manual', 'timeout': 2400},
+                              'zzz-onedragon': {'game': True, 'timeout': 2000}}, repeat_limit=2)
+        write_legacy_profile(root, UUID_B, '组合乙', base, {}, repeat_limit=0)
+        expected_registry = None
 
         def exercise(window):
+            nonlocal expected_registry
             window.timer.stop(); window.recheck_timer.stop()
-            out['after_migration'] = window_snapshot(window, root, base)
-            # A second combination composes from the same registry.
+            snapshots = []
             window.create_profile_named('新组合')
-            out['after_new_profile'] = window_snapshot(window, root, base)
+            new_uuid = next(uuid for uuid in window.profile_ids.values()
+                            if uuid not in {UUID_A, UUID_B})
+            for identity, expected in (
+                    (UUID_A, {'name': '组合甲', 'repeat': 2, 'first_timeout': 2400}),
+                    (UUID_B, {'name': '组合乙', 'repeat': 0, 'first_timeout': 1800}),
+                    (new_uuid, {'name': '新组合', 'repeat': 0, 'first_timeout': 1800})):
+                path_by_uuid = {value: key for key, value in window.profile_ids.items()}
+                index = window.profiles.findData(path_by_uuid[identity])
+                check(index >= 0, f"profile {expected['name']} missing from the combo")
+                window.profiles.setCurrentIndex(index)
+                snapshot = window_snapshot(window, 'R6/data-root')
+                check(snapshot['selected'] == {'uuid': identity, 'name': expected['name']},
+                      f"switch selected {snapshot['selected']} != {expected['name']}")
+                check(window.data is not None
+                      and window.data.get('repeat_limit') == expected['repeat'],
+                      f"{expected['name']} composed repeat {window.data.get('repeat_limit')} != {expected['repeat']}")
+                check(window.data['assistants'][0]['timeout_seconds'] == expected['first_timeout'],
+                      f"{expected['name']} first timeout {window.data['assistants'][0]['timeout_seconds']} "
+                      f"!= {expected['first_timeout']}")
+                snapshots.append(snapshot)
+            expected_registry = snapshots[0]['registry']
+            check(all(snapshot['registry'] == expected_registry for snapshot in snapshots),
+                  'registry changed while switching profiles')
+            out['switch_snapshots'] = snapshots
             window.close()
 
-        out.update(drive(root, 'R6', exercise))
-        # Reopen: a fresh desktop process sees the same registrations.
-        second = {}
-        from PySide6.QtWidgets import QApplication
-        QApplication.quit()
+        first = drive(root, exercise, state=state)
+        out['launches_phase1'] = first['launches']
+        out['exit_code'] = first['exit_code']
+        check(first['exit_code'] == 0, f"desktop exit {first['exit_code']} != 0")
+        registry_before_reopen = registry_snapshot(root)
+        check(registry_before_reopen == expected_registry,
+              f'registry drifted after phase 1: disk={registry_before_reopen} window={expected_registry}')
 
-        def exercise2(window):
-            window.timer.stop(); window.recheck_timer.stop()
-            second['snapshot'] = window_snapshot(window, root, base)
-            window.close()
+        # Reopen in a genuinely separate OS process sharing the same root.
+        reopen_out = Path(temp) / 'reopen.json'
+        completed = subprocess.run(
+            [sys.executable, '-X', 'utf8', str(runner_path), str(REPO), str(root), str(reopen_out)],
+            cwd=str(REPO), capture_output=True, text=True, timeout=240)
+        check(completed.returncode == 0, f"reopen process failed: {completed.stderr[-500:]}")
+        recorded = json.loads(reopen_out.read_text(encoding='utf-8'))
+        check(recorded['pid'] != os.getpid(), f"reopen ran in the parent PID {recorded['pid']}")
+        snapshot = recorded['snapshot']
+        check(snapshot['registry'] == registry_before_reopen, 'reopen registry differs')
+        check(snapshot['selected'] == {'uuid': UUID_A, 'name': '组合甲'},
+              f"reopen selected {snapshot['selected']} != 组合甲")
+        check(next(profile for profile in snapshot['profiles']
+                   if profile['name'] == '组合甲')['repeat_limit'] == 2,
+              'reopen lost 甲 run settings')
+        out['reopen'] = snapshot
+        out['reopen_pid'] = recorded['pid']
+        out['launches_reopen'] = recorded.get('launches', [])
+        out['launches'] = list(out['launches_phase1']) + list(out['launches_reopen'])
+        check(not out['launches'], f"process launches recorded: {out['launches']}")
+        runner_path.unlink(missing_ok=True)
 
-        result = drive(root, 'R6', exercise2)
-        out['reopen'] = second.get('snapshot')
-        out['reopen_exit'] = result['exit_code']
-        out['launches'] = result['launches']
+
+def mask_text(text, masks):
+    for needle, label in masks:
+        text = text.replace(needle, label)
+        text = text.replace(needle.replace('\\', '/'), label)
+    return text
+
+
+def mask_tree(obj, masks):
+    if isinstance(obj, str):
+        return mask_text(obj, masks)
+    if isinstance(obj, dict):
+        return {key: mask_tree(value, masks) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [mask_tree(value, masks) for value in obj]
+    return obj
+
+
+def assert_no_leak(obj, needles, path='out'):
+    if isinstance(obj, str):
+        lowered = obj.lower()
+        for needle in needles:
+            check(needle.lower() not in lowered, f'path leak at {path}: {obj[:120]!r}')
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            assert_no_leak(value, needles, f'{path}.{key}')
+    elif isinstance(obj, (list, tuple)):
+        for index, value in enumerate(obj):
+            assert_no_leak(value, needles, f'{path}[{index}]')
 
 
 def run_scenario_in_process(name, out_path):
-    out = {'scenario': name, 'pid': os.getpid()}
-    SCENARIOS[name](out)
+    out = {'scenario': name}
+    state = {}
+    failure = None
+    try:
+        SCENARIOS[name](out, state)
+        out['ok'] = True
+    except AssertionError as error:
+        failure = f'{type(error).__name__}: {error}'
+        out.update({'ok': False, 'failure': failure})
+    private = out.pop('_private', {'tmp': '', 'samples': []})
+    masks = [(private['tmp'], '<tmp>')] + [(sample, '<sample>') for sample in private['samples']]
+    out = mask_tree(out, masks)
+    if private['tmp']:
+        assert_no_leak(out, [private['tmp']] + private['samples'])
+        failure = mask_text(failure, masks) if failure else failure
     Path(out_path).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding='utf-8')
-    return out
+    if failure:
+        print(failure, file=sys.stderr)
+        return 1
+    return 0
 
 
 def main():
@@ -452,26 +962,44 @@ def main():
     parser.add_argument('--out', default='issue4-results.json')
     arguments = parser.parse_args()
     if arguments.scenario:
-        out = run_scenario_in_process(arguments.scenario, arguments.out)
-        print(json.dumps(out, ensure_ascii=False, indent=2))
-        return 0
+        return run_scenario_in_process(arguments.scenario, arguments.out)
     if not arguments.all:
         parser.error('choose --scenario NAME or --all')
+    system_temp = tempfile.gettempdir()
     merged = {}
+    failed = []
     for name in sorted(SCENARIOS):
-        out_path = Path(arguments.out).with_name(f'{Path(arguments.out).stem}-{name}.json')
-        completed = subprocess.run([sys.executable, '-X', 'utf8', str(Path(__file__).resolve()),
-                                    '--scenario', name, '--out', str(out_path)],
-                                   cwd=str(REPO), capture_output=True, text=True)
-        merged[name] = {'returncode': completed.returncode,
-                        'stderr': completed.stderr[-2000:] if completed.returncode else ''}
+        fresh = Path(arguments.out).with_name(f'{Path(arguments.out).stem}-{name}.this-run.json')
+        if fresh.exists():
+            fresh.unlink()  # never accept a stale result file as this run's output
         try:
-            merged[name]['result'] = json.loads(out_path.read_text(encoding='utf-8'))
-        except ValueError:
-            pass
-    Path(arguments.out).write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding='utf-8')
-    print(json.dumps(merged, ensure_ascii=False, indent=2))
-    return 0 if all(entry['returncode'] == 0 for entry in merged.values()) else 1
+            completed = subprocess.run(
+                [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()),
+                 '--scenario', name, '--out', str(fresh)],
+                cwd=str(REPO), capture_output=True, text=True, timeout=240)
+            returncode, timed_out = completed.returncode, False
+            stderr = mask_text(completed.stderr[-2000:], [(system_temp, '<tmp>')])
+        except subprocess.TimeoutExpired:
+            returncode, timed_out, stderr = None, True, f'scenario {name} timed out after 240s'
+        entry = {'returncode': returncode, 'timed_out': timed_out, 'stderr': stderr}
+        try:
+            entry['result'] = json.loads(fresh.read_text(encoding='utf-8'))
+        except (ValueError, OSError):
+            entry['result'] = None
+            entry['stderr'] = f'no fresh result file written this run; {stderr}'
+        schema_ok = bool(entry['result']) and entry['result'].get('scenario') == name \
+            and 'launches' in entry['result'] and entry['result'].get('exit_code') == 0 \
+            and entry['result'].get('ok') is True
+        if returncode != 0 or timed_out or not schema_ok:
+            failed.append(name)
+        entry['verdict'] = 'FAIL' if name in failed else 'PASS'
+        merged[name] = entry
+        fresh.unlink(missing_ok=True)
+    summary = {'verdict': {name: entry['verdict'] for name, entry in merged.items()},
+               'all_passed': not failed, 'scenarios': merged}
+    Path(arguments.out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(json.dumps(summary['verdict'], ensure_ascii=False))
+    return 0 if not failed else 1
 
 
 if __name__ == '__main__':
