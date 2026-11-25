@@ -62,6 +62,12 @@ AVATARS = {
 ICON_DIR = Path(__file__).parent / 'assets' / 'icons'
 SUBTITLE_IDLE = '选好助手，一次开始。任务沿用各助手中已保存的设置。'
 SUBTITLE_RUNNING = '运行中，配置已锁定。可随时停止并清理。'
+# How long a started run worker may stay without a first summary (which is
+# only written inside the admission gate) before the window says so instead
+# of sitting there silently. This is a notice threshold, not an abort: a
+# slow cold start may still be confirmed after it fires.
+RUN_CONFIRM_TIMEOUT_MS = 30000
+RUN_UNCONFIRMED_TEXT = '尚未确认开始运行（可能在检查上一轮恢复或执行锁）；确认开始前窗口保持显示'
 BLOCKER_TEXT = {
     'not_registered': '尚未接入（无全局登记路径）',
     'version_unsupported': '版本或启动协议尚未核验',
@@ -483,6 +489,10 @@ def main():
             self.check_report = None
             self.log_seen = 0
             self.started = None
+            self.run_confirm_timer = None
+            self.run_confirm_timeout_ms = RUN_CONFIRM_TIMEOUT_MS
+            self.run_confirmed_minimized = False
+            self.run_confirm_warned = False
             self.node_started = None
             self.results = {}
             self.finished_report_key = None
@@ -1967,6 +1977,10 @@ def main():
                     self.log.clear(); self.log_seen = 0
                     self.started = time.monotonic(); self.node_started = None
                     self.stop_requested = False
+                    self.run_confirmed_minimized = False
+                    self.run_confirm_warned = False
+                    if self.run_confirm_timer is not None:
+                        self.run_confirm_timer.stop()
                     self.results = {}
                     self.result.setEnabled(False)
                     self.subtitle.setText(SUBTITLE_RUNNING)
@@ -1991,8 +2005,18 @@ def main():
                 if action == 'run-assistants':
                     def handoff():
                         from .foreground import allow_foreground
+                        # The foreground handover must happen while the worker
+                        # starts, before any assistant can raise a game window.
                         allow_foreground(int(process.processId()))
-                        self.showMinimized()
+                        # Only the minimize is deferred: the first chain
+                        # summary is written inside the admission gate, so
+                        # minimizing there cannot hide a gate refusal. If the
+                        # worker neither confirms the flow nor exits in time,
+                        # the timeout keeps the window visible and says so.
+                        self.run_confirm_timer = QTimer(self)
+                        self.run_confirm_timer.setSingleShot(True)
+                        self.run_confirm_timer.timeout.connect(self._run_confirm_timeout)
+                        self.run_confirm_timer.start(self.run_confirm_timeout_ms)
                     process.started.connect(handoff)
                 self.refresh_controls(); self.refresh_checklist()
                 process.start()
@@ -2082,6 +2106,16 @@ def main():
                 summaries = list(self.session.glob('assistants-*/summary.json'))
                 if not summaries: return
                 self.summary_path = summaries[0]
+                if (self.action == 'run-assistants' and not self.run_confirmed_minimized
+                        and self.running()):
+                    # The first chain summary only exists after the worker
+                    # crossed the admission gate: the flow is confirmed
+                    # running, so minimizing no longer hides a refusal.
+                    self.run_confirmed_minimized = True
+                    self.run_confirm_warned = False
+                    if self.run_confirm_timer is not None:
+                        self.run_confirm_timer.stop()
+                    self.showMinimized()
                 if not self.running():
                     self.result.setEnabled(True)
                 data = json.loads(self.summary_path.read_text(encoding='utf-8-sig'))
@@ -2139,6 +2173,9 @@ def main():
                 (self.results.get(r['id'], {}) or {}).get('status') for r in participants])
             self.set_problems(self.problem_entries(
                 [self.results.get(r['id'], {}) for r in participants]))
+            if self.run_confirm_warned and not self.run_confirmed_minimized:
+                self.running_title.setText(RUN_UNCONFIRMED_TEXT)
+                self.running_title.setStyleSheet('color: #d97706; font-size: 15px; font-weight: 600;')
             if self.stop_requested:
                 self.running_title.setText('停止中，等待清理确认…')
                 self.running_title.setStyleSheet('color: #d97706; font-size: 15px; font-weight: 600;')
@@ -2310,6 +2347,16 @@ def main():
             self.log_seen = len(lines)
             bar = self.log.verticalScrollBar(); bar.setValue(bar.maximum())
 
+        def _run_confirm_timeout(self):
+            # The worker started but neither confirmed the flow (no first
+            # summary inside the admission gate) nor exited. Keep the window
+            # visible and name the likely state; deliberately non-modal.
+            if self.run_confirmed_minimized or not self.running():
+                return
+            self.run_confirm_warned = True
+            self.running_title.setText(RUN_UNCONFIRMED_TEXT)
+            self.running_title.setStyleSheet('color: #d97706; font-size: 15px; font-weight: 600;')
+
         # ---------- completion ----------
 
         def refresh_status_pills(self):
@@ -2323,6 +2370,8 @@ def main():
 
         def finished(self, code, exit_status):
             self.poll(); self.refresh_controls()
+            if self.run_confirm_timer is not None:
+                self.run_confirm_timer.stop()
             try:
                 if self.action == 'recover-assistants':
                     recovery_path = self.session / 'recovery.json'
