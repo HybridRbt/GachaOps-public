@@ -52,6 +52,27 @@ def _allowed(data, depth=0):
         result['reason_code'] = data['reason']
     elif data.get('error') or data.get('reason'):
         result['reason_code'] = 'redacted_or_unknown'
+    details = data.get('build_diagnostics')
+    if isinstance(details, dict):
+        components = []
+        for row in details.get('components', []) or []:
+            if not isinstance(row, dict):
+                continue
+            component = row.get('component')
+            if not isinstance(component, str) or not component or len(component) > 120:
+                continue
+            prefixes = {}
+            for field in ('actual_sha256', 'expected_sha256'):
+                value = row.get(field)
+                if isinstance(value, str) and re.fullmatch(r'[0-9a-f]{12}', value):
+                    prefixes[field] = value
+            components.append({'component': component, **prefixes})
+        versions = details.get('versions') if isinstance(details.get('versions'), dict) else {}
+        result['build_diagnostics'] = {
+            'reason': details.get('reason') if isinstance(details.get('reason'), str) else None,
+            'components': components,
+            'versions': {key: value for key, value in versions.items()
+                         if isinstance(value, str) and len(value) <= 64}}
     return result
 
 

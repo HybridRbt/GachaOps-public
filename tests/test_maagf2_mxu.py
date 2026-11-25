@@ -289,6 +289,110 @@ class MxuPreparationTests(unittest.TestCase):
         self.assertTrue(result['cleanup_verified'])
 
 
+
+
+    def _digest_of(self, name):
+        return hashlib.sha256((self.root / name).read_bytes()).hexdigest()
+
+    def test_each_component_drift_reports_not_adapted_without_leaks(self):
+        for name in self.components:
+            with self.subTest(component=name):
+                component = self.root / name
+                component.write_bytes(component.read_bytes() + b'-drifted')
+                with self.assertRaisesRegex(ValueError, '尚未适配') as caught:
+                    prepare_assistant(self.row)
+                message = str(caught.exception)
+                self.assertIn('MXU', message)
+                # User layer answers "what is wrong / what to do": no hashes,
+                # no version numbers, no presumptive cause, no real paths.
+                self.assertNotIn('残留 MFA', message)
+                self.assertNotIn('请更新', message)
+                self.assertNotIn(str(self.root), message)
+                self.assertNotIn(self.mxu.EXPECTED_COMPONENTS[name][:12], message)
+                self.assertNotIn(self._digest_of(name)[:12], message)
+                component.write_bytes(component.read_bytes().replace(b'-drifted', b''))
+
+    def test_multiple_component_drifts_are_all_listed_in_diagnostics(self):
+        for name in ('MaaGF2Exilium.exe', 'maafw/MaaFramework.dll'):
+            component = self.root / name
+            component.write_bytes(component.read_bytes() + b'-drifted')
+        with self.assertRaisesRegex(ValueError, '尚未适配') as caught:
+            prepare_assistant(self.row)
+        details = getattr(caught.exception, 'build_diagnostics', None)
+        self.assertIsInstance(details, dict)
+        listed = {row['component']: row for row in details['components']}
+        self.assertEqual(set(listed), {'MaaGF2Exilium.exe', 'maafw/MaaFramework.dll'})
+        for name, row in listed.items():
+            self.assertEqual(row['actual_sha256'], self._digest_of(name)[:12])
+            self.assertEqual(row['expected_sha256'], self.mxu.EXPECTED_COMPONENTS[name][:12])
+
+    def test_resource_version_only_drift_reports_not_adapted_with_versions(self):
+        self.interface['version'] = 'v2.8.4'
+        self.flush()
+        with self.assertRaisesRegex(ValueError, '尚未适配') as caught:
+            prepare_assistant(self.row)
+        details = caught.exception.build_diagnostics
+        self.assertEqual(details['components'], [])
+        self.assertEqual(details['versions'].get('resource_interface'), 'v2.8.4')
+
+    def test_config_schema_drift_reports_not_adapted(self):
+        self.config['version'] = '2.0'
+        self.flush()
+        with self.assertRaisesRegex(ValueError, '尚未适配'):
+            prepare_assistant(self.row)
+
+    def test_path_redirection_takes_priority_over_component_drift(self):
+        (self.root / 'python/python.exe').write_bytes(b'drifted')
+        with patch.object(self.mxu, '_redirected', return_value=True):
+            with self.assertRaisesRegex(ValueError, '安装路径异常'):
+                prepare_assistant(self.row)
+
+    def test_missing_component_reports_not_adapted_and_missing_interface_reports_reinstall(self):
+        # A missing expected component is drift (an old or foreign layout);
+        # missing core metadata (interface.json) is an incomplete install.
+        (self.root / 'agent/main.py').unlink()
+        with self.assertRaisesRegex(ValueError, '尚未适配'):
+            prepare_assistant(self.row)
+        (self.root / 'interface.json').unlink()
+        with self.assertRaisesRegex(ValueError, '重新安装'):
+            prepare_assistant(self.row)
+
+    def test_check_panel_row_carries_user_text_and_build_diagnostics(self):
+        (self.root / 'MaaGF2Exilium.exe').write_bytes(b'drifted-exe')
+        (self.root / 'agent/main.py').write_bytes(b'drifted-agent')
+        from gachaops.assistants import check_assistants
+        report = check_assistants({'repeat_limit': 0, 'assistants': [dict(self.row)]})
+        row = report['assistants'][0]
+        self.assertEqual(row['status'], 'blocked')
+        self.assertIn('尚未适配', row['error'])
+        self.assertNotIn('残留 MFA', row['error'])
+        self.assertNotIn(str(self.root), row['error'])
+        details = row['build_diagnostics']
+        self.assertEqual({c['component'] for c in details['components']},
+                         {'MaaGF2Exilium.exe', 'agent/main.py'})
+        self.assertTrue(all(len(c['actual_sha256']) == 12 for c in details['components']))
+
+    def test_diagnostics_export_keeps_prefixes_and_drops_unknown_fields(self):
+        from gachaops.diagnostics import build_diagnostic_preview
+        (self.root / 'MaaGF2Exilium.exe').write_bytes(b'drifted-exe')
+        from gachaops.assistants import check_assistants
+        row = check_assistants({'repeat_limit': 0, 'assistants': [dict(self.row)]})['assistants'][0]
+        summary = {'schema_version': 1, 'status': 'blocked', 'assistants': [row]}
+        run = self.root / 'runs' / 'gui-fixture'
+        run.mkdir(parents=True)
+        (run / 'summary.json').write_text(json.dumps(summary), encoding='utf-8')
+        preview = build_diagnostic_preview(run)
+        payload = json.loads(preview.payload)
+        entry = payload['records'][0]['summary']['assistants'][0]
+        details = entry['build_diagnostics']
+        self.assertEqual({c['component'] for c in details['components']}, {'MaaGF2Exilium.exe'})
+        self.assertEqual(details['components'][0]['expected_sha256'],
+                         self.mxu.EXPECTED_COMPONENTS['MaaGF2Exilium.exe'][:12])
+        exported = json.dumps(payload)
+        self.assertNotIn(self.mxu.EXPECTED_COMPONENTS['MaaGF2Exilium.exe'], exported)
+        self.assertNotIn(self._digest_of('MaaGF2Exilium.exe'), exported)
+
+
 class MxuCompletionTests(unittest.TestCase):
     def setUp(self):
         self.mxu = importlib.import_module('gachaops.maagf2_mxu')

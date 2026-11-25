@@ -56,4 +56,7 @@ def inspect_registration(adapter_id, fields, game_start=None):
                     else 'permission_or_desktop' if isinstance(error, PermissionError) else 'native_setup_required')
         blockers = (category,)
         observed = {'error': text}
+        details = getattr(error, 'build_diagnostics', None)
+        if isinstance(details, dict):
+            observed['build_diagnostics'] = details
     return RegistrationInspection(row, blockers, tuple(observed.get('warnings', ())), observed)

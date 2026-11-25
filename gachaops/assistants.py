@@ -179,7 +179,11 @@ def check_assistants(data):
             current = prepare_assistant(row)
             rows.append(dict(current, id=row['id'], status='blocked' if current['blockers'] else 'ready'))
         except (OSError, ValueError, SyntaxError, KeyError, TypeError, StopIteration) as exc:
-            rows.append({'id': row['id'], 'status': 'blocked', 'error': str(exc)})
+            entry = {'id': row['id'], 'status': 'blocked', 'error': str(exc)}
+            details = getattr(exc, 'build_diagnostics', None)
+            if isinstance(details, dict):
+                entry['build_diagnostics'] = details
+            rows.append(entry)
     return {'schema_version': 1, 'mode': 'check_only', 'game_execution': False, 'assistants': rows}
 
 
