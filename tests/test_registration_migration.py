@@ -44,6 +44,12 @@ UUID_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 UUID_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
 
+def absolute(*parts):
+    """Portable absolute fixture path: a Windows drive letter is not absolute
+    on POSIX, so valid fixtures build from a host-absolute base instead."""
+    return str(Path(tempfile.gettempdir()).resolve().joinpath(*parts))
+
+
 class StartupStateTests(unittest.TestCase):
     def test_fresh_ready_and_migration_required(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -162,7 +168,7 @@ class MigrationCommitTests(unittest.TestCase):
             self.assertEqual(RegistrationStore(root).read_required()['assistants']['ok-ww'],
                              {'installation_root': str(other)})
             # 稍后重新接入: no entry, and the profile keeps its selection.
-            write_registry(root, {'ok-ww': {'installation_root': 'C:/current'}})
+            write_registry(root, {'ok-ww': {'installation_root': absolute('current')}})
             (root / f'config/profiles/{UUID_A}/config.json').write_text(
                 json.dumps(schema1(root, [ok_row(root, enabled=True)])), encoding='utf-8')
             preview = preview_registration_migration(root)
@@ -175,7 +181,7 @@ class MigrationCommitTests(unittest.TestCase):
     def test_registry_entries_without_candidates_are_preserved(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            write_registry(root, {'ok-ww': {'installation_root': 'C:/kept'}})
+            write_registry(root, {'ok-ww': {'installation_root': absolute('kept')}})
             write_profile(root, UUID_A, schema1(root, [
                 {'id': 'genshin', 'adapter': 'bettergi', 'installation_root': str(root), 'enabled': False}]),
                 name='A')
@@ -184,7 +190,7 @@ class MigrationCommitTests(unittest.TestCase):
             self.assertEqual(flagged, {'ok-ww': False, 'bettergi': False})
             commit_registration_migration(root, preview, {})
             registry = RegistrationStore(root).read_required()
-            self.assertEqual(registry['assistants']['ok-ww'], {'installation_root': 'C:/kept'})
+            self.assertEqual(registry['assistants']['ok-ww'], {'installation_root': absolute('kept')})
 
     def test_source_changes_and_busy_execution_block_commit(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -211,7 +217,7 @@ class MigrationContinueTests(unittest.TestCase):
         """Stage a transaction whose publishing stops after the registry target."""
         from gachaops import registration_migration
         write_profile(root, UUID_A, schema1(root, [ok_row(root, enabled=True)]), name='A')
-        write_registry(root, {'bettergi': {'installation_root': 'C:/kept'}})
+        write_registry(root, {'bettergi': {'installation_root': absolute('kept')}})
         preview = preview_registration_migration(root)
         real_publish = registration_migration._publish_targets
 
@@ -236,7 +242,7 @@ class MigrationContinueTests(unittest.TestCase):
             document = ProfileStore(root).load_profile(UUID_A)
             self.assertTrue(document['assistants'][0]['enabled'])
             registry = RegistrationStore(root).read_required()
-            self.assertEqual(registry['assistants']['bettergi'], {'installation_root': 'C:/kept'})
+            self.assertEqual(registry['assistants']['bettergi'], {'installation_root': absolute('kept')})
             self.assertEqual(registry['assistants']['ok-ww'], {'installation_root': str(root)})
             self.assertIsNone(read_journal(root))
             self.assertEqual(startup_state(root)['status'], 'ready')
@@ -270,9 +276,9 @@ class ImportContinueTests(unittest.TestCase):
         """Stage an import whose publishing stops after `publish_count` targets."""
         from gachaops import registration_migration
         initialize_fresh(root)
-        write_registry(root, {'ok-ww': {'installation_root': 'C:/current'}})
+        write_registry(root, {'ok-ww': {'installation_root': absolute('current')}})
         source = root.parent / 'external-import.json'
-        source.write_text(json.dumps(schema1(root, [ok_row('C:/imported', enabled=True)])),
+        source.write_text(json.dumps(schema1(root, [ok_row(absolute('imported'), enabled=True)])),
                           encoding='utf-8')
         preview = preview_registration_import(root, source, '导入组合')
         real_publish = registration_migration._publish_targets
@@ -303,7 +309,7 @@ class ImportContinueTests(unittest.TestCase):
             self.assertTrue(document['assistants'][0]['enabled'])
             # The conflict choice ('keep') still applies to the merged registry.
             self.assertEqual(RegistrationStore(root).read_required()['assistants']['ok-ww'],
-                             {'installation_root': 'C:/current'})
+                             {'installation_root': absolute('current')})
             self.assertIsNone(read_journal(root))
             self.assertEqual(startup_state(root)['status'], 'ready')
 
@@ -354,13 +360,13 @@ class ImportTests(unittest.TestCase):
     def test_schema1_import_new_same_conflict_and_choices(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); initialize_fresh(root)
-            write_registry(root, {'ok-ww': {'installation_root': 'C:/current'},
-                                  'bettergi': {'installation_root': 'C:/bg'}})
+            write_registry(root, {'ok-ww': {'installation_root': absolute('current')},
+                                  'bettergi': {'installation_root': absolute('bg')}})
             source = root.parent / 'external-schema1.json'
             source.write_text(json.dumps(schema1(root, [
-                ok_row('C:/imported', enabled=True),
-                {'id': 'genshin', 'adapter': 'bettergi', 'installation_root': 'C:/bg', 'enabled': False},
-                {'id': 'nte', 'adapter': 'ok-nte', 'installation_root': 'C:/nte', 'enabled': False}])),
+                ok_row(absolute('imported'), enabled=True),
+                {'id': 'genshin', 'adapter': 'bettergi', 'installation_root': absolute('bg'), 'enabled': False},
+                {'id': 'nte', 'adapter': 'ok-nte', 'installation_root': absolute('nte'), 'enabled': False}])),
                 encoding='utf-8')
             preview = preview_registration_import(root, source, '旧导出')
             self.assertEqual(preview['schema'], 1)
@@ -370,8 +376,8 @@ class ImportTests(unittest.TestCase):
                 commit_registration_import(root, preview, {})
             result = commit_registration_import(root, preview, {'ok-ww': 'keep'})
             assistants = RegistrationStore(root).read_required()['assistants']
-            self.assertEqual(assistants['ok-ww'], {'installation_root': 'C:/current'})
-            self.assertEqual(assistants['ok-nte'], {'installation_root': 'C:/nte'})
+            self.assertEqual(assistants['ok-ww'], {'installation_root': absolute('current')})
+            self.assertEqual(assistants['ok-nte'], {'installation_root': absolute('nte')})
             document = ProfileStore(root).load_profile(result['profile_id'])
             self.assertTrue(document['assistants'][0]['enabled'])
             # A fresh preview draws a new target UUID; only recovery reuses one.
@@ -399,13 +405,13 @@ class ImportTests(unittest.TestCase):
         registry change in between must force a fresh preview, not merge."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); initialize_fresh(root)
-            write_registry(root, {'ok-ww': {'installation_root': 'C:/current'}})
+            write_registry(root, {'ok-ww': {'installation_root': absolute('current')}})
             source = root.parent / 'external.json'
-            source.write_text(json.dumps(schema1(root, [ok_row('C:/imported')])), encoding='utf-8')
+            source.write_text(json.dumps(schema1(root, [ok_row(absolute('imported'))])), encoding='utf-8')
             preview = preview_registration_import(root, source, '旧导出')
             self.assertIn('registry_sha256', preview)
-            write_registry(root, {'ok-ww': {'installation_root': 'C:/current'},
-                                  'bettergi': {'installation_root': 'C:/bg'}}, revision=2)
+            write_registry(root, {'ok-ww': {'installation_root': absolute('current')},
+                                  'bettergi': {'installation_root': absolute('bg')}}, revision=2)
             with self.assertRaisesRegex(SourceChanged, '全局登记已变化'):
                 commit_registration_import(root, preview, {'ok-ww': 'keep'})
             self.assertFalse(list(Path(root).glob('config/profiles/*')))
@@ -414,13 +420,13 @@ class ImportTests(unittest.TestCase):
     def test_import_schema1_conflict_import_choice_updates_registry(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); initialize_fresh(root)
-            write_registry(root, {'ok-ww': {'installation_root': 'C:/current'}})
+            write_registry(root, {'ok-ww': {'installation_root': absolute('current')}})
             source = root.parent / 'external.json'
-            source.write_text(json.dumps(schema1(root, [ok_row('C:/imported')])), encoding='utf-8')
+            source.write_text(json.dumps(schema1(root, [ok_row(absolute('imported'))])), encoding='utf-8')
             preview = preview_registration_import(root, source, '旧导出')
             result = commit_registration_import(root, preview, {'ok-ww': 'import'})
             self.assertEqual(RegistrationStore(root).read_required()['assistants']['ok-ww'],
-                             {'installation_root': 'C:/imported'})
+                             {'installation_root': absolute('imported')})
             self.assertTrue(list(backup_root(root).glob('*/complete.json')))
             self.assertIsNone(read_journal(root))
 

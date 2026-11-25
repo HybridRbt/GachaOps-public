@@ -17,20 +17,27 @@ def inspection_for(adapter_id, root, **fields):
         return inspect_registration(adapter_id, dict({'installation_root': str(root)}, **fields))
 
 
+def absolute(*parts):
+    """Portable absolute fixture path: a Windows drive letter is not absolute
+    on POSIX, so valid fixtures build from a host-absolute base instead."""
+    return str(Path(tempfile.gettempdir()).resolve().joinpath(*parts))
+
+
 class RegistryTests(unittest.TestCase):
     def test_validate_rejects_unknown_schema_kind_fields_and_bad_paths(self):
         base = {'schema_version': 1, 'kind': 'assistant_registry', 'revision': 1,
-                'assistants': {'ok-ww': {'installation_root': 'C:/Assistants/ok'}}}
+                'assistants': {'ok-ww': {'installation_root': absolute('Assistants', 'ok')}}}
         for mutation in ({'schema_version': 2}, {'kind': 'other'}, {'revision': 0}, {'extra': 1},
-                         {'assistants': []}, {'assistants': {'no-such-adapter': {'installation_root': 'C:/x'}}},
+                         {'assistants': []}, {'assistants': {'no-such-adapter': {'installation_root': absolute('x')}}},
                          {'assistants': {'ok-ww': {}}},
                          {'assistants': {'ok-ww': {'installation_root': 'relative/path'}}},
-                         {'assistants': {'zzz-onedragon': {'installation_root': 'C:/zzz'}}},
-                         {'assistants': {'ok-ww': {'installation_root': 'C:/ok', 'game_path': 'C:/game.exe'}}}):
+                         {'assistants': {'zzz-onedragon': {'installation_root': absolute('zzz')}}},
+                         {'assistants': {'ok-ww': {'installation_root': absolute('ok'),
+                                                   'game_path': absolute('game.exe')}}}):
             with self.subTest(mutation=sorted(mutation)), self.assertRaises(ConfigError):
                 validate_registry(dict(base, **mutation))
-        validate_registry(dict(base, assistants={'zzz-onedragon': {'installation_root': 'C:/zzz',
-                                                                  'game_path': 'C:/zzz/game.exe'}}))
+        validate_registry(dict(base, assistants={'zzz-onedragon': {'installation_root': absolute('zzz'),
+                                                                  'game_path': absolute('zzz', 'game.exe')}}))
 
     def test_missing_registry_is_a_requirement_and_create_only_fills_a_fresh_root(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -84,8 +91,9 @@ class RegistryTests(unittest.TestCase):
 class ComposeTests(unittest.TestCase):
     def test_compose_merges_registry_and_blocks_only_selected_unregistered(self):
         registry = {'schema_version': 1, 'kind': 'assistant_registry', 'revision': 3, 'assistants': {
-            'ok-ww': {'installation_root': 'C:/Assistants/ok'},
-            'zzz-onedragon': {'installation_root': 'C:/zzz', 'game_path': 'C:/zzz/game.exe'}}}
+            'ok-ww': {'installation_root': absolute('Assistants', 'ok')},
+            'zzz-onedragon': {'installation_root': absolute('zzz'),
+                              'game_path': absolute('zzz', 'game.exe')}}}
         data = default_profile()
         order = {row['adapter']: row for row in data['assistants']}
         order['ok-ww']['enabled'] = True
@@ -95,8 +103,8 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(composed['schema_version'], 1)
         self.assertEqual(composed['repeat_limit'], 0)
         merged = {row['adapter']: row for row in composed['assistants']}
-        self.assertEqual(merged['ok-ww']['installation_root'], 'C:/Assistants/ok')
-        self.assertEqual(merged['zzz-onedragon']['game_path'], 'C:/zzz/game.exe')
+        self.assertEqual(merged['ok-ww']['installation_root'], absolute('Assistants', 'ok'))
+        self.assertEqual(merged['zzz-onedragon']['game_path'], absolute('zzz', 'game.exe'))
         self.assertNotIn('installation_root', merged['bettergi'])
         # Inputs stay untouched.
         self.assertNotIn('installation_root', order['ok-ww'])
@@ -109,7 +117,7 @@ class ComposeTests(unittest.TestCase):
     def test_compose_rejects_invalid_inputs(self):
         registry = {'schema_version': 1, 'kind': 'assistant_registry', 'revision': 1, 'assistants': {}}
         data = default_profile()
-        data['assistants'][0]['installation_root'] = 'C:/smuggled'
+        data['assistants'][0]['installation_root'] = absolute('smuggled')
         with self.assertRaises(ConfigError):
             compose_configuration(data, registry)
         with self.assertRaises(ConfigError):
