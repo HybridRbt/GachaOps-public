@@ -464,6 +464,18 @@ def continue_registration_transaction(data_root):
     with ExecutionLock():
         with config_lock(root):
             _execution_gate(root)
+            # The pre-lock read is only a fast-path message: another window may
+            # have continued this very transaction and started a new one while
+            # this call was waiting for the locks. Re-read under both locks and
+            # continue only the exact transaction that was observed — anything
+            # else stops loudly and never completes a stale journal over a
+            # newer prepared one.
+            current = read_journal(root)
+            if current is None or current['state'] != 'prepared':
+                raise ConfigError('该迁移/导入事务已被其他窗口处理完成；请重新打开程序获取最新状态')
+            if (current['transaction'], current['backup']) != (journal['transaction'], journal['backup']):
+                raise ConfigError('待继续的事务已变化（其他窗口开始了新事务）；请重新打开程序后再继续最新事务')
+            journal = current
             backup_dir = backup_root(root) / journal['backup']
             manifest = _load_manifest(backup_dir, journal['manifest_sha256'])
             for source in manifest['sources']:

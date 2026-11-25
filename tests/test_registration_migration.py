@@ -1,7 +1,10 @@
 """Offline migration/import regressions with fixture directories only."""
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -531,6 +534,136 @@ class JournalArchiveRaceTests(unittest.TestCase):
             journal = read_journal(root)
             self.assertIsNotNone(journal)
             self.assertEqual(journal['backup'], 'd' * 32)
+
+
+CONTINUE_PROCESS_SCRIPT = '''\
+"""Window A: observe the prepared journal, then pause before taking locks."""
+import os
+import sys
+import time
+from pathlib import Path
+
+repo, root, sent_read, sent_go, sent_result = (Path(arg) for arg in sys.argv[1:6])
+sys.path.insert(0, str(repo))
+from gachaops import registration_migration
+from gachaops.planner import ConfigError
+
+def finish(message):
+    # Atomic publish: the parent polls for the sentinel, so the result must
+    # never be observable half-written.
+    temporary = sent_result.with_name(sent_result.name + '.tmp')
+    temporary.write_text(message, encoding='utf-8')
+    os.replace(temporary, sent_result)
+
+real_read = registration_migration.read_journal
+paused = {'done': False}
+
+def read_then_pause(data_root):
+    journal = real_read(data_root)
+    if not paused['done']:
+        paused['done'] = True
+        sent_read.write_text('read', encoding='utf-8')
+        deadline = time.monotonic() + 120
+        while not sent_go.exists():
+            if time.monotonic() > deadline:
+                finish('TIMEOUT')
+                raise SystemExit(3)
+            time.sleep(0.02)
+    return journal  # every later call re-reads the real on-disk state
+
+registration_migration.read_journal = read_then_pause
+try:
+    registration_migration.continue_registration_transaction(root)
+    finish('CONTINUED')
+except ConfigError as error:
+    finish('REFUSED:' + str(error))
+except BaseException as error:  # surfaced verbatim for diagnosis
+    finish('ERROR:' + repr(error))
+'''
+
+
+class ContinueRegistrationRaceTests(unittest.TestCase):
+    """Real cross-process interleaving on the continue entry point: window A
+    reads the prepared journal before both locks; window B completes that
+    transaction and an interrupted new import leaves a newer prepared journal.
+    A must stop loudly and never archive its stale journal over the newer one
+    (review thread PRRT_kwDOVetvVc67tj-G, continue residual gap)."""
+
+    def _wait_for(self, sentinel, process, timeout=120):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if sentinel.exists():
+                content = sentinel.read_text(encoding='utf-8')
+                if content:
+                    return content
+            if process.poll() is not None:
+                _, err = process.communicate(timeout=10)
+                raise AssertionError(f'helper process exited early: {err!r}')
+            time.sleep(0.02)
+        raise AssertionError('helper process did not reach its checkpoint in time')
+
+    def test_continue_racing_a_newer_transaction_preserves_it_and_stays_idempotent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            ImportContinueTests.prepare_interrupted_import(self, root, 0)
+            old_backup = read_journal(root)['backup']
+            repo = Path(__file__).resolve().parents[1]
+            sent_read = root / 'a-read.sentinel'
+            sent_go = root / 'a-go.sentinel'
+            sent_result = root / 'a-result.sentinel'
+            script = root / 'continue_a.py'
+            script.write_text(CONTINUE_PROCESS_SCRIPT, encoding='utf-8')
+            process = subprocess.Popen(
+                [sys.executable, '-X', 'utf8', str(script), str(repo), str(root),
+                 str(sent_read), str(sent_go), str(sent_result)],
+                cwd=str(repo), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                self._wait_for(sent_read, process)
+                # Window B (this process, real locks and files): finish the old
+                # transaction, then leave a newer import prepared and unpublished.
+                continue_registration_transaction(root)
+                self.assertIsNone(read_journal(root))
+                from gachaops import registration_migration
+                source = root.parent / 'external-import.json'
+                second = preview_registration_import(root, source, '导入B')
+                real_publish = registration_migration._publish_targets
+
+                def flaky(root_arg, targets):
+                    real_publish(root_arg, targets[:0])
+                    raise PermissionError('fixture interruption')
+                with patch.object(registration_migration, '_publish_targets', flaky):
+                    with self.assertRaises(PermissionError):
+                        commit_registration_import(root, second, {'ok-ww': 'keep'})
+                newer = read_journal(root)
+                self.assertIsNotNone(newer)
+                newer_backup = newer['backup']
+                self.assertNotEqual(newer_backup, old_backup)
+                self.assertTrue((backup_root(root) / newer_backup / 'manifest.json').is_file())
+                # Window A resumes holding both locks with its stale journal.
+                sent_go.write_text('go', encoding='ascii')
+                result = self._wait_for(sent_result, process)
+                self.assertTrue(result.startswith('REFUSED'), result)
+                self.assertIn('事务已变化', result)
+                self.assertEqual(process.wait(timeout=30), 0)
+                # The newer transaction and its staged backup are untouched.
+                intact = read_journal(root)
+                self.assertIsNotNone(intact)
+                self.assertEqual(intact['backup'], newer_backup)
+                self.assertTrue((backup_root(root) / newer_backup / 'manifest.json').is_file())
+                # The newest transaction still recovers forward; a repeated
+                # continue reports nothing pending instead of degrading.
+                recovered = continue_registration_transaction(root)
+                self.assertEqual(recovered['kind'], 'import')
+                self.assertEqual(recovered['backup'], newer_backup)
+                self.assertIsNone(read_journal(root))
+                self.assertTrue((backup_root(root) / newer_backup / 'complete.json').is_file())
+                self.assertEqual(startup_state(root)['status'], 'ready')
+                with self.assertRaises(ConfigError):
+                    continue_registration_transaction(root)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=30)
 
 
 if __name__ == '__main__':
