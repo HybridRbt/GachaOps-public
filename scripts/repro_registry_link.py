@@ -31,6 +31,7 @@ Usage: python scripts/repro_registry_link.py --all --out issue4-results.json
        python scripts/repro_registry_link.py --scenario R1 --out R1.json
 """
 import argparse
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -103,6 +104,111 @@ def seal(out, temp, sample_bases):
     out['_private'] = {'tmp': str(Path(temp)), 'samples': [str(base) for base in sample_bases]}
 
 
+def path_variants(needle):
+    """Every textual form a Windows path can take in output, including the
+    doubled-backslash form that list repr() produces."""
+    backslash = chr(92)
+    forward = needle.replace(backslash, '/')
+    doubled = needle.replace(backslash, backslash * 2)
+    return [needle, forward, doubled, doubled.replace('/', backslash * 2)]
+
+
+def run_projection(source_rows):
+    """The run fields one legacy row must contribute, projected once here."""
+    return [{'id': row['id'], 'adapter': row['adapter'],
+             'enabled': row.get('enabled', True),
+             'game_start': row.get('game_start', 'assistant'),
+             'timeout_seconds': row.get('timeout_seconds', 1800)}
+            for row in source_rows]
+
+
+def assert_rows_match_source(rows, source_rows, label):
+    """Single owner of every per-row run-field comparison."""
+    projection = run_projection(source_rows)
+    check([row['id'] for row in rows] == [row['id'] for row in projection],
+          f'{label}: row order or ids changed')
+    for row, expected in zip(rows, projection):
+        for field in ('adapter', 'enabled', 'game_start', 'timeout_seconds'):
+            check(row[field] == expected[field],
+                  f'{label}/{row["id"]}: {field} {row[field]!r} != {expected[field]!r}')
+        for field in ('installation_root', 'game_path', 'entry_executable'):
+            check(field not in row, f'{label}/{row["id"]}: registration path {field} leaked into run rows')
+
+
+def composed_rows(document, registry_entries, label, expect_blocked=False):
+    """What a run would actually use. A blocked composition is only evidence
+    where the scenario expects it; anywhere else it fails the scenario."""
+    from gachaops.configuration import compose_configuration
+    registry = {'schema_version': 1, 'kind': 'assistant_registry',
+                'revision': 1, 'assistants': registry_entries}
+    try:
+        composed = compose_configuration(document, registry)
+    except Exception as error:
+        check(expect_blocked, f'{label}: composition unexpectedly blocked: {error}')
+        return {'blocked': str(error)}
+    check(not expect_blocked, f'{label}: composition was expected to be blocked but succeeded')
+    return {row['adapter']: {'enabled': row.get('enabled', True),
+                             'installation_root': row.get('installation_root'),
+                             'game_path': row.get('game_path')}
+            for row in composed['assistants']}
+
+
+def assert_composed(composed, registry_entries, source_rows, label):
+    """The composition must succeed and use exactly the registry's paths."""
+    check(isinstance(composed, dict) and 'blocked' not in composed,
+          f'{label}: compose did not succeed: {composed!r}')
+    for row in run_projection(source_rows):
+        adapter = row['adapter']
+        entry = composed.get(adapter)
+        check(isinstance(entry, dict), f'{label}/{adapter}: missing from composition')
+        expected = registry_entries.get(adapter, {})
+        check(entry['installation_root'] == expected.get('installation_root'),
+              f'{label}/{adapter}: composed path != registry path')
+        if expected.get('game_path'):
+            check(entry['game_path'] == expected['game_path'],
+                  f'{label}/{adapter}: composed game path != registry game path')
+        check(entry['enabled'] == row['enabled'], f'{label}/{adapter}: composed enabled != source')
+
+
+def compare_inventory(before, after, phase):
+    """Invariant C, deletions first: nothing existing may disappear; the
+    caller's declared allowance governs new files and modifications."""
+    removed = set(before) - set(after)
+    check(not removed, f'{phase}: files disappeared: {sorted(removed)}')
+    new = set(after) - set(before)
+    changed = {name for name in set(before) & set(after) if before[name] != after[name]}
+    return new, changed
+
+
+def assert_import_delta(root, before, after, phase):
+    """Only one new profile directory (config.json+name.json under one NEW
+    uuid) and one transaction backup receipt (manifest.json+complete.json
+    under one new backup uuid) may appear; only the registry may change; no
+    dangling journal may survive."""
+    new, changed = compare_inventory(before, after, phase)
+    check(changed == {'config/assistant-registry.json'},
+          f'{phase}: unexpected modified files: {sorted(changed)}')
+    profile_new = {name for name in new if name.startswith('config/profiles/')}
+    backup_new = {name for name in new if name.startswith('backups/registration-migrations/')}
+    check(new == profile_new | backup_new and profile_new and backup_new,
+          f'{phase}: unexpected new files: {sorted(new)}')
+    uuids = {name.split('/')[2] for name in profile_new}
+    check(len(uuids) == 1 and {name.rsplit('/', 1)[1] for name in profile_new}
+          == {'config.json', 'name.json'},
+          f'{phase}: new profile files must be one uuid with config.json+name.json: {sorted(profile_new)}')
+    existing_uuids = {name.split('/')[2] for name in before if name.startswith('config/profiles/')}
+    check(not uuids & existing_uuids, f'{phase}: import reused an existing profile uuid')
+    backup_uuids = {name.split('/')[2] for name in backup_new}
+    check(len(backup_uuids) == 1 and not (backup_uuids & existing_uuids),
+          f'{phase}: backup receipts span multiple or existing transactions: {sorted(backup_new)}')
+    receipt_names = {name.rsplit('/', 1)[1] for name in backup_new}
+    check({'manifest.json', 'complete.json'} <= receipt_names,
+          f'{phase}: transaction receipt incomplete: {sorted(receipt_names)}')
+    check(not (root / 'config' / 'registration-migration.json').exists(),
+          f'{phase}: a dangling migration journal survived')
+    return new
+
+
 def registry_snapshot(root):
     path = root / 'config/assistant-registry.json'
     if not path.exists():
@@ -113,22 +219,10 @@ def registry_snapshot(root):
             'entries': document['assistants']}
 
 
-def composed_rows(document, registry_entries):
-    """What a run would actually use: registration fields merged into rows."""
-    from gachaops.configuration import compose_configuration
-    registry = {'schema_version': 1, 'kind': 'assistant_registry',
-                'revision': 1, 'assistants': registry_entries}
-    try:
-        composed = compose_configuration(document, registry)
-    except Exception as error:  # a blocked compose is evidence, not a crash
-        return {'blocked': str(error)}
-    return {row['adapter']: {'enabled': row.get('enabled', True),
-                             'installation_root': row.get('installation_root'),
-                             'game_path': row.get('game_path')}
-            for row in composed['assistants']}
-
-
-def profile_snapshot(window, root, label):
+def profile_snapshot(window, root, label, blocked_compose=()):
+    """Snapshot every combination; a blocked composition is recorded only for
+    the combinations named in `blocked_compose` and fails the scenario
+    anywhere else."""
     from gachaops.profiles import run_content
     entries = registry_snapshot(root)['entries']
     rows = []
@@ -144,11 +238,13 @@ def profile_snapshot(window, root, label):
                                'game_start': r.get('game_start', 'assistant'),
                                'timeout_seconds': r.get('timeout_seconds')}
                               for index, r in enumerate(document['assistants'])],
-                     'composed': composed_rows(run_content(document), entries)})
+                     'composed': composed_rows(run_content(document), entries,
+                                               f"{label}/{profile['name']}",
+                                               expect_blocked=profile['name'] in blocked_compose)})
     return rows
 
 
-def window_snapshot(window, label):
+def window_snapshot(window, label, blocked_compose=()):
     return {'root_label': label,
             'selected': {'uuid': window.profile_ids.get(window.profiles.currentData()),
                          'name': window.profile_names.get(window.profiles.currentData())},
@@ -156,7 +252,7 @@ def window_snapshot(window, label):
                       'has_data': window.draft_data is not None,
                       'data': window.draft_data if window._draft_active() else None},
             'registry': registry_snapshot(window.workspace),
-            'profiles': profile_snapshot(window, window.workspace, label)}
+            'profiles': profile_snapshot(window, window.workspace, label, blocked_compose)}
 
 
 def preview_snapshot(root):
@@ -170,20 +266,6 @@ def preview_snapshot(root):
 def file_inventory(root):
     return {path.relative_to(root).as_posix(): path.read_bytes()
             for path in sorted(root.rglob('*')) if path.is_file()}
-
-
-def expected_import_delta(before, after, phase):
-    """An import may only add one profile directory and one transaction
-    backup receipt, and may only rewrite the registry file."""
-    new = set(after) - set(before)
-    changed = {name for name in set(before) & set(after) if before[name] != after[name]}
-    new_profiles = {name for name in new if name.startswith('config/profiles/')}
-    new_backups = {name for name in new if name.startswith('backups/registration-migrations/')}
-    check(changed == {'config/assistant-registry.json'},
-          f"unexpected changed files after {phase}: {sorted(changed)}")
-    check(len(new_profiles) == 2 and new_backups and new == new_profiles | new_backups,
-          f"unexpected new files after {phase}: {sorted(new)}")
-    return new, changed
 
 
 def store_rows(root):
@@ -349,8 +431,6 @@ def run_r1(out, state):
     plan = {'ok-ww': {'enabled': True, 'game_start': 'manual', 'timeout': 2400},
             'maa-end': {'enabled': True, 'timeout': 2700},
             'zzz-onedragon': {'game': True, 'timeout': 2000}}
-    expected_timeouts = {f'assistant-{index}': TIMEOUTS[index] for index in range(7)}
-    expected_timeouts.update({'assistant-0': 2400, 'assistant-3': 2700, 'assistant-6': 2000})
 
     with tempfile.TemporaryDirectory() as temp:
         base = Path(temp) / 'old-install'
@@ -367,7 +447,7 @@ def run_r1(out, state):
             check(snapshot['selected'] == {'uuid': UUID_A, 'name': '旧七登记组合'},
                   f"selected changed: {snapshot['selected']}")
             registry = snapshot['registry']
-            expected_count = 6 if os.environ.get('REPRO_NEGATIVE') else 7
+            expected_count = 6 if os.environ.get('REPRO_NEGATIVE') in ('1', 'count') else 7
             check(registry['count'] == expected_count,
                   f"registry count {registry['count']} != {expected_count}: {registry['adapters']}")
             check(set(registry['adapters']) == set(ADAPTERS),
@@ -385,21 +465,9 @@ def run_r1(out, state):
                   'profile still carries registration paths after migration')
             check(converted['repeat_limit'] == 3,
                   f"repeat_limit {converted['repeat_limit']} != 3")
-            check([row['id'] for row in converted['rows']]
-                  == [row['id'] for row in source['assistants']], 'row order changed')
-            for row in converted['rows']:
-                check(row['timeout_seconds'] == expected_timeouts[row['id']],
-                      f"{row['id']} timeout {row['timeout_seconds']} "
-                      f"!= {expected_timeouts[row['id']]}")
-                source_row = next(r for r in source['assistants'] if r['id'] == row['id'])
-                check(row['enabled'] == source_row['enabled'],
-                      f"{row['id']} enabled {row['enabled']} != {source_row['enabled']}")
-                check(row['game_start'] == source_row['game_start'],
-                      f"{row['id']} game_start changed")
-            composed = converted['composed']
-            check(isinstance(composed, dict) and composed.get('ok-ww', {}).get('installation_root')
-                  == str(base / 'ok-ww'),
-                  f"composition does not use the adopted ok-ww path: {composed}")
+            assert_rows_match_source(converted['rows'], source['assistants'], 'R1/旧七登记组合')
+            assert_composed(converted['composed'], registry['entries'],
+                            source['assistants'], 'R1/旧七登记组合')
             out['snapshot'] = snapshot
             window.close()
 
@@ -436,15 +504,15 @@ def run_r2(out, state):
         root = Path(temp) / 'data-root'
         root.mkdir()
         seal(out, temp, [base_default, base_file1, base_file2])
-        write_legacy_profile(root, UUID_A, '默认组合', base_default,
-                             {'ok-ww': {'timeout': 1800},
-                              'bettergi': {'registered': False},
-                              'ok-nte': {'registered': False},
-                              'maa-end': {'registered': False},
-                              'march7': {'registered': False},
-                              'maa-gf2': {'registered': False},
-                              'zzz-onedragon': {'registered': False}},
-                             repeat_limit=1)
+        startup_source = write_legacy_profile(root, UUID_A, '默认组合', base_default,
+                                              {'ok-ww': {'timeout': 1800},
+                                               'bettergi': {'registered': False},
+                                               'ok-nte': {'registered': False},
+                                               'maa-end': {'registered': False},
+                                               'march7': {'registered': False},
+                                               'maa-gf2': {'registered': False},
+                                               'zzz-onedragon': {'registered': False}},
+                                              repeat_limit=1)
         path_a = str(base_default / 'ok-ww')
         file1 = Path(temp) / '旧七登记配置.json'
         source1 = write_legacy_config(file1, base_file1,
@@ -474,25 +542,42 @@ def run_r2(out, state):
         events = []
 
         def on_dialog(dialog_instance):
-            events.append(f"对话框[{mode['phase']}] {type(dialog_instance).__name__}")
+            # Structured evidence only: raw strings here would go through the
+            # single masking exit, never through f-string repr().
+            entry = {'phase': mode['phase'], 'dialog': type(dialog_instance).__name__}
             if mode['phase'] in {'cancel-conflict', 'confirm-keep'}:
                 chosen = select_combo(dialog_instance, 'keep' if mode['phase'] == 'confirm-keep'
                                       else None)
                 if chosen:
-                    events.append(f'冲突选择: {chosen}')
+                    entry['chosen'] = chosen
+            events.append(entry)
             return QDialog.DialogCode.Accepted
 
         def exercise(window):
             window.timer.stop(); window.recheck_timer.stop()
+            if os.environ.get('REPRO_NEGATIVE') == 'timeout':
+                # Injected regression: the import silently resets every run
+                # timeout. The row-by-row assertion must fail the scenario.
+                from gachaops import registration_migration
+                real_split = registration_migration._split_schema1
+
+                def reset_timeouts(config):
+                    profile_part, candidates = real_split(config)
+                    for row in profile_part['assistants']:
+                        row['timeout_seconds'] = 1800
+                    return profile_part, candidates
+                registration_migration._split_schema1 = reset_timeouts
             startup = window_snapshot(window, 'R2/data-root')
             check(startup['selected'] == {'uuid': UUID_A, 'name': '默认组合'},
                   f"selected {startup['selected']} != 默认组合")
             check(startup['registry']['count'] == 1
                   and startup['registry']['entries'].get('ok-ww') == {'installation_root': path_a},
                   f"startup registry {startup['registry']}")
-            check(next(profile for profile in startup['profiles']
-                       if profile['name'] == '默认组合')['repeat_limit'] == 1,
-                  'default repeat_limit not preserved')
+            default_profile = next(profile for profile in startup['profiles']
+                                   if profile['name'] == '默认组合')
+            check(default_profile['repeat_limit'] == 1, 'default repeat_limit not preserved')
+            assert_rows_match_source(default_profile['rows'],
+                                     startup_source['assistants'], 'R2/默认组合')
             out['after_startup'] = startup
 
             # Import one: same ok-ww path, six new adapters.
@@ -507,6 +592,13 @@ def run_r2(out, state):
             state['question'] = 'Yes'
             state['dialog_handler'] = on_dialog
             window.browse()
+            if os.environ.get('REPRO_NEGATIVE') == 'inventory':
+                # Injected anomaly: an old profile file disappears and a fake
+                # backup file appears. The inventory comparison must refuse.
+                (root / 'config/profiles' / UUID_A / 'name.json').unlink()
+                fake = root / 'backups/registration-migrations' / 'deadbeef' / 'anything.txt'
+                fake.parent.mkdir(parents=True, exist_ok=True)
+                fake.write_text('fake', encoding='ascii')
             confirmed = window_snapshot(window, 'R2/data-root')
             registry = confirmed['registry']
             check(registry['count'] == 7, f"after import-one count {registry['count']} != 7")
@@ -523,8 +615,11 @@ def run_r2(out, state):
             imported = next(profile for profile in confirmed['profiles']
                             if profile['name'] == '旧七登记配置')
             check(imported['repeat_limit'] == 2, 'imported repeat_limit != 2')
-            after_import1 = file_inventory(root)
-            new_files, changed = expected_import_delta(before_import1, after_import1, 'import-one')
+            assert_rows_match_source(imported['rows'], source1['assistants'],
+                                     'R2/旧七登记配置')
+            assert_composed(imported['composed'], registry['entries'],
+                            source1['assistants'], 'R2/旧七登记配置')
+            assert_import_delta(root, before_import1, file_inventory(root), 'import-one')
             check(file1.read_bytes() == file1_bytes,
                   'import-one changed the external source file')
             out['after_import_same'] = confirmed
@@ -569,11 +664,12 @@ def run_r2(out, state):
             check(confirmed2['registry']['entries']['ok-ww'] == {'installation_root': path_a},
                   f"keep lost the current path: {confirmed2['registry']['entries'].get('ok-ww')}")
             check(file2.read_bytes() == source2_before, 'confirmed import changed the source file')
-            check(next(profile for profile in confirmed2['profiles']
-                       if profile['name'] == '默认组合')['repeat_limit'] == 1,
-                  'default profile changed by import')
-            after_keep = file_inventory(root)
-            expected_import_delta(inventory_before_keep, after_keep, 'keep')
+            default_after = next(profile for profile in confirmed2['profiles']
+                                 if profile['name'] == '默认组合')
+            check(default_after['repeat_limit'] == 1, 'default profile changed by import')
+            assert_rows_match_source(default_after['rows'],
+                                     startup_source['assistants'], 'R2/默认组合-after')
+            assert_import_delta(root, inventory_before_keep, file_inventory(root), 'keep')
             out['after_confirm_keep'] = confirmed2
             out['after_confirm_keep']['events'] = list(events)
             window.close()
@@ -611,35 +707,33 @@ def run_r3(out, state):
             window.timer.stop(); window.recheck_timer.stop()
             check(window._draft_active(), '--config draft is not active')
             draft = window.draft_data
+            assert_rows_match_source(draft['assistants'], source['assistants'], 'R3/draft')
             check(draft['repeat_limit'] == 3, f"draft repeat_limit {draft['repeat_limit']} != 3")
-            check([row['id'] for row in draft['assistants']]
-                  == [row['id'] for row in source['assistants']],
-                  'draft row order does not match the file order')
-            for row in draft['assistants']:
-                source_row = next(r for r in source['assistants'] if r['id'] == row['id'])
-                check(row['timeout_seconds'] == source_row['timeout_seconds'],
-                      f"{row['id']} draft timeout changed")
-                check(row['enabled'] == source_row['enabled'], f"{row['id']} enabled changed")
-                check(row['game_start'] == source_row['game_start'],
-                      f"{row['id']} game_start changed")
-                check('installation_root' not in row and 'game_path' not in row,
-                      f"{row['id']} draft carries registration paths")
+            # The freshly created 默认组合 is all-disabled, so its composition
+            # succeeds trivially; the enabled legacy DRAFT is what the empty
+            # registry must refuse.
             out['draft'] = window_snapshot(window, 'R3/data-root')['draft']
+            draft_blocked = composed_rows(window.draft_data, {}, 'R3/legacy-draft',
+                                          expect_blocked=True)
+            check('尚未登记接入' in draft_blocked.get('blocked', ''),
+                  f'draft compose blocked for the wrong reason: {draft_blocked!r}')
             window.save_selection()
-            snapshot = window_snapshot(window, 'R3/data-root')
+            snapshot = window_snapshot(window, 'R3/data-root', blocked_compose={'我的组合'})
             saved = next(profile for profile in snapshot['profiles']
                          if profile['name'] == '我的组合')
             check(saved['registered_rows'] == 0, 'saved profile carries registration paths')
             check(saved['repeat_limit'] == 3, f"saved repeat_limit {saved['repeat_limit']} != 3")
-            check([row['id'] for row in saved['rows']]
-                  == [row['id'] for row in source['assistants']], 'saved row order changed')
-            for row in saved['rows']:
-                source_row = next(r for r in source['assistants'] if r['id'] == row['id'])
-                check(row['timeout_seconds'] == source_row['timeout_seconds'],
-                      f"{row['id']} saved timeout changed")
-                check(row['enabled'] == source_row['enabled'], f"{row['id']} enabled changed")
-                check(row['game_start'] == source_row['game_start'],
-                      f"{row['id']} game_start changed")
+            assert_rows_match_source(saved['rows'], source['assistants'], 'R3/我的组合')
+            # Saved rows are enabled but the registry is empty: composing this
+            # combination for a run is expected to be blocked with the
+            # not-registered refusal, and only here.
+            blocked = saved['composed']
+            check(isinstance(blocked, dict) and 'blocked' in blocked
+                  and '尚未登记接入' in blocked['blocked'],
+                  f"saved profile compose not blocked as expected: {blocked!r}")
+            default_profile = next(profile for profile in snapshot['profiles']
+                                   if profile['name'] == '默认组合')
+            assert_composed(default_profile['composed'], {}, [], 'R3/默认组合')
             check(snapshot['selected'] == {'uuid': saved['uuid'], 'name': '我的组合'},
                   f"selected {snapshot['selected']} after saving draft")
             check(snapshot['draft']['active'] is False, 'draft still active after save')
@@ -739,7 +833,9 @@ def run_r5(out, state):
         def on_dialog(dialog_instance):
             chosen = select_combo(dialog_instance, 0)  # explicit candidate 1
             if chosen:
-                events.append(f'冲突选择: {chosen}')
+                # Structured evidence: never repr() a list of path-bearing
+                # strings into one f-string; masking handles each element.
+                events.append({'phase': 'conflict-choice', 'chosen': chosen})
             return QDialog.DialogCode.Accepted
 
         def exercise(window):
@@ -754,23 +850,15 @@ def run_r5(out, state):
                   f"ok-ww is not candidate 1: {registry['entries'].get('ok-ww')}")
             for name, source in (('组合甲', source_a), ('组合乙', source_b)):
                 profile = next(p for p in snapshot['profiles'] if p['name'] == name)
-                for row in profile['rows']:
-                    source_row = next(r for r in source['assistants'] if r['id'] == row['id'])
-                    check(row['timeout_seconds'] == source_row['timeout_seconds'],
-                          f"{name}/{row['id']} timeout changed")
-                    check(row['enabled'] == source_row['enabled'],
-                          f"{name}/{row['id']} enabled changed")
+                assert_rows_match_source(profile['rows'], source['assistants'], f'R5/{name}')
+                assert_composed(profile['composed'], registry['entries'],
+                                source['assistants'], f'R5/{name}')
                 zzz = next(row for row in profile['rows'] if row['adapter'] == 'zzz-onedragon')
-                check(zzz['adapter'] == 'zzz-onedragon' and 'zzz-onedragon' not in registry['entries'],
+                check('zzz-onedragon' not in registry['entries'],
                       'zzz row exists in the profile but not in the registry (待接入)')
-            composed_a = next(profile for profile in snapshot['profiles']
-                              if profile['name'] == '组合甲')['composed']
-            check(isinstance(composed_a, dict)
-                  and composed_a.get('ok-ww', {}).get('installation_root') == str(base_a / 'ok-ww'),
-                  f"甲 composition does not use the adopted path: {composed_a}")
             out['snapshot'] = snapshot
             out['events'] = list(events)
-            check(events, 'conflict choice was never recorded')
+            check(events and events[0].get('chosen'), 'conflict choice was never recorded')
             window.close()
 
         result = drive(root, exercise, state={'dialog_handler': on_dialog})
@@ -794,11 +882,12 @@ def run_r5b(out, state):
         root = Path(temp) / 'data-root'
         root.mkdir()
         seal(out, temp, [base_a, base_b])
-        write_legacy_profile(root, UUID_A, '组合甲', base_a,
-                             {'ok-ww': {'enabled': True, 'timeout': 2400},
-                              'zzz-onedragon': {'timeout': 2000}}, repeat_limit=2)
-        write_legacy_profile(root, UUID_B, '组合乙', base_b,
-                             {'zzz-onedragon': {'game': True, 'timeout': 2100}}, repeat_limit=0)
+        source_a = write_legacy_profile(root, UUID_A, '组合甲', base_a,
+                                        {'ok-ww': {'enabled': True, 'timeout': 2400},
+                                         'zzz-onedragon': {'timeout': 2000}}, repeat_limit=2)
+        source_b = write_legacy_profile(root, UUID_B, '组合乙', base_b,
+                                        {'zzz-onedragon': {'game': True, 'timeout': 2100}},
+                                        repeat_limit=0)
 
         def exercise(window):
             window.timer.stop(); window.recheck_timer.stop()
@@ -811,6 +900,11 @@ def run_r5b(out, state):
                   f"complete zzz not adopted: {registry['entries'].get('zzz-onedragon')}")
             check(registry['entries'].get('ok-ww') == {'installation_root': str(base_a / 'ok-ww')},
                   f"ok-ww not adopted: {registry['entries'].get('ok-ww')}")
+            for name, source in (('组合甲', source_a), ('组合乙', source_b)):
+                profile = next(p for p in snapshot['profiles'] if p['name'] == name)
+                assert_rows_match_source(profile['rows'], source['assistants'], f'R5b/{name}')
+                assert_composed(profile['composed'], registry['entries'],
+                                source['assistants'], f'R5b/{name}')
             out['snapshot'] = snapshot
             window.close()
 
@@ -834,10 +928,10 @@ def run_r6(out, state):
         root = Path(temp) / 'data-root'
         root.mkdir()
         seal(out, temp, [base])
-        write_legacy_profile(root, UUID_A, '组合甲', base,
-                             {'ok-ww': {'enabled': True, 'game_start': 'manual', 'timeout': 2400},
-                              'zzz-onedragon': {'game': True, 'timeout': 2000}}, repeat_limit=2)
-        write_legacy_profile(root, UUID_B, '组合乙', base, {}, repeat_limit=0)
+        source_a = write_legacy_profile(root, UUID_A, '组合甲', base,
+                                        {'ok-ww': {'enabled': True, 'game_start': 'manual', 'timeout': 2400},
+                                         'zzz-onedragon': {'game': True, 'timeout': 2000}}, repeat_limit=2)
+        source_b = write_legacy_profile(root, UUID_B, '组合乙', base, {}, repeat_limit=0)
         expected_registry = None
 
         def exercise(window):
@@ -847,10 +941,11 @@ def run_r6(out, state):
             window.create_profile_named('新组合')
             new_uuid = next(uuid for uuid in window.profile_ids.values()
                             if uuid not in {UUID_A, UUID_B})
-            for identity, expected in (
-                    (UUID_A, {'name': '组合甲', 'repeat': 2, 'first_timeout': 2400}),
-                    (UUID_B, {'name': '组合乙', 'repeat': 0, 'first_timeout': 1800}),
-                    (new_uuid, {'name': '新组合', 'repeat': 0, 'first_timeout': 1800})):
+            switch_plan = (
+                (UUID_A, {'name': '组合甲', 'repeat': 2, 'first_timeout': 2400}, source_a['assistants']),
+                (UUID_B, {'name': '组合乙', 'repeat': 0, 'first_timeout': 1800}, source_b['assistants']),
+                (new_uuid, {'name': '新组合', 'repeat': 0, 'first_timeout': 1800}, []))
+            for identity, expected, source_rows in switch_plan:
                 path_by_uuid = {value: key for key, value in window.profile_ids.items()}
                 index = window.profiles.findData(path_by_uuid[identity])
                 check(index >= 0, f"profile {expected['name']} missing from the combo")
@@ -864,6 +959,12 @@ def run_r6(out, state):
                 check(window.data['assistants'][0]['timeout_seconds'] == expected['first_timeout'],
                       f"{expected['name']} first timeout {window.data['assistants'][0]['timeout_seconds']} "
                       f"!= {expected['first_timeout']}")
+                # Every switched-to combination must really compose from the
+                # shared registry with the expected paths; a blocked compose
+                # fails here instead of hiding behind the run fields.
+                profile = next(p for p in snapshot['profiles'] if p['name'] == expected['name'])
+                assert_composed(profile['composed'], snapshot['registry']['entries'],
+                                source_rows, f"R6/{expected['name']}")
                 snapshots.append(snapshot)
             expected_registry = snapshots[0]['registry']
             check(all(snapshot['registry'] == expected_registry for snapshot in snapshots),
@@ -891,6 +992,22 @@ def run_r6(out, state):
         check(snapshot['registry'] == registry_before_reopen, 'reopen registry differs')
         check(snapshot['selected'] == {'uuid': UUID_A, 'name': '组合甲'},
               f"reopen selected {snapshot['selected']} != 组合甲")
+        # The full combination set and every registration path must survive.
+        reopened_names = {profile['name'] for profile in snapshot['profiles']}
+        check(reopened_names == {'组合甲', '组合乙', '新组合'},
+              f"reopen combination set {reopened_names}")
+        check({profile['uuid'] for profile in snapshot['profiles']}
+              == {UUID_A, UUID_B} | {profile['uuid'] for profile in out['switch_snapshots'][2]['profiles']},
+              'reopen combination uuids differ')
+        for profile in snapshot['profiles']:
+            check(profile['composed'].get('blocked') is None if isinstance(profile['composed'], dict)
+                  else False,
+                  f"reopen compose blocked for {profile['name']}: {profile['composed']!r}")
+            for adapter, merged in (profile['composed'] or {}).items():
+                if isinstance(merged, dict) and merged.get('installation_root') is not None:
+                    check(merged['installation_root']
+                          == snapshot['registry']['entries'].get(adapter, {}).get('installation_root'),
+                          f"reopen/{profile['name']}/{adapter}: composed path != registry path")
         check(next(profile for profile in snapshot['profiles']
                    if profile['name'] == '组合甲')['repeat_limit'] == 2,
               'reopen lost 甲 run settings')
@@ -903,9 +1020,10 @@ def run_r6(out, state):
 
 
 def mask_text(text, masks):
+    """Single masking exit: every textual form of every prefix is replaced."""
     for needle, label in masks:
-        text = text.replace(needle, label)
-        text = text.replace(needle.replace('\\', '/'), label)
+        for variant in path_variants(needle):
+            text = text.replace(variant, label)
     return text
 
 
@@ -920,10 +1038,14 @@ def mask_tree(obj, masks):
 
 
 def assert_no_leak(obj, needles, path='out'):
+    """Single leak exit: raw, forward-slash, doubled-backslash (repr-escaped)
+    and case-insensitive forms are all refused."""
     if isinstance(obj, str):
         lowered = obj.lower()
         for needle in needles:
-            check(needle.lower() not in lowered, f'path leak at {path}: {obj[:120]!r}')
+            for variant in path_variants(needle):
+                check(variant.lower() not in lowered,
+                      f'path leak at {path}: {obj[:120]!r}')
     elif isinstance(obj, dict):
         for key, value in obj.items():
             assert_no_leak(value, needles, f'{path}.{key}')
@@ -933,24 +1055,41 @@ def assert_no_leak(obj, needles, path='out'):
 
 
 def run_scenario_in_process(name, out_path):
+    """The single owner of final serialization: mask every prefix variant,
+    refuse to publish any leak, mask the stderr message too."""
     out = {'scenario': name}
     state = {}
     failure = None
+    from unittest.mock import patch
+    context = nullcontext()
+    if os.environ.get('REPRO_NEGATIVE') == 'compose':
+        # Injected outage: every composition blocks. Scenarios that do not
+        # expect blocked compositions must fail loudly.
+        from gachaops.planner import ConfigError as _ConfigError
+        from gachaops import configuration as _configuration
+        context = patch.object(_configuration, 'compose_configuration',
+                               side_effect=_ConfigError('synthetic compose outage'))
     try:
-        SCENARIOS[name](out, state)
+        with context:
+            SCENARIOS[name](out, state)
         out['ok'] = True
-    except AssertionError as error:
+    except Exception as error:
+        # Any exception — assertion or unexpected crash — becomes the same
+        # masked failure record; a raw traceback would leak real paths and
+        # bypass the single serialization exit.
         failure = f'{type(error).__name__}: {error}'
         out.update({'ok': False, 'failure': failure})
     private = out.pop('_private', {'tmp': '', 'samples': []})
-    masks = [(private['tmp'], '<tmp>')] + [(sample, '<sample>') for sample in private['samples']]
+    needles = [private['tmp']] + private['samples']
+    masks = [(needle, label) for needle, label in
+             zip(needles, ['<tmp>'] + ['<sample>'] * len(private['samples'])) if needle]
     out = mask_tree(out, masks)
     if private['tmp']:
-        assert_no_leak(out, [private['tmp']] + private['samples'])
+        assert_no_leak(out, needles)
         failure = mask_text(failure, masks) if failure else failure
     Path(out_path).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding='utf-8')
     if failure:
-        print(failure, file=sys.stderr)
+        print(mask_text(failure, masks) or failure, file=sys.stderr)
         return 1
     return 0
 
@@ -997,6 +1136,13 @@ def main():
         fresh.unlink(missing_ok=True)
     summary = {'verdict': {name: entry['verdict'] for name, entry in merged.items()},
                'all_passed': not failed, 'scenarios': merged}
+    # The aggregated output — including FAIL verdicts and stderr excerpts — is
+    # scanned with the system temp prefix in every textual form before publish.
+    try:
+        assert_no_leak(summary, [system_temp])
+    except AssertionError as error:
+        print(mask_text(str(error), [(system_temp, '<tmp>')]), file=sys.stderr)
+        return 1
     Path(arguments.out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(summary['verdict'], ensure_ascii=False))
     return 0 if not failed else 1
