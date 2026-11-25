@@ -18,14 +18,21 @@ R5  conflicting ok-ww candidates: without a choice the commit is refused,
 R6  after migration: switching through every profile composes each one, and
     a reopen in a separate OS process (different PID) finds identical state
 
-Set REPRO_NEGATIVE=1 to run R1 with a deliberately wrong expected registry
-count as evidence that the checks fail loudly. Interactive surfaces are
-answered through one state-driven patch per surface (no nested shadowing);
+Set REPRO_NEGATIVE to inject a regression that must FAIL loudly: '1'/'count'
+runs R1 against a deliberately wrong expected registry count, 'compose'
+blocks every composition, 'timeout' resets every imported run timeout,
+'timeout2' resets only the conflict source's distinctive 3000s row, and
+'inventory' deletes a profile file and plants a fake backup receipt.
+Interactive surfaces are answered through one state-driven patch per
+surface (no nested shadowing);
 QProcess.start raises immediately and records any launch attempt. Results
 are masked recursively before anything is written: temporary and sample
-path prefixes become <tmp>/<sample>, a leak check refuses to publish any
-surviving prefix, and the parent masks stderr with the system temp prefix.
-Real paths may appear only in private local logs.
+path prefixes become <tmp>/<sample> in every textual form and letter case,
+a case-insensitive leak check refuses to publish any surviving prefix, and
+a failure of the masking, leak-check or serialization exit itself publishes
+only fixed text. The parent masks stderr with the system temp prefix and
+decodes child output as UTF-8 regardless of the ANSI code page. Real paths
+may appear only in private local logs.
 
 Usage: python scripts/repro_registry_link.py --all --out issue4-results.json
        python scripts/repro_registry_link.py --scenario R1 --out R1.json
@@ -34,6 +41,7 @@ import argparse
 from contextlib import nullcontext
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -528,7 +536,7 @@ def run_r2(out, state):
         source1 = document1
         file1_bytes = file1.read_bytes()
         file2 = Path(temp) / '冲突接入配置.json'
-        write_legacy_config(
+        source2 = write_legacy_config(
             file2, base_file2,
             {'bettergi': {'registered': False}, 'ok-nte': {'registered': False},
              'maa-end': {'registered': False}, 'march7': {'registered': False},
@@ -567,6 +575,21 @@ def run_r2(out, state):
                         row['timeout_seconds'] = 1800
                     return profile_part, candidates
                 registration_migration._split_schema1 = reset_timeouts
+            if os.environ.get('REPRO_NEGATIVE') == 'timeout2':
+                # Injected regression aimed ONLY at the conflict source: its
+                # distinctive 3000s row exists in no other document, so only
+                # the source2 line comparison can catch it - an earlier
+                # assertion must not fail first.
+                from gachaops import registration_migration
+                real_split = registration_migration._split_schema1
+
+                def reset_conflict_timeouts(config):
+                    profile_part, candidates = real_split(config)
+                    for row in profile_part['assistants']:
+                        if row.get('timeout_seconds') == 3000:
+                            row['timeout_seconds'] = 1800
+                    return profile_part, candidates
+                registration_migration._split_schema1 = reset_conflict_timeouts
             startup = window_snapshot(window, 'R2/data-root')
             check(startup['selected'] == {'uuid': UUID_A, 'name': '默认组合'},
                   f"selected {startup['selected']} != 默认组合")
@@ -670,6 +693,13 @@ def run_r2(out, state):
             assert_rows_match_source(default_after['rows'],
                                      startup_source['assistants'], 'R2/默认组合-after')
             assert_import_delta(root, inventory_before_keep, file_inventory(root), 'keep')
+            # The conflict import creates its own combination; its stored run
+            # fields must still line up with the external source document.
+            conflict_import = next(profile for profile in confirmed2['profiles']
+                                   if profile['name'] == '冲突接入配置')
+            check(conflict_import['repeat_limit'] == 0, 'conflict import repeat_limit != 0')
+            assert_rows_match_source(conflict_import['rows'], source2['assistants'],
+                                     'R2/冲突接入配置')
             out['after_confirm_keep'] = confirmed2
             out['after_confirm_keep']['events'] = list(events)
             window.close()
@@ -984,7 +1014,8 @@ def run_r6(out, state):
         reopen_out = Path(temp) / 'reopen.json'
         completed = subprocess.run(
             [sys.executable, '-X', 'utf8', str(runner_path), str(REPO), str(root), str(reopen_out)],
-            cwd=str(REPO), capture_output=True, text=True, timeout=240)
+            cwd=str(REPO), capture_output=True, text=True, timeout=240,
+            encoding='utf-8', errors='replace')
         check(completed.returncode == 0, f"reopen process failed: {completed.stderr[-500:]}")
         recorded = json.loads(reopen_out.read_text(encoding='utf-8'))
         check(recorded['pid'] != os.getpid(), f"reopen ran in the parent PID {recorded['pid']}")
@@ -1020,10 +1051,13 @@ def run_r6(out, state):
 
 
 def mask_text(text, masks):
-    """Single masking exit: every textual form of every prefix is replaced."""
+    """Single masking exit: every textual form of every prefix is replaced,
+    case-insensitively - the leak assertion compares lowered text, so a
+    differently-cased path must be replaced, not leaked."""
     for needle, label in masks:
         for variant in path_variants(needle):
-            text = text.replace(variant, label)
+            pattern = re.compile(re.escape(variant), re.IGNORECASE)
+            text = pattern.sub(lambda _match, _label=label: _label, text)
     return text
 
 
@@ -1083,15 +1117,30 @@ def run_scenario_in_process(name, out_path):
     needles = [private['tmp']] + private['samples']
     masks = [(needle, label) for needle, label in
              zip(needles, ['<tmp>'] + ['<sample>'] * len(private['samples'])) if needle]
-    out = mask_tree(out, masks)
-    if private['tmp']:
-        assert_no_leak(out, needles)
+    try:
+        out = mask_tree(out, masks)
+        if private['tmp']:
+            assert_no_leak(out, needles)
         failure = mask_text(failure, masks) if failure else failure
-    Path(out_path).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding='utf-8')
-    if failure:
-        print(mask_text(failure, masks) or failure, file=sys.stderr)
+        Path(out_path).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding='utf-8')
+        if failure:
+            print(failure, file=sys.stderr)
+            return 1
+        return 0
+    except Exception:
+        # The masking, leak-check or serialization exit itself failed. Only
+        # fixed text may leave: anything derived from the original error
+        # could carry an unmasked path or a bare traceback.
+        try:
+            Path(out_path).write_text(json.dumps(
+                {'scenario': name, 'ok': False,
+                 'failure': 'internal masking failure; details withheld'},
+                ensure_ascii=False), encoding='utf-8')
+        except OSError:
+            pass
+        print('internal masking failure; scenario result withheld to avoid path leaks',
+              file=sys.stderr)
         return 1
-    return 0
 
 
 def main():
@@ -1115,7 +1164,8 @@ def main():
             completed = subprocess.run(
                 [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()),
                  '--scenario', name, '--out', str(fresh)],
-                cwd=str(REPO), capture_output=True, text=True, timeout=240)
+                cwd=str(REPO), capture_output=True, text=True, timeout=240,
+                encoding='utf-8', errors='replace')
             returncode, timed_out = completed.returncode, False
             stderr = mask_text(completed.stderr[-2000:], [(system_temp, '<tmp>')])
         except subprocess.TimeoutExpired:
@@ -1140,10 +1190,15 @@ def main():
     # scanned with the system temp prefix in every textual form before publish.
     try:
         assert_no_leak(summary, [system_temp])
+        Path(arguments.out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
     except AssertionError as error:
         print(mask_text(str(error), [(system_temp, '<tmp>')]), file=sys.stderr)
         return 1
-    Path(arguments.out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        # Fixed text only: the raw error could name unmasked paths.
+        print('internal masking or serialization failure; aggregate withheld to avoid path leaks',
+              file=sys.stderr)
+        return 1
     print(json.dumps(summary['verdict'], ensure_ascii=False))
     return 0 if not failed else 1
 
