@@ -1012,10 +1012,16 @@ def run_r6(out, state):
 
         # Reopen in a genuinely separate OS process sharing the same root.
         reopen_out = Path(temp) / 'reopen.json'
-        completed = subprocess.run(
-            [sys.executable, '-X', 'utf8', str(runner_path), str(REPO), str(root), str(reopen_out)],
-            cwd=str(REPO), capture_output=True, text=True, timeout=240,
-            encoding='utf-8', errors='replace')
+        try:
+            completed = subprocess.run(
+                [sys.executable, '-X', 'utf8', str(runner_path), str(REPO), str(root), str(reopen_out)],
+                cwd=str(REPO), capture_output=True, text=True, timeout=240,
+                encoding='utf-8', errors='replace')
+        except subprocess.TimeoutExpired:
+            # TimeoutExpired embeds the whole command line; interpreter,
+            # repository and runner paths all sit outside the scenario
+            # masks, so only fixed text may describe this failure.
+            check(False, 'reopen process timed out after 240s')
         check(completed.returncode == 0, f"reopen process failed: {completed.stderr[-500:]}")
         recorded = json.loads(reopen_out.read_text(encoding='utf-8'))
         check(recorded['pid'] != os.getpid(), f"reopen ran in the parent PID {recorded['pid']}")
@@ -1117,6 +1123,14 @@ def run_scenario_in_process(name, out_path):
     needles = [private['tmp']] + private['samples']
     masks = [(needle, label) for needle, label in
              zip(needles, ['<tmp>'] + ['<sample>'] * len(private['samples'])) if needle]
+    # The boundary also masks prefixes no scenario records: the system temp
+    # (where the reopen runner lives), the repository checkout and the
+    # interpreter directory all identify the machine and must not survive
+    # into any failure text, stderr excerpt or result file.
+    foreign = [(tempfile.gettempdir(), '<systmp>'), (str(REPO), '<repo>'),
+               (str(Path(sys.executable).resolve().parent), '<python>')]
+    needles += [prefix for prefix, _label in foreign]
+    masks += [(prefix, label) for prefix, label in foreign if prefix]
     try:
         out = mask_tree(out, masks)
         if private['tmp']:
@@ -1167,7 +1181,9 @@ def main():
                 cwd=str(REPO), capture_output=True, text=True, timeout=240,
                 encoding='utf-8', errors='replace')
             returncode, timed_out = completed.returncode, False
-            stderr = mask_text(completed.stderr[-2000:], [(system_temp, '<tmp>')])
+            stderr = mask_text(completed.stderr[-2000:], [
+                (tempfile.gettempdir(), '<systmp>'), (str(REPO), '<repo>'),
+                (str(Path(sys.executable).resolve().parent), '<python>')])
         except subprocess.TimeoutExpired:
             returncode, timed_out, stderr = None, True, f'scenario {name} timed out after 240s'
         entry = {'returncode': returncode, 'timed_out': timed_out, 'stderr': stderr}
@@ -1189,7 +1205,8 @@ def main():
     # The aggregated output — including FAIL verdicts and stderr excerpts — is
     # scanned with the system temp prefix in every textual form before publish.
     try:
-        assert_no_leak(summary, [system_temp])
+        assert_no_leak(summary, [system_temp, str(REPO),
+                                 str(Path(sys.executable).resolve().parent)])
         Path(arguments.out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
     except AssertionError as error:
         print(mask_text(str(error), [(system_temp, '<tmp>')]), file=sys.stderr)
