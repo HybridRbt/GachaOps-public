@@ -169,6 +169,18 @@ def _prepare_ok_assistant(row):
             'task_configuration': 'assistant_current_saved_preset'}
 
 
+def _with_build_diagnostics(entry, error):
+    """Attach a blocked adapter's developer-facing build diagnostics, if any.
+
+    Single owner of this step so every path that records a blocked adapter
+    (the check response and the per-node summary that diagnostic exports
+    read) carries the same details; the export whitelist filters them."""
+    details = getattr(error, 'build_diagnostics', None)
+    if isinstance(details, dict):
+        entry['build_diagnostics'] = details
+    return entry
+
+
 def check_assistants(data):
     rows = []
     for row in data['assistants']:
@@ -179,11 +191,8 @@ def check_assistants(data):
             current = prepare_assistant(row)
             rows.append(dict(current, id=row['id'], status='blocked' if current['blockers'] else 'ready'))
         except (OSError, ValueError, SyntaxError, KeyError, TypeError, StopIteration) as exc:
-            entry = {'id': row['id'], 'status': 'blocked', 'error': str(exc)}
-            details = getattr(exc, 'build_diagnostics', None)
-            if isinstance(details, dict):
-                entry['build_diagnostics'] = details
-            rows.append(entry)
+            rows.append(_with_build_diagnostics(
+                {'id': row['id'], 'status': 'blocked', 'error': str(exc)}, exc))
     return {'schema_version': 1, 'mode': 'check_only', 'game_execution': False, 'assistants': rows}
 
 
@@ -262,8 +271,9 @@ def run_assistants(data, output, state, progress=print, stop_requested=None):
                         else:
                             cursor = capture_cursor(Path(current['cwd']) / 'logs/ok-script.log')
                     except (OSError, ValueError, SyntaxError, KeyError, TypeError, StopIteration) as exc:
-                        result = {'id': row['id'], 'status': 'blocked', 'error': str(exc), 'cleanup_verified': True,
-                                  'game_execution': False}
+                        result = _with_build_diagnostics(
+                            {'id': row['id'], 'status': 'blocked', 'error': str(exc), 'cleanup_verified': True,
+                             'game_execution': False}, exc)
                         # No process was launched here. An exclusivity/identity
                         # blocker requires intervention, not repeated admission.
                         # Manual admission can fail with an external game already

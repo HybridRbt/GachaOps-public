@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import time
@@ -452,6 +453,112 @@ class MxuPreparationTests(unittest.TestCase):
         exported = json.dumps(allowed)
         for needle in ('Users', 'someone', 'passwd', '..', 'f' * 64):
             self.assertNotIn(needle, exported)
+
+    def test_entry_file_version_is_read_from_the_real_exe(self):
+        # The buffer size is the return value of GetFileVersionInfoSizeW; its
+        # second argument is an obsolete handle output that stays zero. Reading
+        # the handle made this helper return None for every executable, so the
+        # advertised version never reached the diagnostics.
+        if os.name != 'nt':
+            self.skipTest('PE version resources are Windows only')
+        # The fixture EXE carries no version resource: honestly reported as
+        # absent rather than guessed.
+        self.assertIsNone(self.mxu._pe_file_version(self.root / 'MaaGF2Exilium.exe'))
+        self.assertIsNone(self.mxu._pe_file_version(self.root / 'agent' / 'main.py'))
+        # Against a real binary that ships a version resource, the helper must
+        # return the fixed-info version - the same reading Windows reports.
+        system = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'notepad.exe'
+        if not system.is_file():
+            self.skipTest('no versioned system binary available')
+        version = self.mxu._pe_file_version(system)
+        self.assertRegex(version, r'^\d+\.\d+\.\d+\.\d+$')
+
+    def test_dangling_component_link_is_a_path_anomaly_not_drift(self):
+        # A dangling link reports is_file() == False. The missing-file branch
+        # must not classify it as drift ("wait for an adaptation"); the link
+        # itself is the problem and the user has to reconnect.
+        if not hasattr(os, 'symlink'):
+            self.skipTest('symlinks unavailable')
+        target = self.root / 'agent' / 'main.py'
+        target.unlink()
+        try:
+            os.symlink(self.root / 'no-such-target', target)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f'symlink creation unavailable: {error}')
+        with self.assertRaisesRegex(ValueError, '安装路径异常'):
+            prepare_assistant(self.row)
+
+    def test_component_under_redirected_directory_is_a_path_anomaly(self):
+        # The installation root itself is clean; the directory holding one
+        # component is a redirect whose target is gone, so the component's
+        # is_file() is False. The missing-component branch must still walk the
+        # path and report the anomaly instead of classifying it as drift.
+        # Creating a real link needs a privilege this test may not have, so the
+        # entry is kept on disk and only the link test answers "yes" for it.
+        (self.root / 'python' / 'python.exe').unlink()
+        (self.root / 'python' / 'gone.txt').write_bytes(b'keeps the directory present')
+        real_redirected = self.mxu._redirected
+        with patch.object(self.mxu, '_redirected',
+                          side_effect=lambda p: p.name == 'python' or real_redirected(p)):
+            with self.assertRaisesRegex(ValueError, '安装路径异常'):
+                prepare_assistant(self.row)
+        (self.root / 'python' / 'gone.txt').unlink()
+        # With nothing redirected, the absent component is ordinary drift.
+        with self.assertRaisesRegex(ValueError, '尚未适配'):
+            prepare_assistant(self.row)
+
+    def test_blocked_run_persists_build_diagnostics_into_the_exported_summary(self):
+        # Drive the real flow: run_assistants must save the diagnostics into
+        # the per-node summary.json, because that is the only file the
+        # diagnostic export reads. A hand-built summary would hide a break
+        # between the exception handler and the export.
+        from gachaops.assistants import run_assistants
+        from gachaops.diagnostics import build_diagnostic_preview
+        (self.root / 'maafw/MaaFramework.dll').write_bytes(b'drifted-framework')
+        runs = self.root / 'runs'
+        with patch('gachaops.assistants.windows_available', return_value=True):
+            run_assistants({'assistants': [self.row]}, runs, self.root / 'state', progress=lambda _: None)
+        summaries = sorted(runs.glob('assistants-*/node-*/summary.json'))
+        self.assertTrue(summaries, 'run_assistants wrote no node summary')
+        saved = json.loads(summaries[0].read_text(encoding='utf-8-sig'))
+        self.assertEqual(saved['status'], 'blocked')
+        details = saved['build_diagnostics']
+        self.assertEqual([c['component'] for c in details['components']], ['maafw/MaaFramework.dll'])
+        # The desktop exports from the chain directory (summary_path.parent);
+        # the export reads that directory's summary.json and node-*/summary.json.
+        chain = summaries[0].parents[1]
+        exported = json.loads(build_diagnostic_preview(chain).payload)
+        entry = next(r['summary'] for r in exported['records'] if r['evidence'].endswith('node-01/summary.json'))
+        self.assertIn('build_diagnostics', entry, 'diagnostics did not reach the export')
+        self.assertEqual(entry['build_diagnostics']['components'],
+                         [{'component': 'maafw/MaaFramework.dll',
+                           'actual_sha256': hashlib.sha256(b'drifted-framework').hexdigest()[:12],
+                           'expected_sha256': self.mxu.EXPECTED_COMPONENTS['maafw/MaaFramework.dll'][:12]}])
+        # The fixture EXE has no version resource, so no version may be
+        # invented for it; the end-to-end path is what matters here.
+        self.assertEqual(entry['build_diagnostics']['versions'], {})
+
+    def test_entry_version_reaches_the_export_when_the_exe_has_one(self):
+        # Same real flow, with a versioned binary standing in for the entry
+        # EXE: the version read at rejection time must survive into the export.
+        from gachaops.assistants import run_assistants
+        from gachaops.diagnostics import build_diagnostic_preview
+        if os.name != 'nt':
+            self.skipTest('PE version resources are Windows only')
+        system = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'notepad.exe'
+        if not system.is_file():
+            self.skipTest('no versioned system binary available')
+        expected_version = self.mxu._pe_file_version(system)
+        self.assertRegex(expected_version, r'^\d+\.\d+\.\d+\.\d+$')
+        (self.root / 'maafw/MaaFramework.dll').write_bytes(b'drifted-framework')
+        runs = self.root / 'runs'
+        with patch('gachaops.assistants.windows_available', return_value=True), \
+             patch.object(self.mxu, '_pe_file_version', return_value=expected_version):
+            run_assistants({'assistants': [self.row]}, runs, self.root / 'state', progress=lambda _: None)
+        summaries = sorted(runs.glob('assistants-*/node-*/summary.json'))
+        exported = json.loads(build_diagnostic_preview(summaries[0].parents[1]).payload)
+        entry = next(r['summary'] for r in exported['records'] if r['evidence'].endswith('node-01/summary.json'))
+        self.assertEqual(entry['build_diagnostics']['versions'], {'entry_file_version': expected_version})
 
 
 class MxuCompletionTests(unittest.TestCase):

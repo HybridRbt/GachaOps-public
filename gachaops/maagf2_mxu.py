@@ -47,7 +47,12 @@ class BuildIdentityError(ValueError):
 
 
 def _pe_file_version(exe):
-    """Best-effort FileVersion of the entry EXE for dev diagnostics only."""
+    """Best-effort FileVersion of the entry EXE for dev diagnostics only.
+
+    Read the fixed-info block the same way executable_product_name does:
+    the buffer size is GetFileVersionInfoSizeW's return value; its second
+    argument is an obsolete handle output that stays zero.
+    """
     if os.name != 'nt':
         return None
     try:
@@ -55,16 +60,17 @@ def _pe_file_version(exe):
         api = ctypes.WinDLL('version', use_last_error=True)
         api.GetFileVersionInfoSizeW.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_ulong)]
         api.GetFileVersionInfoSizeW.restype = ctypes.c_ulong
-        api.GetFileVersionInfoW.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
+        api.GetFileVersionInfoW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
         api.GetFileVersionInfoW.restype = ctypes.c_int
         api.VerQueryValueW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p,
                                        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_uint)]
         api.VerQueryValueW.restype = ctypes.c_int
-        size = ctypes.c_ulong(0)
-        if not api.GetFileVersionInfoSizeW(str(exe), ctypes.byref(size)) or not size.value:
+        handle = ctypes.c_ulong()
+        size = api.GetFileVersionInfoSizeW(str(exe), ctypes.byref(handle))
+        if not 0 < size <= 1024 * 1024:
             return None
-        data = ctypes.create_string_buffer(size.value)
-        if not api.GetFileVersionInfoW(str(exe), 0, size.value, data):
+        data = ctypes.create_string_buffer(size)
+        if not api.GetFileVersionInfoW(str(exe), 0, size, data):
             return None
         pointer = ctypes.c_void_p()
         length = ctypes.c_uint(0)
@@ -88,15 +94,12 @@ def _redirected(path):
     return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
 
-def _inside(root, value, directory=False):
-    if not isinstance(value, str) or not value or '\0' in value:
-        raise ValueError(INCOMPLETE_TEXT)
-    part = Path(value)
-    if part.is_absolute() or '..' in part.parts:
-        raise ValueError(PATH_ANOMALY_TEXT)
-    path = root / part
+def _unredirected(root, value):
+    """The path `root/value` after confirming no level of it is a link or a
+    redirect. A level that does not exist is an incomplete installation."""
+    path = root / Path(value)
     current = root
-    for name in part.parts:
+    for name in Path(value).parts:
         current = current / name
         try:
             redirected = _redirected(current)
@@ -104,6 +107,16 @@ def _inside(root, value, directory=False):
             raise ValueError(INCOMPLETE_TEXT) from error
         if redirected:
             raise ValueError(PATH_ANOMALY_TEXT)
+    return path
+
+
+def _inside(root, value, directory=False):
+    if not isinstance(value, str) or not value or '\0' in value:
+        raise ValueError(INCOMPLETE_TEXT)
+    part = Path(value)
+    if part.is_absolute() or '..' in part.parts:
+        raise ValueError(PATH_ANOMALY_TEXT)
+    path = _unredirected(root, value)
     try:
         inside = path.resolve(strict=True).is_relative_to(root)
     except OSError as error:
@@ -111,6 +124,30 @@ def _inside(root, value, directory=False):
     if not inside or not (path.is_dir() if directory else path.is_file()):
         raise ValueError(INCOMPLETE_TEXT)
     return path
+
+
+def _present(root, value):
+    """Is `root/value` an existing regular file, with every level from the
+    installation root free of links and redirections?
+
+    A missing entry is not evidence of anything, so it is classified without
+    reading it: a link or redirect on the way is a path anomaly even when its
+    target is gone (a dangling link would otherwise be reported as an absent
+    file). The first level that does not exist ends the walk - a missing parent
+    means the component is missing, not redirected.
+    """
+    current = root
+    for name in Path(value).parts:
+        current = current / name
+        try:
+            current.lstat()
+        except OSError:
+            return False
+        # _redirected re-reads the entry itself: one definition of "link or
+        # redirect" for every caller.
+        if _redirected(current):
+            raise ValueError(PATH_ANOMALY_TEXT)
+    return current.is_file()
 
 
 def _digest(path):
@@ -251,7 +288,9 @@ def prepare(row, *, root, exe, launcher_sha256):
     for name, expected in EXPECTED_COMPONENTS.items():
         # A missing expected component is drift too (an old or foreign layout,
         # not necessarily a broken install); only its expected prefix is known.
-        if not (root / name).is_file():
+        # _present walks every level first, so a link or redirect on the way
+        # is reported as a path anomaly even when its target is gone.
+        if not _present(root, name):
             mismatches.append({'component': name,
                                'actual_sha256': None,
                                'expected_sha256': expected[:12]})
@@ -261,7 +300,7 @@ def prepare(row, *, root, exe, launcher_sha256):
             mismatches.append({'component': name,
                                'actual_sha256': actual[:12],
                                'expected_sha256': expected[:12]})
-    if not (root / 'interface.json').is_file():
+    if not _present(root, 'interface.json'):
         # Core metadata missing outranks drift: reinstalling fixes both, while
         # waiting for an adaptation cannot bring a missing file back.
         raise ValueError(INCOMPLETE_TEXT)
