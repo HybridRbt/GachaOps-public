@@ -214,8 +214,10 @@ def evaluate(frame_lines, gui_lines, exit_code, root_pid, instance):
             submitted.append(ids)
         if message == '自动执行任务完成，关闭自身':
             quit_seen = True
+    # Started task IDs must equal the single submitted batch: an extra Starting
+    # without a terminal callback is unfinished work, never confirmed success.
     complete = (initialized and len(submitted) == 1 and set(submitted[0]) == set(statuses)
-                and set(submitted[0]) <= starts and quit_seen)
+                and starts == set(submitted[0]) and quit_seen)
     failed = [entries[i] for i, status in statuses.items() if status == 'Failed']
     status = 'completion_unconfirmed'
     if initialized and exit_code is not None and exit_code != 0:

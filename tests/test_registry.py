@@ -68,6 +68,25 @@ class RegistryTests(unittest.TestCase):
             self.assertEqual(len(backups), 2)
             with self.assertRaises(ConfigError): store.commit('bettergi', 'not-an-inspection', 3)
 
+    def test_reregister_without_optional_entry_clears_stale_registry_paths(self):
+        """A registration commit is a complete snapshot of the form: re-registering
+        without an optional field must clear the stale path from the stored entry
+        (the former per-profile commit_registration guarantee, now at the
+        registry authority)."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            store = RegistrationStore(temp); store.create()
+            old = root / 'old'; old.mkdir()
+            (old / 'old.exe').touch()
+            first = inspection_for('maa-gf2', old, entry_executable=str(old / 'old.exe'))
+            updated = store.commit('maa-gf2', first, 1)
+            self.assertIn('entry_executable', updated['assistants']['maa-gf2'])
+            second = inspection_for('maa-gf2', root)
+            updated = store.commit('maa-gf2', second, 2)
+            entry = updated['assistants']['maa-gf2']
+            self.assertEqual(set(entry), {'installation_root'})
+            self.assertEqual(entry['installation_root'], str(root.resolve()))
+
     def test_commit_failure_leaves_previous_file_untouched(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

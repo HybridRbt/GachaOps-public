@@ -12,7 +12,7 @@ from .windows_observation import elevation_report, find_matching_processes, Proc
 from .ok_completion import capture_cursor
 from .ok_trial import run_prepared
 from .recovery import ExecutionSession, save
-from . import onedragon, nte_completion, maaend, march7, maagf2, bettergi
+from . import onedragon, nte_completion, maaend, march7, maagf2, maagf2_mxu, bettergi
 
 from .adapter_catalog import list_adapters, get_adapter
 
@@ -251,6 +251,8 @@ def run_assistants(data, output, state, progress=print, stop_requested=None):
                             current, cursor = march7.bind_execution(current, node_directory)
                         elif current.get('completion_kind') == 'maa-gf2':
                             current, cursor = maagf2.bind_execution(current, node_directory)
+                        elif current.get('completion_kind') == 'maa-gf2-mxu':
+                            current, cursor = maagf2_mxu.bind_execution(current, node_directory)
                         elif current.get('completion_kind') == 'bettergi':
                             current, cursor = bettergi.bind_execution(current, node_directory)
                         else:
@@ -272,6 +274,7 @@ def run_assistants(data, output, state, progress=print, stop_requested=None):
                         progress(f"{row['id']}: starting current saved preset (Ctrl+C to stop)")
                         observers = {'onedragon': onedragon.observe, 'ok-nte': nte_completion.observe,
                                      'maa-end': maaend.observe, 'march7': march7.observe, 'maa-gf2': maagf2.observe,
+                                     'maa-gf2-mxu': maagf2_mxu.observe,
                                      'bettergi': bettergi.observe}
                         observer = observers.get(current.get('completion_kind'))
                         options = {'completion_observer': observer} if observer else {}

@@ -1,4 +1,6 @@
 # Keep verified upstream materials byte-for-byte, including archive CRLF files.
+# This resource is copied into the EXE and compared with its delivered Git blob.
+gachaops/assets/support_matrix.json -text
 docs/release/dependency-licenses/upstream/** -text
 docs/release/dependency-licenses/** -text
 docs/release/source-delivery/** -text

@@ -24,6 +24,141 @@ def write_registry(root, adapters, revision=1):
 
 @unittest.skipUnless(importlib.util.find_spec('PySide6'), 'optional desktop dependencies unavailable')
 class DesktopUiTests(unittest.TestCase):
+    def _registration_case(self, exercise):
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def invoke(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                exercise(window, root)
+                self.assertIsNone(window.process)
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', invoke, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_registration_save_cancel_buttons_are_chinese_and_keep_standard_roles(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+        def exercise(window, root):
+            before = Path(window.profiles.currentData()).read_bytes()
+            def cancel(dialog):
+                buttons = dialog.findChild(QDialogButtonBox)
+                save = buttons.button(QDialogButtonBox.StandardButton.Save)
+                cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+                self.assertEqual(save.text(), '保存')
+                self.assertEqual(cancel.text(), '取消')
+                self.assertEqual(buttons.buttonRole(save), QDialogButtonBox.ButtonRole.AcceptRole)
+                self.assertEqual(buttons.buttonRole(cancel), QDialogButtonBox.ButtonRole.RejectRole)
+                return QDialog.DialogCode.Rejected
+            with patch.object(QDialog, 'exec', cancel):
+                window.register_assistant(window.data['assistants'][0]['id'])
+            self.assertEqual(Path(window.profiles.currentData()).read_bytes(), before)
+        self._registration_case(exercise)
+
+    def test_profile_rename_preserves_unsaved_order_selection_and_timeouts(self):
+        from copy import deepcopy
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                before_disk = Path(window.profiles.currentData()).read_bytes()
+                window.data['assistants'].reverse()
+                window.data['assistants'][0]['timeout_seconds'] = 2400
+                window.selected_ids = [window.data['assistants'][0]['id']]
+                window.render()
+                window.selection()
+                expected_data = deepcopy(window.data)
+                expected_selection = window.selected_ids[:]
+                window.rename_profile_named('只改名称')
+                self.assertEqual(window.data, expected_data)
+                self.assertEqual(window.selected_ids, expected_selection)
+                self.assertEqual(Path(window.profiles.currentData()).read_bytes(), before_disk)
+                self.assertEqual(window.profile_names[window.profiles.currentData()], '只改名称')
+                self.assertIn('自定义', window.profiles.currentText())
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_rename_prompt_prefills_stored_name_not_transient_combo_label(self):
+        from PySide6.QtWidgets import QApplication, QInputDialog
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.create_profile_named('存储名称')
+                selected = window.profiles.currentData()
+                window.profiles.setItemText(window.profiles.currentIndex(), '自定义 · 已选 2 项')
+                with patch.object(QInputDialog, 'getText', return_value=('存储名称', True)) as ask:
+                    window.prompt_rename_profile()
+                self.assertEqual(ask.call_args.kwargs['text'], '存储名称')
+                self.assertEqual(window.profile_names[selected], '存储名称')
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_profile_deletion_requires_named_permanent_confirmation_and_cancel_is_noop(self):
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.create_profile_named('待删除组合')
+                selected = window.profiles.currentData()
+                before = Path(selected).read_bytes()
+                window.profiles.setItemText(window.profiles.currentIndex(), '自定义 · 已选 0 项')
+                with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.No) as ask:
+                    window.prompt_delete_profile()
+                    message = ask.call_args.args[2]
+                    self.assertIn('待删除组合', message)
+                    self.assertIn('不可恢复', message)
+                    self.assertNotIn('移入备份', message)
+                self.assertEqual(Path(selected).read_bytes(), before)
+                with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes):
+                    window.prompt_delete_profile()
+                self.assertFalse(Path(selected).parent.exists())
+                self.assertEqual(window.profiles.count(), 1)
+                self.assertIsNone(window.process)
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_partial_profile_deletion_refreshes_list_and_warns_about_residue(self):
+        from PySide6.QtWidgets import QMessageBox
+        def exercise(window, root):
+            window.create_profile_named('待删除')
+            real_delete = window.profile_store.delete_profile
+            def incomplete(identity):
+                real_delete(identity)
+                return {'cleanup_complete': False, 'residual_path': str(root / 'config/profiles/.deleting-fixture')}
+            with patch.object(window.profile_store, 'delete_profile', side_effect=incomplete), \
+                 patch.object(QMessageBox, 'warning') as warning:
+                window.delete_current_profile()
+                self.assertEqual(window.profiles.count(), 1)
+                warning.assert_called_once()
+                self.assertIn('未完全删除', warning.call_args.args[1])
+                self.assertIn('.deleting-fixture', warning.call_args.args[2])
+        self._registration_case(exercise)
+
     def setUp(self):
         # Public tests use generated pixels, never redistribution-unknown game art.
         from PySide6.QtGui import QImage, QColor
@@ -469,6 +604,14 @@ class DesktopUiTests(unittest.TestCase):
             session = root / 'session'; session.mkdir()
             raw = 'gachaops: previous execution has unverified cleanup; manual inspection required'
             (session / 'worker.log').write_text(raw + '\n', encoding='utf-8')
+            from gachaops.recovery import save
+            chain_path = root / 'runs/gui-old/assistants-old/summary.json'
+            chain_path.parent.mkdir(parents=True)
+            save(chain_path, dict(run_id='old-run', status='stopped_cleanup_unconfirmed', assistants=[
+                dict(id='genshin', status='ownership_or_cleanup_unconfirmed', cleanup_verified=False)]))
+            (root / 'state').mkdir()
+            save(root / 'state/execution.json', dict(schema_version=1, run_id='old-run', phase='quarantined',
+                cleanup_verified=False, chain_summary=str(chain_path)))
             def exercise(window):
                 window.timer.stop(); window.recheck_timer.stop()
                 window.session = session; window.action = 'run-assistants'; window.summary_path = None
@@ -482,7 +625,9 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertIn('上一轮清理未确认', texts[0])
                 self.assertIn('当前轮未启动', texts[0])
                 self.assertIn(raw, texts[0])
-                self.assertIn('可能原因，并非已确认的诊断', texts[0])
+                for instruction in ('原神', 'old-run', '管理员', '退出', '运行情况', '检查并恢复运行资格', '导出诊断包'):
+                    self.assertIn(instruction, texts[0])
+                self.assertNotIn('可能原因，并非已确认的诊断', texts[0])
                 self.assertNotIn('请查看下方错误', texts[0])
                 window.close()
             with patch.object(desktop, 'workspace_root', return_value=root), \
