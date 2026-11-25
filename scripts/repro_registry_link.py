@@ -23,8 +23,9 @@ runs R1 against a deliberately wrong expected registry count, 'compose'
 blocks every composition, 'timeout' resets every imported run timeout,
 'timeout2' resets only the conflict source's distinctive 3000s row,
 'compose_runs' lets every composition succeed but rewrites run fields
-(repeat limit, timeouts, game start), and 'inventory' deletes a profile
-file and plants a fake backup receipt.
+(repeat limit, timeouts, game start), 'repeat' silently rewrites the
+stored document repeat limit to 5 on every profile write, and
+'inventory' deletes a profile file and plants a fake backup receipt.
 Interactive surfaces are answered through one state-driven patch per
 surface (no nested shadowing);
 QProcess.start raises immediately and records any launch attempt. Results
@@ -40,7 +41,7 @@ Usage: python scripts/repro_registry_link.py --all --out issue4-results.json
        python scripts/repro_registry_link.py --scenario R1 --out R1.json
 """
 import argparse
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 import json
 import os
 import re
@@ -193,6 +194,14 @@ def assert_composed(composed, registry_entries, source_rows, label, repeat_limit
     if repeat_limit is not None:
         check(composed.get('repeat_limit') == repeat_limit,
               f'{label}: composed repeat_limit {composed.get("repeat_limit")!r} != {repeat_limit!r}')
+
+
+def assert_profile_matches_source(profile, source_document, label):
+    """Single owner of the legacy->stored preservation check: rows and the
+    document-level repeat limit both come from the source document."""
+    assert_rows_match_source(profile['rows'], source_document['assistants'], label)
+    check(profile['repeat_limit'] == source_document['repeat_limit'],
+          f'{label}: repeat_limit {profile["repeat_limit"]!r} != source {source_document["repeat_limit"]!r}')
 
 
 def compare_inventory(before, after, phase):
@@ -488,9 +497,7 @@ def run_r1(out, state):
             check(converted['uuid'] == UUID_A, 'converted profile uuid changed')
             check(converted['registered_rows'] == 0,
                   'profile still carries registration paths after migration')
-            check(converted['repeat_limit'] == 3,
-                  f"repeat_limit {converted['repeat_limit']} != 3")
-            assert_rows_match_source(converted['rows'], source['assistants'], 'R1/旧七登记组合')
+            assert_profile_matches_source(converted, source, 'R1/旧七登记组合')
             assert_composed(converted['composed'], registry['entries'],
                             source['assistants'], 'R1/旧七登记组合',
                             repeat_limit=converted['repeat_limit'])
@@ -616,9 +623,7 @@ def run_r2(out, state):
                   f"startup registry {startup['registry']}")
             default_profile = next(profile for profile in startup['profiles']
                                    if profile['name'] == '默认组合')
-            check(default_profile['repeat_limit'] == 1, 'default repeat_limit not preserved')
-            assert_rows_match_source(default_profile['rows'],
-                                     startup_source['assistants'], 'R2/默认组合')
+            assert_profile_matches_source(default_profile, startup_source, 'R2/默认组合')
             out['after_startup'] = startup
 
             # Import one: same ok-ww path, six new adapters.
@@ -655,9 +660,7 @@ def run_r2(out, state):
                   f"selected {confirmed['selected']['name']} != 旧七登记配置")
             imported = next(profile for profile in confirmed['profiles']
                             if profile['name'] == '旧七登记配置')
-            check(imported['repeat_limit'] == 2, 'imported repeat_limit != 2')
-            assert_rows_match_source(imported['rows'], source1['assistants'],
-                                     'R2/旧七登记配置')
+            assert_profile_matches_source(imported, source1, 'R2/旧七登记配置')
             assert_composed(imported['composed'], registry['entries'],
                             source1['assistants'], 'R2/旧七登记配置',
                             repeat_limit=imported['repeat_limit'])
@@ -708,17 +711,13 @@ def run_r2(out, state):
             check(file2.read_bytes() == source2_before, 'confirmed import changed the source file')
             default_after = next(profile for profile in confirmed2['profiles']
                                  if profile['name'] == '默认组合')
-            check(default_after['repeat_limit'] == 1, 'default profile changed by import')
-            assert_rows_match_source(default_after['rows'],
-                                     startup_source['assistants'], 'R2/默认组合-after')
+            assert_profile_matches_source(default_after, startup_source, 'R2/默认组合-after')
             assert_import_delta(root, inventory_before_keep, file_inventory(root), 'keep')
             # The conflict import creates its own combination; its stored run
             # fields must still line up with the external source document.
             conflict_import = next(profile for profile in confirmed2['profiles']
                                    if profile['name'] == '冲突接入配置')
-            check(conflict_import['repeat_limit'] == 0, 'conflict import repeat_limit != 0')
-            assert_rows_match_source(conflict_import['rows'], source2['assistants'],
-                                     'R2/冲突接入配置')
+            assert_profile_matches_source(conflict_import, source2, 'R2/冲突接入配置')
             assert_composed(conflict_import['composed'], registry['entries'],
                             source2['assistants'], 'R2/冲突接入配置',
                             repeat_limit=conflict_import['repeat_limit'])
@@ -774,8 +773,7 @@ def run_r3(out, state):
             saved = next(profile for profile in snapshot['profiles']
                          if profile['name'] == '我的组合')
             check(saved['registered_rows'] == 0, 'saved profile carries registration paths')
-            check(saved['repeat_limit'] == 3, f"saved repeat_limit {saved['repeat_limit']} != 3")
-            assert_rows_match_source(saved['rows'], source['assistants'], 'R3/我的组合')
+            assert_profile_matches_source(saved, source, 'R3/我的组合')
             # Saved rows are enabled but the registry is empty: composing this
             # combination for a run is expected to be blocked with the
             # not-registered refusal, and only here.
@@ -903,7 +901,7 @@ def run_r5(out, state):
                   f"ok-ww is not candidate 1: {registry['entries'].get('ok-ww')}")
             for name, source in (('组合甲', source_a), ('组合乙', source_b)):
                 profile = next(p for p in snapshot['profiles'] if p['name'] == name)
-                assert_rows_match_source(profile['rows'], source['assistants'], f'R5/{name}')
+                assert_profile_matches_source(profile, source, f'R5/{name}')
                 assert_composed(profile['composed'], registry['entries'],
                                 source['assistants'], f'R5/{name}',
                                 repeat_limit=profile['repeat_limit'])
@@ -956,7 +954,7 @@ def run_r5b(out, state):
                   f"ok-ww not adopted: {registry['entries'].get('ok-ww')}")
             for name, source in (('组合甲', source_a), ('组合乙', source_b)):
                 profile = next(p for p in snapshot['profiles'] if p['name'] == name)
-                assert_rows_match_source(profile['rows'], source['assistants'], f'R5b/{name}')
+                assert_profile_matches_source(profile, source, f'R5b/{name}')
                 assert_composed(profile['composed'], registry['entries'],
                                 source['assistants'], f'R5b/{name}',
                                 repeat_limit=profile['repeat_limit'])
@@ -997,10 +995,13 @@ def run_r6(out, state):
             new_uuid = next(uuid for uuid in window.profile_ids.values()
                             if uuid not in {UUID_A, UUID_B})
             switch_plan = (
-                (UUID_A, {'name': '组合甲', 'repeat': 2, 'first_timeout': 2400}, source_a['assistants']),
-                (UUID_B, {'name': '组合乙', 'repeat': 0, 'first_timeout': 1800}, source_b['assistants']),
-                (new_uuid, {'name': '新组合', 'repeat': 0, 'first_timeout': 1800}, []))
-            for identity, expected, source_rows in switch_plan:
+                (UUID_A, {'name': '组合甲', 'repeat': 2, 'first_timeout': 2400}, source_a),
+                (UUID_B, {'name': '组合乙', 'repeat': 0, 'first_timeout': 1800}, source_b),
+                (new_uuid, {'name': '新组合', 'repeat': 0, 'first_timeout': 1800}, None))
+            for identity, expected, source_document in switch_plan:
+                # 新组合 has no external source; 甲 and 乙 must still match
+                # their source documents after every migration hop.
+                source_rows = source_document['assistants'] if source_document else []
                 path_by_uuid = {value: key for key, value in window.profile_ids.items()}
                 index = window.profiles.findData(path_by_uuid[identity])
                 check(index >= 0, f"profile {expected['name']} missing from the combo")
@@ -1018,6 +1019,8 @@ def run_r6(out, state):
                 # shared registry with the expected paths; a blocked compose
                 # fails here instead of hiding behind the run fields.
                 profile = next(p for p in snapshot['profiles'] if p['name'] == expected['name'])
+                if source_document is not None:
+                    assert_profile_matches_source(profile, source_document, f"R6/{expected['name']}")
                 assert_composed(profile['composed'], snapshot['registry']['entries'],
                                 source_rows or profile['rows'], f"R6/{expected['name']}",
                                 repeat_limit=expected['repeat'])
@@ -1151,6 +1154,31 @@ def run_scenario_in_process(name, out_path):
                 row['game_start'] = 'assistant'
             return result
         context = patch.object(_configuration, 'compose_configuration', side_effect=tamper_runs)
+    elif os.environ.get('REPRO_NEGATIVE') == 'repeat':
+        # Injected regression: the stored document's repeat limit is
+        # silently rewritten to 5 on every profile write. Composed views
+        # replay the stored value, so only the source-comparison owner can
+        # catch a rewrite at the migration hop. Both write seams are
+        # covered: save_profile writes go through profiles.save (R3 draft
+        # save, R6 create/switch); migration and import build their stored
+        # documents through registration_migration.profile_document and
+        # publish raw bytes.
+        from gachaops import profiles as _profiles
+        from gachaops import registration_migration as _migration
+        real_save = _profiles.save
+        real_document = _migration.profile_document
+
+        def rewrite_repeat(path, data):
+            if isinstance(data, dict) and data.get('kind') == 'assistant_profile':
+                data = dict(data, repeat_limit=5)
+            return real_save(path, data)
+
+        def document_repeat5(data, revision):
+            return dict(real_document(data, revision), repeat_limit=5)
+        stack = ExitStack()
+        stack.enter_context(patch.object(_profiles, 'save', rewrite_repeat))
+        stack.enter_context(patch.object(_migration, 'profile_document', document_repeat5))
+        context = stack
     try:
         with context:
             SCENARIOS[name](out, state)
