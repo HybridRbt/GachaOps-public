@@ -32,35 +32,314 @@ SUPPORTED_VERSIONS = frozenset({SUPPORTED_VERSION, 'v2026.10.16', 'v2026.11.8',
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
 
-def launch_metadata(path):
-    # Read only top-level lifecycle scalars. Tasks/accounts stay opaque. The
-    # five lifecycle keys are required; the platform keys added by
-    # v2026.11.24 are optional so older reviewed configs keep working, and
-    # prepare() gates them fail-closed whenever they are present.
-    required = {'game_path', 'cloud_game_enable', 'after_finish', 'auto_update', 'log_level'}
-    keys = required | {'ui_profile', 'control_backend', 'local_control_mode', 'no_run_immediately'}
-    values = {}
-    for line in Path(path).read_text(encoding='utf-8-sig').splitlines():
-        match = re.fullmatch(r'([a-z_]+):\s*(.*?)\s*', line)
-        if not match or match[1] not in keys:
+REQUIRED_KEYS = frozenset({'game_path', 'cloud_game_enable', 'after_finish', 'auto_update', 'log_level'})
+PLATFORM_KEYS = frozenset({'ui_profile', 'control_backend', 'local_control_mode', 'no_run_immediately'})
+NULL_SCALARS = frozenset({'~', 'null', 'Null', 'NULL'})
+TRUE_SCALARS = frozenset({'true', 'True', 'TRUE'})
+FALSE_SCALARS = frozenset({'false', 'False', 'FALSE'})
+# YAML 1.2 double-quoted escape table, verified against ruamel.yaml 0.19.1
+# with the exact loader upstream uses (module/config/config.py: YAML()).
+DOUBLE_ESCAPES = {'0': '\0', 'a': '\a', 'b': '\b', 't': '\t', 'n': '\n', 'v': '\v',
+                  'f': '\f', 'r': '\r', 'e': '\x1b', ' ': ' ', '"': '"', '/': '/',
+                  '\\': '\\', 'N': '\x85', '_': '\xa0', 'L': '\u2028', 'P': '\u2029'}
+
+
+class March7ConfigUnreadable(ValueError):
+    """A needed config entry appears but its value cannot be determined.
+
+    Carries the key name (None for file-structure problems) so the user is
+    told which setting to re-save in the assistant.
+    """
+
+    def __init__(self, key):
+        super().__init__('unrecognized March7 config entry: ' + str(key))
+        self.key = key
+
+
+def _advance_scan(line, state):
+    """Track quotes/flow depth/comments across opaque lines so lines inside a
+    multi-line flow or quoted scalar are never mistaken for mapping keys."""
+    in_double, in_single, depth = state
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if in_double:
+            if char == '\\':
+                index += 2
+                continue
+            if char == '"':
+                in_double = False
+            index += 1
             continue
-        key, value = match.groups()
-        if key in values:
-            raise ValueError('duplicate March7 launch metadata: ' + key)
-        if value.startswith('"'):
-            value, consumed = json.JSONDecoder().raw_decode(value)
-            remainder = match[2][consumed:].strip()
+        if in_single:
+            if char == "'":
+                if index + 1 < len(line) and line[index + 1] == "'":
+                    index += 2
+                    continue
+                in_single = False
+            index += 1
+            continue
+        if char == '#' and (index == 0 or line[index - 1] in ' \t'):
+            break
+        if char == '"':
+            in_double = True
+        elif char == "'":
+            in_single = True
+        elif char in '[{':
+            depth += 1
+        elif char in ']}':
+            depth = max(0, depth - 1)
+        index += 1
+    return [in_double, in_single, depth]
+
+
+def _hex_unit(text, index, digits, key):
+    if index + digits > len(text):
+        raise March7ConfigUnreadable(key)
+    chunk = text[index:index + digits]
+    if not all(c in '0123456789abcdefABCDEF' for c in chunk):
+        raise March7ConfigUnreadable(key)
+    return chr(int(chunk, 16)), index + digits
+
+
+def _double_quoted(key, text):
+    result = []
+    index = 1
+    while index < len(text):
+        char = text[index]
+        if char == '\\':
+            escape = text[index + 1] if index + 1 < len(text) else ''
+            if escape in DOUBLE_ESCAPES:
+                result.append(DOUBLE_ESCAPES[escape])
+                index += 2
+            elif escape == 'x':
+                unit, index = _hex_unit(text, index + 2, 2, key)
+                result.append(unit)
+            elif escape == 'u':
+                unit, index = _hex_unit(text, index + 2, 4, key)
+                result.append(unit)
+            elif escape == 'U':
+                unit, index = _hex_unit(text, index + 2, 8, key)
+                result.append(unit)
+            else:
+                raise March7ConfigUnreadable(key)
+            continue
+        if char == '"':
+            remainder = text[index + 1:].strip()
             if remainder and not remainder.startswith('#'):
-                raise ValueError('unsupported March7 launch scalar')
-        elif value.startswith("'"):
-            quoted = re.fullmatch(r"'((?:[^']|'')*)'\s*(?:#.*)?", value)
-            if not quoted:
-                raise ValueError('unsupported March7 launch scalar')
-            value = quoted[1].replace("''", "'")
+                raise March7ConfigUnreadable(key)
+            return ''.join(result)
+        result.append(char)
+        index += 1
+    raise March7ConfigUnreadable(key)
+
+
+def _single_quoted(key, text):
+    result = []
+    index = 1
+    while index < len(text):
+        char = text[index]
+        if char == "'":
+            if index + 1 < len(text) and text[index + 1] == "'":
+                result.append("'")
+                index += 2
+                continue
+            remainder = text[index + 1:].strip()
+            if remainder and not remainder.startswith('#'):
+                raise March7ConfigUnreadable(key)
+            return ''.join(result)
+        result.append(char)
+        index += 1
+    raise March7ConfigUnreadable(key)
+
+
+def _scalar(text):
+    """YAML 1.2 core resolution for the forms a lifecycle value can take.
+    Unresolved forms keep their literal text; zero-valued numbers are the
+    only numeric distinction kept, because the guards reason by truthiness
+    exactly like upstream (`if cfg.<key>:` / `get_value(...) or`)."""
+    if text in NULL_SCALARS:
+        return None
+    if text in TRUE_SCALARS:
+        return True
+    if text in FALSE_SCALARS:
+        return False
+    if re.fullmatch(r'[-+]?(0[xX][0-9A-Fa-f]+|0o[0-7]+|[0-9]+)', text):
+        try:
+            return int(text, 0)
+        except ValueError:
+            return int(text, 10)
+    if re.fullmatch(r'[-+]?(\d+\.\d*|\.\d+|\d+)([eE][-+]?\d+)?', text):
+        try:
+            return float(text)
+        except ValueError:
+            return text
+    return text
+
+
+def _split_entry(stripped):
+    """Split one top-level line into (key, rest-after-colon).
+
+    Returns (None, None) for lines that are not mapping entries. A needed key
+    spelled in an unusable colon form raises instead of disappearing."""
+    care = REQUIRED_KEYS | PLATFORM_KEYS
+    if stripped[0] in '"\'':
+        quote = stripped[0]
+        index = 1
+        result = []
+        closed = False
+        while index < len(stripped):
+            char = stripped[index]
+            if quote == '"' and char == '\\':
+                result.append(stripped[index + 1] if index + 1 < len(stripped) else '')
+                index += 2
+                continue
+            if char == quote:
+                if quote == "'" and index + 1 < len(stripped) and stripped[index + 1] == "'":
+                    result.append("'")
+                    index += 2
+                    continue
+                closed = True
+                break
+            result.append(char)
+            index += 1
+        if not closed:
+            return None, None
+        key = ''.join(result)
+        after = stripped[index + 1:]
+        colon = after.find(':')
+        if colon == -1 or (colon + 1 < len(after) and after[colon + 1] not in ' \t'):
+            if key in REQUIRED_KEYS | PLATFORM_KEYS:
+                raise March7ConfigUnreadable(key)
+            return None, None
+        return key, after[colon + 1:]
+    position = stripped.find(':')
+    while position != -1:
+        if position + 1 == len(stripped) or stripped[position + 1] in ' \t':
+            break
+        position = stripped.find(':', position + 1)
+    if position == -1:
+        first = re.match(r'[A-Za-z0-9_]+', stripped)
+        if first and first[0] in care:
+            raise March7ConfigUnreadable(first[0])
+        return None, None
+    key = stripped[:position].rstrip()
+    rest = stripped[position + 1:]
+    if key in care and rest and rest[0] not in ' \t':
+        raise March7ConfigUnreadable(key)
+    return key, rest
+
+
+def _peek_null(key, lines, index, top_indent):
+    """Resolve `key:` with nothing after the colon on its own line: the value
+    is null unless a nested block or a same-indent sequence follows."""
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            index += 1
+            continue
+        indent = len(line) - len(line.lstrip(' '))
+        if indent > top_indent or (indent == top_indent and stripped.startswith('-')):
+            raise March7ConfigUnreadable(key)
+        return None, index
+    return None, index
+
+
+def _parse_value(key, rest, lines, index, top_indent):
+    value_part = rest.strip()
+    if not value_part or value_part.startswith('#'):
+        return _peek_null(key, lines, index, top_indent)
+    first = value_part[0]
+    if first in '[{':
+        raise March7ConfigUnreadable(key)
+    if first in '|>':
+        raise March7ConfigUnreadable(key)
+    if first in '&*!':
+        raise March7ConfigUnreadable(key)
+    if first == '"':
+        return _double_quoted(key, value_part), index
+    if first == "'":
+        return _single_quoted(key, value_part), index
+    match = re.search(r'\s#', value_part)
+    if match:
+        value_part = value_part[:match.start()]
+    value_part = value_part.rstrip(' \t')
+    if not value_part:
+        return _peek_null(key, lines, index, top_indent)
+    return _scalar(value_part), index
+
+
+def launch_metadata(path):
+    """Read the top-level lifecycle scalars from the assistant's config.
+
+    Upstream loads this YAML 1.2 file with ruamel.yaml. We stay
+    dependency-free but fail closed: a needed key that appears in any form
+    this reader cannot resolve exactly raises March7ConfigUnreadable instead
+    of being skipped. Quoted-key spellings, uniform top-level indentation,
+    spaced colons, trailing comments and CRLF are resolved; lists, nested
+    blocks, block scalars, anchors/aliases, tags and multi-line values are
+    not, and values keep their YAML types.
+    """
+    lines = Path(path).read_text(encoding='utf-8-sig').splitlines()
+    values = {}
+    seen = set()
+    top_indent = None
+    content_seen = False
+    state = [False, False, 0]
+    block_indent = None
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
+        if block_indent is not None:
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                continue
+            if len(line) - len(line.lstrip(' ')) > block_indent:
+                continue
+            block_indent = None
+        if state != [False, False, 0]:
+            state = _advance_scan(line, state)
+            continue
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        indent = len(line) - len(line.lstrip(' '))
+        if '\t' in line[:indent]:
+            continue
+        if stripped in ('---', '...'):
+            if content_seen:
+                raise March7ConfigUnreadable(None)
+            continue
+        content_seen = True
+        if top_indent is None:
+            top_indent = indent
+        elif indent < top_indent:
+            raise March7ConfigUnreadable(None)
+        if indent > top_indent or stripped == '-' or stripped.startswith('- '):
+            state = _advance_scan(line, state)
+            continue
+        key, rest = _split_entry(stripped)
+        if key is None:
+            state = _advance_scan(line, state)
+            continue
+        if key in seen:
+            raise ValueError('duplicate March7 launch metadata: ' + key)
+        seen.add(key)
+        if key in REQUIRED_KEYS | PLATFORM_KEYS:
+            values[key], index = _parse_value(key, rest, lines, index, top_indent)
         else:
-            value = re.split(r'\s+#', value, maxsplit=1)[0].strip()
-        values[key] = value
-    if not required.issubset(values):
+            # Opaque key: a block scalar's literal content must never be
+            # mistaken for mapping structure; quotes/flows still tracked.
+            match = re.match(r'[|>][+-]?[0-9]*([+-][0-9]*)?\s*(#.*)?$', rest.strip())
+            if match:
+                block_indent = indent
+            else:
+                state = _advance_scan(line, state)
+    if state != [False, False, 0] or block_indent is not None:
+        raise March7ConfigUnreadable(None)
+    if not REQUIRED_KEYS.issubset(values):
         raise ValueError('missing March7 launch metadata')
     return values
 
@@ -77,44 +356,69 @@ def prepare(row):
     version = version_file.read_text(encoding='utf-8-sig').strip()
     if version not in SUPPORTED_VERSIONS:
         raise ValueError(f'三月七版本尚未核验：{version}。请更新 GachaOps 兼容支持后重新检查。')
-    meta = launch_metadata(config)
     blockers = []
-    backend = meta.get('control_backend')
-    if backend is not None and backend not in (None, 'null', 'local'):
-        # An explicit backend wins over cloud_game_enable upstream; anything
-        # but local (cloud, adb, unknown) is outside the reviewed surface.
-        blockers.append('march7_local_backend_required')
-    profile = meta.get('ui_profile')
-    if profile is not None and profile != 'pc_1080':
-        blockers.append('march7_local_pc_profile_required')
-    control_mode = meta.get('local_control_mode')
-    if control_mode is not None and control_mode != 'foreground':
-        blockers.append('march7_local_foreground_control_required')
-    no_run = meta.get('no_run_immediately')
-    if no_run is not None and no_run != 'false':
-        blockers.append('march7_run_immediately_required')
-    if meta['cloud_game_enable'] != 'false' and backend != 'local':
-        blockers.append('march7_local_game_required')
-    if meta['after_finish'] != 'Exit':
-        blockers.append('march7_select_exit_in_assistant_gui')
-    if meta['auto_update'] != 'true':
-        blockers.append('march7_complete_native_first_setup')
-    if meta['log_level'] not in ('INFO', 'DEBUG'):
-        blockers.append('march7_info_logging_required')
-    game = meta['game_path']
-    if not Path(game).is_absolute() or not Path(game).is_file():
-        blockers.append('game_path_unverified')
+    meta = None
+    try:
+        meta = launch_metadata(config)
+    except March7ConfigUnreadable as unreadable:
+        # A needed entry exists but its spelling cannot be resolved; name the
+        # setting and ask the user to re-save it in the assistant, which
+        # rewrites the file in the canonical form upstream itself writes.
+        if unreadable.key:
+            blockers.append('三月七的配置里有一项无法识别（' + unreadable.key
+                            + '）；请在三月七助手里把该设置重新保存一次，再回来点“重新检查”。')
+        else:
+            blockers.append('三月七的配置文件结构无法识别；请在三月七助手里重新保存设置后点“重新检查”。')
+    if meta is not None:
+        backend = meta.get('control_backend')
+        # Upstream resolution (module/config/platform.py get_control_backend):
+        # explicit control_backend wins; None falls back to cloud_game_enable
+        # truthiness; anything but 'local'/'cloud'/'adb' raises upstream.
+        if backend is not None and backend != 'local':
+            blockers.append('march7_local_backend_required')
+        elif backend is None and meta.get('cloud_game_enable'):
+            blockers.append('march7_local_game_required')
+        # Upstream defaults a missing/null ui_profile to pc_1080
+        # (get_ui_profile), so only a present non-matching value blocks.
+        profile = meta.get('ui_profile')
+        if profile is not None and profile != 'pc_1080':
+            blockers.append('march7_local_pc_profile_required')
+        # Upstream treats anything but 'background' as foreground
+        # (module/automation/input_base.py), and a null entry keeps the
+        # foreground default.
+        control_mode = meta.get('local_control_mode')
+        if control_mode is not None and control_mode != 'foreground':
+            blockers.append('march7_local_foreground_control_required')
+        # Upstream runs immediately unless this value is truthy
+        # (main.py: args.no_run_immediately or cfg.get_value(...)), so a YAML
+        # bool False passes while the string "false" blocks.
+        if meta.get('no_run_immediately'):
+            blockers.append('march7_run_immediately_required')
+        if meta['after_finish'] != 'Exit':
+            blockers.append('march7_select_exit_in_assistant_gui')
+        if not meta['auto_update']:
+            blockers.append('march7_complete_native_first_setup')
+        if meta['log_level'] not in ('INFO', 'DEBUG'):
+            blockers.append('march7_info_logging_required')
+        game = meta['game_path']
+        if not isinstance(game, str) or not Path(game).is_absolute() or not Path(game).is_file():
+            blockers.append('game_path_unverified')
+        targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe'), game]
+    else:
+        # The config could not be read; the named-setting blocker above is the
+        # actionable message, and the game path is simply unknown.
+        targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe')]
     if elevation_report()['elevated'] is not True:
         blockers.append('supervisor_elevation_required')
     desktop = desktop_report()
     if desktop['status'] != 'observed_available':
         blockers.extend(desktop.get('blockers') or ['desktop_unavailable'])
-    targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe'), game]
     observed = find_matching_processes(targets)
     if observed['status'] != 'observed' or observed['matches']:
         blockers.append('existing_runner_or_game_not_exclusive')
     return {'installation_root': str(root), 'cwd': str(root), 'launcher': str(launcher),
-            'argv_candidate': [str(exe), 'main'], 'game_path': game,
+            'argv_candidate': [str(exe), 'main'],
+            'game_path': meta.get('game_path') if meta else None,
             'observation_targets': targets, 'runner_version': version,
             'config_sha256': hashlib.sha256(config.read_bytes()).hexdigest(),
             'completion_kind': 'march7', 'blockers': blockers,
@@ -198,18 +502,28 @@ def task_details(lines):
         match = re.search(r'(?:当前累计分数|当前分数)[:：]\s*(\d+/\d+)', message)
         if match:
             score = match[1]
+        progress = re.search(r'每日实训活跃度\s*(\d+)/(\d+)', message)
+        if progress:
+            # v2026.11.24 logs the current activity on every record_progress
+            # (tasks/daily/training.py), claim or not.
+            score = f'{progress[1]}/{progress[2]}'
+            if int(progress[1]) < int(progress[2]):
+                daily_incomplete = True
+                failed['每日实训活跃度'] = line
+            else:
+                daily_incomplete = False
+                failed.pop('每日实训活跃度', None)
         claim = re.search(r'已领取实训奖励，活跃度\s*(\d+)/(\d+)', message)
         if claim:
-            # v2026.11.24 reports the plain activity line only when the
-            # training is not complete; a full completion uses the notify
-            # template instead.
+            # A full claim only settles the training's own failure entry; it
+            # says nothing about other tasks, so nothing else is cleared.
             score = f'{claim[1]}/{claim[2]}'
             if int(claim[1]) < int(claim[2]):
                 daily_incomplete = True
                 failed['每日实训活跃度'] = line
             else:
                 daily_incomplete = False
-                failed.clear()
+                failed.pop('每日实训活跃度', None)
         match = re.fullmatch(r'实训未完成[:：]\s*(.+)', message)
         if match:
             failed[match[1].strip()] = line
