@@ -21,8 +21,10 @@ R6  after migration: switching through every profile composes each one, and
 Set REPRO_NEGATIVE to inject a regression that must FAIL loudly: '1'/'count'
 runs R1 against a deliberately wrong expected registry count, 'compose'
 blocks every composition, 'timeout' resets every imported run timeout,
-'timeout2' resets only the conflict source's distinctive 3000s row, and
-'inventory' deletes a profile file and plants a fake backup receipt.
+'timeout2' resets only the conflict source's distinctive 3000s row,
+'compose_runs' lets every composition succeed but rewrites run fields
+(repeat limit, timeouts, game start), and 'inventory' deletes a profile
+file and plants a fake backup receipt.
 Interactive surfaces are answered through one state-driven patch per
 surface (no nested shadowing);
 QProcess.start raises immediately and records any launch attempt. Results
@@ -155,27 +157,42 @@ def composed_rows(document, registry_entries, label, expect_blocked=False):
         check(expect_blocked, f'{label}: composition unexpectedly blocked: {error}')
         return {'blocked': str(error)}
     check(not expect_blocked, f'{label}: composition was expected to be blocked but succeeded')
-    return {row['adapter']: {'enabled': row.get('enabled', True),
-                             'installation_root': row.get('installation_root'),
-                             'game_path': row.get('game_path')}
-            for row in composed['assistants']}
+    # The full execution view, list-ordered: whatever the runner would
+    # actually receive, including the run fields the stored document never
+    # carries, so field rewrites cannot hide behind the storage assertions.
+    return {'repeat_limit': composed.get('repeat_limit'),
+            'assistants': [{'id': row.get('id'), 'adapter': row['adapter'],
+                            'enabled': row.get('enabled', True),
+                            'game_start': row.get('game_start', 'assistant'),
+                            'timeout_seconds': row.get('timeout_seconds', 1800),
+                            'installation_root': row.get('installation_root'),
+                            'game_path': row.get('game_path')}
+                           for row in composed['assistants']]}
 
 
-def assert_composed(composed, registry_entries, source_rows, label):
-    """The composition must succeed and use exactly the registry's paths."""
+def assert_composed(composed, registry_entries, source_rows, label, repeat_limit=None):
+    """The composition must succeed, match the source run fields row by row
+    (ids, order, enabled, game_start, timeouts) and use exactly the
+    registry's paths."""
     check(isinstance(composed, dict) and 'blocked' not in composed,
           f'{label}: compose did not succeed: {composed!r}')
-    for row in run_projection(source_rows):
-        adapter = row['adapter']
-        entry = composed.get(adapter)
-        check(isinstance(entry, dict), f'{label}/{adapter}: missing from composition')
-        expected = registry_entries.get(adapter, {})
-        check(entry['installation_root'] == expected.get('installation_root'),
-              f'{label}/{adapter}: composed path != registry path')
-        if expected.get('game_path'):
-            check(entry['game_path'] == expected['game_path'],
-                  f'{label}/{adapter}: composed game path != registry game path')
-        check(entry['enabled'] == row['enabled'], f'{label}/{adapter}: composed enabled != source')
+    rows = composed['assistants']
+    projection = run_projection(source_rows)
+    check([row['id'] for row in rows] == [row['id'] for row in projection],
+          f'{label}: composed row ids/order changed')
+    for row, expected in zip(rows, projection):
+        for field in ('adapter', 'enabled', 'game_start', 'timeout_seconds'):
+            check(row[field] == expected[field],
+                  f'{label}/{row["id"]}: composed {field} {row[field]!r} != source {expected[field]!r}')
+        entry = registry_entries.get(row['adapter'], {})
+        check(row['installation_root'] == entry.get('installation_root'),
+              f'{label}/{row["id"]}: composed path != registry path')
+        if entry.get('game_path'):
+            check(row['game_path'] == entry['game_path'],
+                  f'{label}/{row["id"]}: composed game path != registry game path')
+    if repeat_limit is not None:
+        check(composed.get('repeat_limit') == repeat_limit,
+              f'{label}: composed repeat_limit {composed.get("repeat_limit")!r} != {repeat_limit!r}')
 
 
 def compare_inventory(before, after, phase):
@@ -475,7 +492,8 @@ def run_r1(out, state):
                   f"repeat_limit {converted['repeat_limit']} != 3")
             assert_rows_match_source(converted['rows'], source['assistants'], 'R1/旧七登记组合')
             assert_composed(converted['composed'], registry['entries'],
-                            source['assistants'], 'R1/旧七登记组合')
+                            source['assistants'], 'R1/旧七登记组合',
+                            repeat_limit=converted['repeat_limit'])
             out['snapshot'] = snapshot
             window.close()
 
@@ -641,7 +659,8 @@ def run_r2(out, state):
             assert_rows_match_source(imported['rows'], source1['assistants'],
                                      'R2/旧七登记配置')
             assert_composed(imported['composed'], registry['entries'],
-                            source1['assistants'], 'R2/旧七登记配置')
+                            source1['assistants'], 'R2/旧七登记配置',
+                            repeat_limit=imported['repeat_limit'])
             assert_import_delta(root, before_import1, file_inventory(root), 'import-one')
             check(file1.read_bytes() == file1_bytes,
                   'import-one changed the external source file')
@@ -700,6 +719,9 @@ def run_r2(out, state):
             check(conflict_import['repeat_limit'] == 0, 'conflict import repeat_limit != 0')
             assert_rows_match_source(conflict_import['rows'], source2['assistants'],
                                      'R2/冲突接入配置')
+            assert_composed(conflict_import['composed'], registry['entries'],
+                            source2['assistants'], 'R2/冲突接入配置',
+                            repeat_limit=conflict_import['repeat_limit'])
             out['after_confirm_keep'] = confirmed2
             out['after_confirm_keep']['events'] = list(events)
             window.close()
@@ -763,7 +785,8 @@ def run_r3(out, state):
                   f"saved profile compose not blocked as expected: {blocked!r}")
             default_profile = next(profile for profile in snapshot['profiles']
                                    if profile['name'] == '默认组合')
-            assert_composed(default_profile['composed'], {}, [], 'R3/默认组合')
+            assert_composed(default_profile['composed'], {}, default_profile['rows'],
+                            'R3/默认组合', repeat_limit=default_profile['repeat_limit'])
             check(snapshot['selected'] == {'uuid': saved['uuid'], 'name': '我的组合'},
                   f"selected {snapshot['selected']} after saving draft")
             check(snapshot['draft']['active'] is False, 'draft still active after save')
@@ -882,7 +905,8 @@ def run_r5(out, state):
                 profile = next(p for p in snapshot['profiles'] if p['name'] == name)
                 assert_rows_match_source(profile['rows'], source['assistants'], f'R5/{name}')
                 assert_composed(profile['composed'], registry['entries'],
-                                source['assistants'], f'R5/{name}')
+                                source['assistants'], f'R5/{name}',
+                                repeat_limit=profile['repeat_limit'])
                 zzz = next(row for row in profile['rows'] if row['adapter'] == 'zzz-onedragon')
                 check('zzz-onedragon' not in registry['entries'],
                       'zzz row exists in the profile but not in the registry (待接入)')
@@ -934,7 +958,8 @@ def run_r5b(out, state):
                 profile = next(p for p in snapshot['profiles'] if p['name'] == name)
                 assert_rows_match_source(profile['rows'], source['assistants'], f'R5b/{name}')
                 assert_composed(profile['composed'], registry['entries'],
-                                source['assistants'], f'R5b/{name}')
+                                source['assistants'], f'R5b/{name}',
+                                repeat_limit=profile['repeat_limit'])
             out['snapshot'] = snapshot
             window.close()
 
@@ -994,7 +1019,8 @@ def run_r6(out, state):
                 # fails here instead of hiding behind the run fields.
                 profile = next(p for p in snapshot['profiles'] if p['name'] == expected['name'])
                 assert_composed(profile['composed'], snapshot['registry']['entries'],
-                                source_rows, f"R6/{expected['name']}")
+                                source_rows or profile['rows'], f"R6/{expected['name']}",
+                                repeat_limit=expected['repeat'])
                 snapshots.append(snapshot)
             expected_registry = snapshots[0]['registry']
             check(all(snapshot['registry'] == expected_registry for snapshot in snapshots),
@@ -1037,14 +1063,14 @@ def run_r6(out, state):
               == {UUID_A, UUID_B} | {profile['uuid'] for profile in out['switch_snapshots'][2]['profiles']},
               'reopen combination uuids differ')
         for profile in snapshot['profiles']:
-            check(profile['composed'].get('blocked') is None if isinstance(profile['composed'], dict)
-                  else False,
+            composed = profile['composed'] or {}
+            check('blocked' not in composed,
                   f"reopen compose blocked for {profile['name']}: {profile['composed']!r}")
-            for adapter, merged in (profile['composed'] or {}).items():
-                if isinstance(merged, dict) and merged.get('installation_root') is not None:
-                    check(merged['installation_root']
-                          == snapshot['registry']['entries'].get(adapter, {}).get('installation_root'),
-                          f"reopen/{profile['name']}/{adapter}: composed path != registry path")
+            for row in composed.get('assistants', []):
+                if row.get('installation_root') is not None:
+                    check(row['installation_root']
+                          == snapshot['registry']['entries'].get(row['adapter'], {}).get('installation_root'),
+                          f"reopen/{profile['name']}/{row['adapter']}: composed path != registry path")
         check(next(profile for profile in snapshot['profiles']
                    if profile['name'] == '组合甲')['repeat_limit'] == 2,
               'reopen lost 甲 run settings')
@@ -1109,6 +1135,22 @@ def run_scenario_in_process(name, out_path):
         from gachaops import configuration as _configuration
         context = patch.object(_configuration, 'compose_configuration',
                                side_effect=_ConfigError('synthetic compose outage'))
+    elif os.environ.get('REPRO_NEGATIVE') == 'compose_runs':
+        # Injected regression: the composition silently rewrites run fields
+        # (repeat limit, timeouts, game start). Stored documents are
+        # unchanged, so only composed-row assertions can catch this.
+        import copy as _copy
+        from gachaops import configuration as _configuration
+        real_compose = _configuration.compose_configuration
+
+        def tamper_runs(*args, **kwargs):
+            result = _copy.deepcopy(real_compose(*args, **kwargs))
+            result['repeat_limit'] = 9
+            for row in result['assistants']:
+                row['timeout_seconds'] = 1800
+                row['game_start'] = 'assistant'
+            return result
+        context = patch.object(_configuration, 'compose_configuration', side_effect=tamper_runs)
     try:
         with context:
             SCENARIOS[name](out, state)
