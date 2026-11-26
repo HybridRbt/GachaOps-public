@@ -444,11 +444,13 @@ def _staged_path(backup_dir, subdirectory, relative):
     if (not isinstance(relative, str) or not relative
             or Path(relative).drive or Path(relative).is_absolute()):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
-    # Windows strips trailing spaces and dots from every component during
-    # Win32 resolution, so '.. ' would open as '..' and '...' as '.': a row
-    # must spell its path exactly as it will be opened, with no empty,
-    # '.' or '..' component left after the (disallowed) trailing decoration
-    # is removed.
+    # A component carrying a trailing space or dot does not reliably name
+    # one file: Windows opens a final 'file.json.' or 'file.json ' as
+    # 'file.json', and elsewhere in the path such a spelling may fail to
+    # open at all while resolve() maps it onto the undecorated location.
+    # The program never writes one, so a row must not carry one: compare
+    # each component after removing trailing spaces and dots, and refuse
+    # those that change or strip to empty, '.' or '..'.
     for part in relative.replace('\\', '/').split('/'):
         stripped = part.rstrip(' .')
         if stripped != part or stripped in ('', '.', '..'):

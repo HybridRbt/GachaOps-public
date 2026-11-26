@@ -13,7 +13,8 @@ import uuid
 from unittest.mock import patch
 
 from gachaops.migration_journal import (JOURNAL_KIND, archive_journal, backup_directory,
-                                        backup_root, journal_path, read_journal)
+                                        backup_root, journal_path, read_journal,
+                                        reparse_point)
 from gachaops.planner import ConfigError
 from gachaops.profiles import ProfileStore
 from gachaops.recovery import save
@@ -855,6 +856,19 @@ class JournalBackupValidationTests(unittest.TestCase):
             self.assertEqual(backup_directory(root, 'c' * 32),
                              backup_root(root) / ('c' * 32))
 
+    def test_reparse_point_tolerates_plain_file_and_missing_levels(self):
+        # lstat below a plain file fails with FileNotFoundError on Windows
+        # and NotADirectoryError on POSIX; either way the level carries no
+        # reparse point and must read as False, not raise a path-carrying
+        # OSError. A missing path reads as False for the same reason.
+        with tempfile.TemporaryDirectory() as temp:
+            plain = Path(temp) / 'plain.json'
+            plain.write_bytes(b'{}')
+            self.assertFalse(reparse_point(plain / 'child'))
+            self.assertFalse(reparse_point(plain / 'missing'))
+            self.assertFalse(reparse_point(Path(temp) / 'no-such-name'))
+            self.assertTrue(reparse_point(plain) is False)
+
 
 class ManifestRowPathValidationTests(unittest.TestCase):
     """A manifest is a local, forgeable file: its digest proves only that it
@@ -926,7 +940,11 @@ class ManifestRowPathValidationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ConfigError, '非法备份路径'):
                     continue_registration_transaction(root)
                 # Nothing outside the data root was read across the call.
-                self.assertTrue(all(read.is_relative_to(root) for read in reads))
+                # Both sides resolved: temp paths can contain 8.3 short
+                # names (as on the CI's Windows runner) that resolve()
+                # expands.
+                self.assertTrue(all(read.is_relative_to(root.resolve())
+                                    for read in reads))
             self.assertEqual(read_journal(root)['state'], 'prepared')
 
     def test_targets_directory_junction_is_refused_before_any_read(self):
@@ -944,7 +962,8 @@ class ManifestRowPathValidationTests(unittest.TestCase):
                         {'path': 'planted.json', 'sha256': row_digest}))
                 with self.assertRaisesRegex(ConfigError, '非法备份路径'):
                     continue_registration_transaction(root)
-                self.assertTrue(all(read.is_relative_to(root) for read in reads))
+                self.assertTrue(all(read.is_relative_to(root.resolve())
+                                    for read in reads))
             self.assertFalse((root / 'planted.json').exists())
             self.assertEqual(read_journal(root)['state'], 'prepared')
 
@@ -967,6 +986,33 @@ class ManifestRowPathValidationTests(unittest.TestCase):
             with guard:
                 # No manifest mutation needed: the staged rows themselves
                 # walk through the redirected 'config' level.
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+            self.assertTrue(reads)
+            self.assertTrue(all(read == (backup_dir / 'manifest.json').resolve()
+                                for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_sources_alias_junction_into_targets_is_refused_by_per_level_check(self):
+        # This junction points at the backup's own targets directory, so
+        # every path through it resolves inside the backup and the resolved
+        # containment net alone would pass the row: only the per-level
+        # reparse-point check can refuse it.
+        if sys.platform != 'win32':
+            self.skipTest('Windows directory junction')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            backup_dir = next(backup_root(root).glob('*/manifest.json')).parent
+            staged = backup_dir / 'targets' / 'config' / 'assistant-registry.json'
+            row_digest = hashlib.sha256(staged.read_bytes()).hexdigest()
+            self._make_junction(backup_dir / 'targets', backup_dir / 'sources' / 'alias')
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['sources'].append(
+                        {'path': 'alias/config/assistant-registry.json',
+                         'exists': True, 'sha256': row_digest}))
                 with self.assertRaisesRegex(ConfigError, '非法备份路径'):
                     continue_registration_transaction(root)
             self.assertTrue(reads)

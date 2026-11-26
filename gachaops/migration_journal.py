@@ -30,10 +30,13 @@ def reparse_point(path):
     """True when the path carries a symlink or any reparse point. On
     Windows that includes directory junctions, which is_symlink() reports
     as False; checking st_file_attributes follows the convention already
-    used by profiles and the maagf2 adapter."""
+    used by profiles and the maagf2 adapter. A plain file in the middle of
+    the path makes lstat of anything below it fail with FileNotFoundError
+    on Windows and NotADirectoryError on POSIX; either way that level
+    carries no reparse point and must read as False, never raise."""
     try:
         info = path.lstat()
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):
         return False
     return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
