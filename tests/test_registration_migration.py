@@ -297,6 +297,34 @@ class MigrationContinueTests(unittest.TestCase):
             self.assertIsNone(read_journal(root))
             self.assertEqual(startup_state(root)['status'], 'ready')
 
+    def test_schema2_only_first_migration_recovers_and_completes(self):
+        """Schema 2 combinations without a registry take the other
+        migration_required branch of startup_state; their manifest has no
+        source rows besides the digest-less registry row, and an
+        interrupted migration of this shape must continue like any other."""
+        from gachaops.profiles import default_profile, profile_document
+        from gachaops import registration_migration
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_profile(root, UUID_B, profile_document(default_profile(), 1), name='乙')
+            self.assertEqual(startup_state(root)['status'], 'migration_required')
+            preview = preview_registration_migration(root)
+            real_publish = registration_migration._publish_targets
+
+            def flaky(root_arg, targets):
+                real_publish(root_arg, targets[:1])  # registry lands
+                raise PermissionError('fixture interruption')
+            with patch.object(registration_migration, '_publish_targets', flaky):
+                with self.assertRaises(PermissionError):
+                    commit_registration_migration(root, preview, {})
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+            result = continue_registration_transaction(root)
+            self.assertEqual(result['kind'], 'migration')
+            self.assertTrue(ProfileStore(root).load_profile(UUID_B)['assistants'])
+            RegistrationStore(root).read_required()  # the registry now exists
+            self.assertIsNone(read_journal(root))
+            self.assertEqual(startup_state(root)['status'], 'ready')
+
     def test_external_edits_and_backup_damage_stop_continuation(self):
         from gachaops.profiles import default_profile, profile_document
         with tempfile.TemporaryDirectory() as temp:
@@ -1006,6 +1034,27 @@ class ManifestRowPathValidationTests(unittest.TestCase):
             # The manifest itself is read for validation; no staged source or
             # target file ever is.
             self.assertTrue(reads)
+            self.assertTrue(all(read == manifest_path.resolve() for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_manifest_row_trailing_space_or_dot_components_are_refused(self):
+        # Windows strips trailing spaces and dots from every component when
+        # Win32 resolves a path, so '.. ' opens as '..' and '...' as '.'.
+        # The lexical rule must refuse such spellings before any filesystem
+        # access instead of leaving them to the containment check.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            manifest_path = next(backup_root(root).glob('*/manifest.json'))
+            guard, reads = self._recording_reads()
+            with guard:
+                for spelling in ('.. ', '...', 'sub/.. '):
+                    with self.subTest(spelling=spelling):
+                        self._rewrite_manifest(
+                            root, lambda m, s=spelling: m['targets'][0].update(
+                                {'path': s, 'sha256': '0' * 64}))
+                        with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                            continue_registration_transaction(root)
             self.assertTrue(all(read == manifest_path.resolve() for read in reads))
             self.assertEqual(read_journal(root)['state'], 'prepared')
 

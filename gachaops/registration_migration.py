@@ -440,10 +440,17 @@ def _staged_path(backup_dir, subdirectory, relative):
     once here, so the integrity and publish loops only ever walk validated
     rows."""
     if (not isinstance(relative, str) or not relative
-            or Path(relative).drive or Path(relative).is_absolute()
-            or any(part in ('', '.', '..')
-                   for part in relative.replace('\\', '/').split('/'))):
+            or Path(relative).drive or Path(relative).is_absolute()):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    # Windows strips trailing spaces and dots from every component during
+    # Win32 resolution, so '.. ' would open as '..' and '...' as '.': a row
+    # must spell its path exactly as it will be opened, with no empty,
+    # '.' or '..' component left after the (disallowed) trailing decoration
+    # is removed.
+    for part in relative.replace('\\', '/').split('/'):
+        stripped = part.rstrip(' .')
+        if stripped != part or stripped in ('', '.', '..'):
+            raise ConfigError('事务清单内出现非法备份路径，停止继续')
     base = backup_dir / subdirectory
     if reparse_point(base) or not base.resolve().is_relative_to(backup_dir.resolve()):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
