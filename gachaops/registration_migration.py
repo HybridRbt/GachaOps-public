@@ -432,12 +432,14 @@ def _staged_path(backup_dir, subdirectory, relative):
     The manifest is a local, forgeable file — its digest proves only that it
     was not changed, never that it is trustworthy — so every row path must
     name one concrete file: a relative spelling with no drive, no empty,
-    '.' or '..' component under either separator, and every level from the
-    backup's own subdirectory down must be a real directory (no symlink,
-    junction or other reparse point), with the location resolving inside
-    the backup itself — the anchor backup_directory has already validated —
-    so a redirected subdirectory cannot quietly move the anchor. Checked
-    once here, so the integrity and publish loops only ever walk validated
+    '.' or '..' component under either separator, and every directory level
+    from the backup's own subdirectory down must be a real directory (no
+    symlink, junction or other reparse point — the staged file itself is
+    only checked for symlinks, matching profiles' convention that files may
+    carry non-link reparse points), with the location resolving inside the
+    backup itself — the anchor backup_directory has already validated — so
+    a redirected subdirectory cannot quietly move the anchor. Checked once
+    here, so the integrity and publish loops only ever walk validated
     rows."""
     if (not isinstance(relative, str) or not relative
             or Path(relative).drive or Path(relative).is_absolute()):
@@ -454,11 +456,19 @@ def _staged_path(backup_dir, subdirectory, relative):
     base = backup_dir / subdirectory
     if reparse_point(base) or not base.resolve().is_relative_to(backup_dir.resolve()):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    parts = Path(relative).parts
     current = base
-    for part in Path(relative).parts:
+    for part in parts[:-1]:
         current = current / part
         if reparse_point(current):
             raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    # The last component is the file itself and only a symlink counts as a
+    # redirection for it - matching profiles._path's convention: ordinary
+    # files may carry non-link reparse points (cloud on-demand placeholders
+    # and the like) without pointing anywhere else.
+    current = current / parts[-1]
+    if current.is_symlink():
+        raise ConfigError('事务清单内出现非法备份路径，停止继续')
     if not current.resolve().is_relative_to(backup_dir.resolve()):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
     return current

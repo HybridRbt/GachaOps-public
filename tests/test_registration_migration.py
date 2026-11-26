@@ -948,6 +948,32 @@ class ManifestRowPathValidationTests(unittest.TestCase):
             self.assertFalse((root / 'planted.json').exists())
             self.assertEqual(read_journal(root)['state'], 'prepared')
 
+    def test_junction_at_intermediate_directory_level_is_refused(self):
+        # A junction one level below the staged subdirectory must be refused
+        # by the explicit per-level check (the resolved-containment net
+        # alone cannot be relied on to be the reason).
+        if sys.platform != 'win32':
+            self.skipTest('Windows directory junction')
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            backup_dir = next(backup_root(root).glob('*/manifest.json')).parent
+            outside = Path(elsewhere) / 'config-copy'
+            outside.mkdir(parents=True)
+            shutil.copytree(backup_dir / 'sources' / 'config', outside, dirs_exist_ok=True)
+            shutil.rmtree(backup_dir / 'sources' / 'config')
+            self._make_junction(outside, backup_dir / 'sources' / 'config')
+            guard, reads = self._recording_reads()
+            with guard:
+                # No manifest mutation needed: the staged rows themselves
+                # walk through the redirected 'config' level.
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+            self.assertTrue(reads)
+            self.assertTrue(all(read == (backup_dir / 'manifest.json').resolve()
+                                for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
     def test_manifest_row_absolute_path_is_refused_before_any_read(self):
         with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
             root = Path(temp)
