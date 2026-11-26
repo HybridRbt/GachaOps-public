@@ -52,6 +52,37 @@ def _allowed(data, depth=0):
         result['reason_code'] = data['reason']
     elif data.get('error') or data.get('reason'):
         result['reason_code'] = 'redacted_or_unknown'
+    details = data.get('build_diagnostics')
+    if isinstance(details, dict):
+        components = []
+        for row in details.get('components', []) or []:
+            if not isinstance(row, dict):
+                continue
+            component = row.get('component')
+            # A component name is a package-relative path, so slashes are
+            # expected; what must never appear is a drive, an absolute prefix
+            # or a parent reference.
+            if (not isinstance(component, str) or not component or len(component) > 120
+                    or re.search(r'[\\:]|^[/.]|\.\./|^//', component)):
+                continue
+            prefixes = {}
+            for field in ('actual_sha256', 'expected_sha256'):
+                value = row.get(field)
+                if isinstance(value, str) and re.fullmatch(r'[0-9a-f]{12}', value):
+                    prefixes[field] = value
+            components.append({'component': component, **prefixes})
+        # The reason is one of our own constants. Version strings come from
+        # the installation's own metadata, so only a version-like shape may
+        # leave: digits, dots, letters and an optional leading "v".
+        reasons = frozenset({'component_or_version_mismatch'})
+        version_keys = frozenset({'resource_interface', 'entry_file_version'})
+        versions = details.get('versions') if isinstance(details.get('versions'), dict) else {}
+        result['build_diagnostics'] = {
+            'reason': details.get('reason') if details.get('reason') in reasons else None,
+            'components': components,
+            'versions': {key: value for key, value in versions.items()
+                         if key in version_keys and isinstance(value, str)
+                         and re.fullmatch(r'v?[0-9A-Za-z.]{1,32}', value)}}
     return result
 
 

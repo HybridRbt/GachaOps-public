@@ -1943,3 +1943,150 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
             self.assertTrue(refused)
         self._release_qt()
+
+
+    def _begin_run_fixture(self, root):
+        """Shared fixture: one enabled registered row plus a --config draft."""
+        path = root / 'fixture.json'
+        path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
+            id='one', adapter='ok-ww', installation_root=str(root), enabled=True)])), encoding='utf-8')
+        write_registry(root, {'ok-ww': {'installation_root': str(root)}})
+        return path
+
+    def test_run_minimize_waits_for_confirmed_running_start(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = self._begin_run_fixture(root)
+            order = []
+            minimized = []
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.run_confirm_timeout_ms = 3600000
+                with patch.object(window, 'showMinimized',
+                                  side_effect=lambda: (minimized.append(True), order.append('minimize'))), \
+                     patch('gachaops.foreground.allow_foreground',
+                           side_effect=lambda pid: order.append('foreground')):
+                    window.begin('run-assistants')
+                    self.assertFalse(window.isMinimized())
+                    self.assertEqual(minimized, [])
+                    # The worker started: the foreground handover must happen
+                    # immediately (before any assistant raises a game window)...
+                    window.process.started.emit()
+                    self.assertEqual(order, ['foreground'])
+                    self.assertEqual(minimized, [])
+                    self.assertFalse(window.isMinimized())
+                    # ...but the admission gate has not been crossed yet, so
+                    # the window stays visible and nothing is minimized.
+                    # (QProcess.start is stubbed, so the running state comes
+                    # from a stub like the other worker-flow tests.)
+                    with patch.object(window, 'running', return_value=True):
+                        window.poll()
+                        self.assertEqual(minimized, [])
+                        self.assertFalse(window.isMinimized())
+                        # The first chain summary is written inside the
+                        # admission gate: reaching it means the flow is
+                        # confirmed running.
+                        chain = window.session / 'assistants-fixture'
+                        chain.mkdir()
+                        (chain / 'summary.json').write_text(
+                            json.dumps(dict(status='running', assistants=[])), encoding='utf-8')
+                        window.poll()
+                        self.assertEqual(order, ['foreground', 'minimize'])
+                        self.assertEqual(minimized, [True])
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QProcess, 'start', return_value=None), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--config', str(path)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_run_gate_refusal_never_minimizes_and_shows_recovery_state(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = self._begin_run_fixture(root)
+            minimized = []
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                with patch.object(window, 'showMinimized',
+                                  side_effect=lambda: minimized.append(True)), \
+                     patch('gachaops.foreground.allow_foreground', return_value=None):
+                    window.begin('run-assistants')
+                    self.assertIsNotNone(window.process)
+                    window.process.started.emit()
+                    window.poll()
+                    self.assertEqual(minimized, [])
+                    self.assertFalse(window.isMinimized())
+                    # Gate refusal: the worker exits without writing a
+                    # summary. The window must never have minimized and the
+                    # recovery state must be visible right away (the old code
+                    # had already minimized the window by this point).
+                    with patch.object(window, 'needs_recovery', return_value=True):
+                        window.finished(2, QProcess.ExitStatus.NormalExit)
+                    self.assertFalse(window.isMinimized())
+                    self.assertEqual(minimized, [])
+                    self.assertEqual(window.start.text(), '检查并恢复运行资格')
+                    from PySide6.QtWidgets import QLabel
+                    self.assertTrue(any('未能完成启动' in label.text()
+                                        for label in window.findChildren(QLabel)))
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QProcess, 'start', return_value=None), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--config', str(path)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
+    def test_run_confirm_timeout_keeps_window_visible_without_modal(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtCore import QProcess, QCoreApplication
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = self._begin_run_fixture(root)
+            minimized = []
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.run_confirm_timeout_ms = 0
+                with patch.object(window, 'showMinimized',
+                                  side_effect=lambda: minimized.append(True)), \
+                     patch('gachaops.foreground.allow_foreground', return_value=None), \
+                     patch.object(window, 'running', return_value=True):
+                    window.begin('run-assistants')
+                    window.process.started.emit()
+                    for _ in range(5):
+                        QCoreApplication.processEvents()
+                        time.sleep(0.02)
+                    self.assertEqual(minimized, [])
+                    self.assertFalse(window.isMinimized())
+                    self.assertIn('尚未确认开始运行', window.running_title.text())
+                    # A late confirmation still minimizes: the flow is now
+                    # confirmed running, which is the only minimize trigger.
+                    chain = window.session / 'assistants-fixture'
+                    chain.mkdir()
+                    (chain / 'summary.json').write_text(
+                        json.dumps(dict(status='running', assistants=[])), encoding='utf-8')
+                    window.poll()
+                    self.assertEqual(minimized, [True])
+                window.close()
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QProcess, 'start', return_value=None), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--config', str(path)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()

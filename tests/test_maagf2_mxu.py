@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import time
@@ -287,6 +288,277 @@ class MxuPreparationTests(unittest.TestCase):
         self.assertEqual(result['status'], 'cancelled')
         self.assertFalse(result['game_execution'])
         self.assertTrue(result['cleanup_verified'])
+
+
+
+
+    def _digest_of(self, name):
+        return hashlib.sha256((self.root / name).read_bytes()).hexdigest()
+
+    def test_each_component_drift_reports_not_adapted_without_leaks(self):
+        for name in self.components:
+            with self.subTest(component=name):
+                component = self.root / name
+                component.write_bytes(component.read_bytes() + b'-drifted')
+                with self.assertRaisesRegex(ValueError, '尚未适配') as caught:
+                    prepare_assistant(self.row)
+                message = str(caught.exception)
+                self.assertIn('MXU', message)
+                # User layer answers "what is wrong / what to do": no hashes,
+                # no version numbers, no presumptive cause, no real paths.
+                self.assertNotIn('残留 MFA', message)
+                self.assertNotIn('请更新', message)
+                self.assertNotIn(str(self.root), message)
+                self.assertNotIn(self.mxu.EXPECTED_COMPONENTS[name][:12], message)
+                self.assertNotIn(self._digest_of(name)[:12], message)
+                component.write_bytes(component.read_bytes().replace(b'-drifted', b''))
+
+    def test_multiple_component_drifts_are_all_listed_in_diagnostics(self):
+        for name in ('MaaGF2Exilium.exe', 'maafw/MaaFramework.dll'):
+            component = self.root / name
+            component.write_bytes(component.read_bytes() + b'-drifted')
+        with self.assertRaisesRegex(ValueError, '尚未适配') as caught:
+            prepare_assistant(self.row)
+        details = getattr(caught.exception, 'build_diagnostics', None)
+        self.assertIsInstance(details, dict)
+        listed = {row['component']: row for row in details['components']}
+        self.assertEqual(set(listed), {'MaaGF2Exilium.exe', 'maafw/MaaFramework.dll'})
+        for name, row in listed.items():
+            self.assertEqual(row['actual_sha256'], self._digest_of(name)[:12])
+            self.assertEqual(row['expected_sha256'], self.mxu.EXPECTED_COMPONENTS[name][:12])
+
+    def test_resource_version_only_drift_reports_not_adapted_with_versions(self):
+        self.interface['version'] = 'v2.8.4'
+        self.flush()
+        with self.assertRaisesRegex(ValueError, '尚未适配') as caught:
+            prepare_assistant(self.row)
+        details = caught.exception.build_diagnostics
+        self.assertEqual(details['components'], [])
+        self.assertEqual(details['versions'].get('resource_interface'), 'v2.8.4')
+
+    def test_config_schema_drift_reports_not_adapted(self):
+        self.config['version'] = '2.0'
+        self.flush()
+        with self.assertRaisesRegex(ValueError, '尚未适配'):
+            prepare_assistant(self.row)
+
+    def test_path_redirection_takes_priority_over_component_drift(self):
+        (self.root / 'python/python.exe').write_bytes(b'drifted')
+        with patch.object(self.mxu, '_redirected', return_value=True):
+            with self.assertRaisesRegex(ValueError, '安装路径异常'):
+                prepare_assistant(self.row)
+
+    def test_missing_component_reports_not_adapted_and_missing_interface_reports_reinstall(self):
+        # A missing expected component is drift (an old or foreign layout);
+        # missing core metadata (interface.json) is an incomplete install.
+        (self.root / 'agent/main.py').unlink()
+        with self.assertRaisesRegex(ValueError, '尚未适配'):
+            prepare_assistant(self.row)
+        # Both missing at once: the incomplete install wins, because
+        # reinstalling fixes both while waiting for an adaptation does not.
+        (self.root / 'interface.json').unlink()
+        with self.assertRaisesRegex(ValueError, '重新安装'):
+            prepare_assistant(self.row)
+
+    def test_missing_interface_alone_reports_reinstall_before_any_content_is_read(self):
+        (self.root / 'interface.json').unlink()
+        with patch.object(self.mxu, '_json', side_effect=AssertionError('content read before identity')):
+            with self.assertRaisesRegex(ValueError, '重新安装'):
+                prepare_assistant(self.row)
+
+    def test_drifted_build_is_rejected_before_its_configuration_is_parsed(self):
+        # Order matters: a build outside the reviewed baseline must be refused
+        # on its hashes, without parsing the instance/controller data it ships.
+        (self.root / 'maafw/MaaFramework.dll').write_bytes(b'drifted-framework')
+        (self.root / 'interface.json').write_text('{"version": "v9.9.9", "name": "x",'
+                                                  ' "interface_version": 2}', encoding='utf-8')
+        with patch.object(self.mxu, '_imports', side_effect=AssertionError('imports read before identity')), \
+             patch.object(self.mxu, '_instance', side_effect=AssertionError('instance read before identity')):
+            with self.assertRaisesRegex(ValueError, '尚未适配'):
+                prepare_assistant(self.row)
+
+    def test_missing_entry_in_installation_tree_fails_instead_of_passing_as_unredirected(self):
+        # _redirected stays strict: a missing path must raise, never read as
+        # "not a link", because it also guards the installation tree walk.
+        with self.assertRaises(OSError):
+            self.mxu._redirected(self.root / 'no-such-entry')
+
+    def test_check_panel_row_carries_user_text_and_build_diagnostics(self):
+        (self.root / 'MaaGF2Exilium.exe').write_bytes(b'drifted-exe')
+        (self.root / 'agent/main.py').write_bytes(b'drifted-agent')
+        from gachaops.assistants import check_assistants
+        report = check_assistants({'repeat_limit': 0, 'assistants': [dict(self.row)]})
+        row = report['assistants'][0]
+        self.assertEqual(row['status'], 'blocked')
+        self.assertIn('尚未适配', row['error'])
+        self.assertNotIn('残留 MFA', row['error'])
+        self.assertNotIn(str(self.root), row['error'])
+        details = row['build_diagnostics']
+        self.assertEqual({c['component'] for c in details['components']},
+                         {'MaaGF2Exilium.exe', 'agent/main.py'})
+        self.assertTrue(all(len(c['actual_sha256']) == 12 for c in details['components']))
+
+    def test_diagnostics_export_keeps_prefixes_and_drops_unknown_fields(self):
+        from gachaops.diagnostics import build_diagnostic_preview
+        (self.root / 'MaaGF2Exilium.exe').write_bytes(b'drifted-exe')
+        from gachaops.assistants import check_assistants
+        row = check_assistants({'repeat_limit': 0, 'assistants': [dict(self.row)]})['assistants'][0]
+        summary = {'schema_version': 1, 'status': 'blocked', 'assistants': [row]}
+        run = self.root / 'runs' / 'gui-fixture'
+        run.mkdir(parents=True)
+        (run / 'summary.json').write_text(json.dumps(summary), encoding='utf-8')
+        preview = build_diagnostic_preview(run)
+        payload = json.loads(preview.payload)
+        entry = payload['records'][0]['summary']['assistants'][0]
+        details = entry['build_diagnostics']
+        self.assertEqual({c['component'] for c in details['components']}, {'MaaGF2Exilium.exe'})
+        self.assertEqual(details['components'][0]['expected_sha256'],
+                         self.mxu.EXPECTED_COMPONENTS['MaaGF2Exilium.exe'][:12])
+        exported = json.dumps(payload)
+        self.assertNotIn(self.mxu.EXPECTED_COMPONENTS['MaaGF2Exilium.exe'], exported)
+        self.assertNotIn(self._digest_of('MaaGF2Exilium.exe'), exported)
+
+    def test_diagnostics_export_refuses_path_like_or_free_form_fields(self):
+        # Component names, versions and the reason all originate in data read
+        # from the installation, which is unreviewed. The export whitelist
+        # must let through only the package-relative name, 12 hex characters
+        # and a version-like shape - never a drive, a parent reference, an
+        # absolute prefix, a path separator or free-form text.
+        from gachaops.diagnostics import _allowed
+        hostile = {
+            'build_diagnostics': {
+                'reason': 'C:\\Users\\someone\\secret',
+                'components': [
+                    {'component': 'C:\\Users\\someone\\AppData\\x.dll', 'actual_sha256': 'a' * 12},
+                    {'component': '../../etc/passwd', 'actual_sha256': 'b' * 12},
+                    {'component': '/usr/local/bin/x', 'actual_sha256': 'c' * 12},
+                    {'component': '.hidden', 'actual_sha256': 'd' * 12},
+                    {'component': 'maafw\\MaaFramework.dll', 'actual_sha256': 'e' * 12},
+                    {'component': 'maafw/MaaFramework.dll', 'actual_sha256': 'f' * 64},
+                    {'component': 'python/python.exe', 'actual_sha256': '0123456789ab'},
+                ],
+                'versions': {'resource_interface': 'v2.8.8 C:\\Users\\someone',
+                             'entry_file_version': '2.11.2',
+                             'C:\\Users\\someone': 'x',
+                             'extra': '1.0'},
+            }}
+        allowed = _allowed(hostile)['build_diagnostics']
+        self.assertIsNone(allowed['reason'])
+        # A legitimate relative name survives on its own when its hash field
+        # is not a 12-hex prefix; anything path-like is dropped entirely.
+        self.assertEqual(allowed['components'],
+                         [{'component': 'maafw/MaaFramework.dll'},
+                          {'component': 'python/python.exe', 'actual_sha256': '0123456789ab'}])
+        self.assertEqual(allowed['versions'], {'entry_file_version': '2.11.2'})
+        exported = json.dumps(allowed)
+        for needle in ('Users', 'someone', 'passwd', '..', 'f' * 64):
+            self.assertNotIn(needle, exported)
+
+    def test_entry_file_version_is_read_from_the_real_exe(self):
+        # The buffer size is the return value of GetFileVersionInfoSizeW; its
+        # second argument is an obsolete handle output that stays zero. Reading
+        # the handle made this helper return None for every executable, so the
+        # advertised version never reached the diagnostics.
+        if os.name != 'nt':
+            self.skipTest('PE version resources are Windows only')
+        # The fixture EXE carries no version resource: honestly reported as
+        # absent rather than guessed.
+        self.assertIsNone(self.mxu._pe_file_version(self.root / 'MaaGF2Exilium.exe'))
+        self.assertIsNone(self.mxu._pe_file_version(self.root / 'agent' / 'main.py'))
+        # Against a real binary that ships a version resource, the helper must
+        # return the fixed-info version - the same reading Windows reports.
+        system = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'notepad.exe'
+        if not system.is_file():
+            self.skipTest('no versioned system binary available')
+        version = self.mxu._pe_file_version(system)
+        self.assertRegex(version, r'^\d+\.\d+\.\d+\.\d+$')
+
+    def test_dangling_component_link_is_a_path_anomaly_not_drift(self):
+        # A dangling link reports is_file() == False. The missing-file branch
+        # must not classify it as drift ("wait for an adaptation"); the link
+        # itself is the problem and the user has to reconnect.
+        if not hasattr(os, 'symlink'):
+            self.skipTest('symlinks unavailable')
+        target = self.root / 'agent' / 'main.py'
+        target.unlink()
+        try:
+            os.symlink(self.root / 'no-such-target', target)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f'symlink creation unavailable: {error}')
+        with self.assertRaisesRegex(ValueError, '安装路径异常'):
+            prepare_assistant(self.row)
+
+    def test_component_under_redirected_directory_is_a_path_anomaly(self):
+        # The installation root itself is clean; the directory holding one
+        # component is a redirect whose target is gone, so the component's
+        # is_file() is False. The missing-component branch must still walk the
+        # path and report the anomaly instead of classifying it as drift.
+        # Creating a real link needs a privilege this test may not have, so the
+        # entry is kept on disk and only the link test answers "yes" for it.
+        (self.root / 'python' / 'python.exe').unlink()
+        (self.root / 'python' / 'gone.txt').write_bytes(b'keeps the directory present')
+        real_redirected = self.mxu._redirected
+        with patch.object(self.mxu, '_redirected',
+                          side_effect=lambda p: p.name == 'python' or real_redirected(p)):
+            with self.assertRaisesRegex(ValueError, '安装路径异常'):
+                prepare_assistant(self.row)
+        (self.root / 'python' / 'gone.txt').unlink()
+        # With nothing redirected, the absent component is ordinary drift.
+        with self.assertRaisesRegex(ValueError, '尚未适配'):
+            prepare_assistant(self.row)
+
+    def test_blocked_run_persists_build_diagnostics_into_the_exported_summary(self):
+        # Drive the real flow: run_assistants must save the diagnostics into
+        # the per-node summary.json, because that is the only file the
+        # diagnostic export reads. A hand-built summary would hide a break
+        # between the exception handler and the export.
+        from gachaops.assistants import run_assistants
+        from gachaops.diagnostics import build_diagnostic_preview
+        (self.root / 'maafw/MaaFramework.dll').write_bytes(b'drifted-framework')
+        runs = self.root / 'runs'
+        with patch('gachaops.assistants.windows_available', return_value=True):
+            run_assistants({'assistants': [self.row]}, runs, self.root / 'state', progress=lambda _: None)
+        summaries = sorted(runs.glob('assistants-*/node-*/summary.json'))
+        self.assertTrue(summaries, 'run_assistants wrote no node summary')
+        saved = json.loads(summaries[0].read_text(encoding='utf-8-sig'))
+        self.assertEqual(saved['status'], 'blocked')
+        details = saved['build_diagnostics']
+        self.assertEqual([c['component'] for c in details['components']], ['maafw/MaaFramework.dll'])
+        # The desktop exports from the chain directory (summary_path.parent);
+        # the export reads that directory's summary.json and node-*/summary.json.
+        chain = summaries[0].parents[1]
+        exported = json.loads(build_diagnostic_preview(chain).payload)
+        entry = next(r['summary'] for r in exported['records'] if r['evidence'].endswith('node-01/summary.json'))
+        self.assertIn('build_diagnostics', entry, 'diagnostics did not reach the export')
+        self.assertEqual(entry['build_diagnostics']['components'],
+                         [{'component': 'maafw/MaaFramework.dll',
+                           'actual_sha256': hashlib.sha256(b'drifted-framework').hexdigest()[:12],
+                           'expected_sha256': self.mxu.EXPECTED_COMPONENTS['maafw/MaaFramework.dll'][:12]}])
+        # The fixture EXE has no version resource, so no version may be
+        # invented for it; the end-to-end path is what matters here.
+        self.assertEqual(entry['build_diagnostics']['versions'], {})
+
+    def test_entry_version_reaches_the_export_when_the_exe_has_one(self):
+        # Same real flow, with a versioned binary standing in for the entry
+        # EXE: the version read at rejection time must survive into the export.
+        from gachaops.assistants import run_assistants
+        from gachaops.diagnostics import build_diagnostic_preview
+        if os.name != 'nt':
+            self.skipTest('PE version resources are Windows only')
+        system = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32' / 'notepad.exe'
+        if not system.is_file():
+            self.skipTest('no versioned system binary available')
+        expected_version = self.mxu._pe_file_version(system)
+        self.assertRegex(expected_version, r'^\d+\.\d+\.\d+\.\d+$')
+        (self.root / 'maafw/MaaFramework.dll').write_bytes(b'drifted-framework')
+        runs = self.root / 'runs'
+        with patch('gachaops.assistants.windows_available', return_value=True), \
+             patch.object(self.mxu, '_pe_file_version', return_value=expected_version):
+            run_assistants({'assistants': [self.row]}, runs, self.root / 'state', progress=lambda _: None)
+        summaries = sorted(runs.glob('assistants-*/node-*/summary.json'))
+        exported = json.loads(build_diagnostic_preview(summaries[0].parents[1]).payload)
+        entry = next(r['summary'] for r in exported['records'] if r['evidence'].endswith('node-01/summary.json'))
+        self.assertEqual(entry['build_diagnostics']['versions'], {'entry_file_version': expected_version})
 
 
 class MxuCompletionTests(unittest.TestCase):

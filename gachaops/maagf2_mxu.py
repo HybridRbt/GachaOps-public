@@ -25,27 +25,129 @@ EXPECTED_COMPONENTS = {
 RESOURCE_VERSION = 'v2.8.3'
 FRAMEWORK_VERSION = '2.8.1'
 
+# User-facing blocker texts answer exactly two questions: what is wrong and
+# what to do about it. They deliberately carry no hashes, no version numbers
+# and no presumptive cause (a drifted component may be an assistant update or
+# a local modification - the check cannot tell, so the text must not tell the
+# user to update). Developer-facing detail travels on BuildIdentityError.
+NOT_ADAPTED_TEXT = ('少前2助手（MXU）此版本尚未适配：当前安装与 GachaOps 已审阅的版本不符，暂时无法运行。'
+                    '请先取消勾选此助手；等待 GachaOps 更新适配后再重新接入。')
+INCOMPLETE_TEXT = '少前2助手（MXU）安装不完整或文件缺失；请重新安装助手后再接入。'
+PATH_ANOMALY_TEXT = '少前2助手（MXU）安装路径异常（链接或重定向）；请重新接入此助手。'
+
+
+class BuildIdentityError(ValueError):
+    """Hard stop for builds outside the reviewed baseline; carries dev-facing
+    diagnostics (component names, 12-char hash prefixes, version strings)
+    that never include absolute paths or full hashes."""
+
+    def __init__(self, message, diagnostics):
+        super().__init__(message)
+        self.build_diagnostics = diagnostics
+
+
+def _pe_file_version(exe):
+    """Best-effort FileVersion of the entry EXE for dev diagnostics only.
+
+    Read the fixed-info block the same way executable_product_name does:
+    the buffer size is GetFileVersionInfoSizeW's return value; its second
+    argument is an obsolete handle output that stays zero.
+    """
+    if os.name != 'nt':
+        return None
+    try:
+        import ctypes
+        api = ctypes.WinDLL('version', use_last_error=True)
+        api.GetFileVersionInfoSizeW.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_ulong)]
+        api.GetFileVersionInfoSizeW.restype = ctypes.c_ulong
+        api.GetFileVersionInfoW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
+        api.GetFileVersionInfoW.restype = ctypes.c_int
+        api.VerQueryValueW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p,
+                                       ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_uint)]
+        api.VerQueryValueW.restype = ctypes.c_int
+        handle = ctypes.c_ulong()
+        size = api.GetFileVersionInfoSizeW(str(exe), ctypes.byref(handle))
+        if not 0 < size <= 1024 * 1024:
+            return None
+        data = ctypes.create_string_buffer(size)
+        if not api.GetFileVersionInfoW(str(exe), 0, size, data):
+            return None
+        pointer = ctypes.c_void_p()
+        length = ctypes.c_uint(0)
+        if not api.VerQueryValueW(data, '\\', ctypes.byref(pointer), ctypes.byref(length)):
+            return None
+        fixed = ctypes.cast(pointer, ctypes.POINTER(ctypes.c_uint * 13)).contents
+        if fixed[0] != 0xFEEF04BD:
+            return None
+        high, low = fixed[2], fixed[3]
+        return f'{high >> 16}.{high & 0xFFFF}.{low >> 16}.{low & 0xFFFF}'
+    except (OSError, ValueError, NameError):
+        return None
+
 
 def _redirected(path):
+    # Strict on purpose: this predicate also guards every ancestor of the game
+    # path and the installation tree walk, where a missing entry must fail
+    # loudly rather than pass as "not a link". Callers that need to report a
+    # missing file as an incomplete installation check presence themselves.
     info = path.lstat()
     return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
 
+def _unredirected(root, value):
+    """The path `root/value` after confirming no level of it is a link or a
+    redirect. A level that does not exist is an incomplete installation."""
+    path = root / Path(value)
+    current = root
+    for name in Path(value).parts:
+        current = current / name
+        try:
+            redirected = _redirected(current)
+        except OSError as error:
+            raise ValueError(INCOMPLETE_TEXT) from error
+        if redirected:
+            raise ValueError(PATH_ANOMALY_TEXT)
+    return path
+
+
 def _inside(root, value, directory=False):
     if not isinstance(value, str) or not value or '\0' in value:
-        raise ValueError('MXU installation path is missing')
+        raise ValueError(INCOMPLETE_TEXT)
     part = Path(value)
     if part.is_absolute() or '..' in part.parts:
-        raise ValueError('MXU installation path must stay inside its directory')
-    path = root / part
-    current = root
-    for name in part.parts:
-        current = current / name
-        if _redirected(current):
-            raise ValueError('MXU external or redirected installation entry')
-    if not path.resolve(strict=True).is_relative_to(root) or not (path.is_dir() if directory else path.is_file()):
-        raise ValueError('MXU installation entry unavailable')
+        raise ValueError(PATH_ANOMALY_TEXT)
+    path = _unredirected(root, value)
+    try:
+        inside = path.resolve(strict=True).is_relative_to(root)
+    except OSError as error:
+        raise ValueError(INCOMPLETE_TEXT) from error
+    if not inside or not (path.is_dir() if directory else path.is_file()):
+        raise ValueError(INCOMPLETE_TEXT)
     return path
+
+
+def _present(root, value):
+    """Is `root/value` an existing regular file, with every level from the
+    installation root free of links and redirections?
+
+    A missing entry is not evidence of anything, so it is classified without
+    reading it: a link or redirect on the way is a path anomaly even when its
+    target is gone (a dangling link would otherwise be reported as an absent
+    file). The first level that does not exist ends the walk - a missing parent
+    means the component is missing, not redirected.
+    """
+    current = root
+    for name in Path(value).parts:
+        current = current / name
+        try:
+            current.lstat()
+        except OSError:
+            return False
+        # _redirected re-reads the entry itself: one definition of "link or
+        # redirect" for every caller.
+        if _redirected(current):
+            raise ValueError(PATH_ANOMALY_TEXT)
+    return current.is_file()
 
 
 def _digest(path):
@@ -63,7 +165,7 @@ def _game(value):
         raise ValueError('MXU requires a direct absolute game EXE')
     path = Path(value)
     if '..' in path.parts or any(_redirected(parent) for parent in (path, *path.parents)):
-        raise ValueError('MXU game path or ancestor is redirected')
+        raise ValueError('少前2助手（MXU）游戏路径异常（链接或重定向）；请重新接入此助手。')
     if not path.is_file() or path.name.casefold() != 'gf2_exilium.exe':
         raise ValueError('MXU direct GF2_Exilium.exe is unavailable')
     return path.resolve(strict=True)
@@ -104,7 +206,7 @@ def _json(root, name, consumed):
     consumed[path.relative_to(root).as_posix()] = hashlib.sha256(raw).hexdigest()
     value = json.loads(raw.decode('utf-8-sig'))
     if not isinstance(value, dict):
-        raise ValueError('MXU configuration must be an object')
+        raise ValueError('少前2助手（MXU）配置文件不符合要求；请在原助手中重新保存配置后再接入。')
     return value
 
 
@@ -175,25 +277,62 @@ def _triggers(config, instances):
 
 
 def prepare(row, *, root, exe, launcher_sha256):
-    error = 'MXU 构建身份未经核验，请取消勾选此助手；不要使用残留 MFA 配置。'
     if _redirected(Path(row['installation_root'])):
-        raise ValueError('MXU installation root is redirected')
-    for name, expected in EXPECTED_COMPONENTS.items():
-        if _digest(_inside(root, name)) != expected:
-            raise ValueError(error)
-    if launcher_sha256 != EXPECTED_COMPONENTS['MaaGF2Exilium.exe']:
-        raise ValueError(error)
+        raise ValueError(PATH_ANOMALY_TEXT)
     consumed = {}
+    # Order matters: prove this is a reviewed build before trusting anything
+    # it contains. Every expected component is hashed first (interface.json
+    # included); only a fully matching set proceeds to the version, project
+    # and configuration checks that read the installation's own content.
+    mismatches = []
+    for name, expected in EXPECTED_COMPONENTS.items():
+        # A missing expected component is drift too (an old or foreign layout,
+        # not necessarily a broken install); only its expected prefix is known.
+        # _present walks every level first, so a link or redirect on the way
+        # is reported as a path anomaly even when its target is gone.
+        if not _present(root, name):
+            mismatches.append({'component': name,
+                               'actual_sha256': None,
+                               'expected_sha256': expected[:12]})
+            continue
+        actual = _digest(_inside(root, name))
+        if actual != expected:
+            mismatches.append({'component': name,
+                               'actual_sha256': actual[:12],
+                               'expected_sha256': expected[:12]})
+    if not _present(root, 'interface.json'):
+        # Core metadata missing outranks drift: reinstalling fixes both, while
+        # waiting for an adaptation cannot bring a missing file back.
+        raise ValueError(INCOMPLETE_TEXT)
+    if mismatches:
+        # Any drift from the reviewed baseline means this build is not yet
+        # adapted: say that to the user, list every drifted component for the
+        # diagnostics channel, and never carry a stale version constant. The
+        # entry EXE's version is safe to read here; it never gates a decision.
+        raise BuildIdentityError(NOT_ADAPTED_TEXT,
+                                 {'reason': 'component_or_version_mismatch',
+                                  'components': mismatches,
+                                  'versions': {'entry_file_version': _pe_file_version(exe)}})
     interface = _json(root, 'interface.json', consumed)
+    resource_version = interface.get('version')
     project = interface.get('name')
-    if (interface.get('version') != RESOURCE_VERSION or interface.get('interface_version') != 2
+    if (resource_version != RESOURCE_VERSION or interface.get('interface_version') != 2
             or not isinstance(project, str) or not re.fullmatch(r'[^<>:"/\\|?*\x00-\x1f]{1,100}', project)):
-        raise ValueError('MXU resource/interface version is unsupported')
+        versions = {key: value for key, value in
+                    {'resource_interface': resource_version, 'entry_file_version': _pe_file_version(exe)}.items()
+                    if isinstance(value, str)}
+        raise BuildIdentityError(NOT_ADAPTED_TEXT,
+                                 {'reason': 'component_or_version_mismatch',
+                                  'components': [], 'versions': versions})
     task_names = _imports(root, interface, consumed)
     config_file = 'config/mxu-' + project + '.json'
     config = _json(root, config_file, consumed)
     if config.get('version') != '1.0':
-        raise ValueError('MXU configuration schema version is unsupported')
+        raise BuildIdentityError(NOT_ADAPTED_TEXT,
+                                 {'reason': 'component_or_version_mismatch',
+                                  'components': [],
+                                  'versions': {'resource_interface': resource_version,
+                                               'entry_file_version': _pe_file_version(exe)}})
     instance, instances = _instance(config)
     controller = _unique(interface.get('controller'), 'name', instance.get('controllerName'))
     options = controller.get('win32', {})
@@ -271,7 +410,7 @@ def prepare(row, *, root, exe, launcher_sha256):
     launcher_path = None
     if official_launcher.is_file():
         if _redirected(official_launcher) or official_launcher.resolve().parent != game.parent.parent.resolve():
-            raise ValueError('MXU external GF2 launcher entry')
+            raise ValueError('少前2助手（MXU）官方启动器路径异常（链接或重定向）；请重新接入此助手。')
         launcher_path = str(official_launcher.resolve())
         targets.append(launcher_path)
     observation = find_matching_processes(targets)
