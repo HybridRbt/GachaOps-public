@@ -68,8 +68,10 @@ class MxuPreparationTests(unittest.TestCase):
         self.row = {'id': 'girls-frontline-2', 'adapter': 'maa-gf2',
                     'installation_root': str(self.root), 'enabled': True}
         expected = {name: hashlib.sha256(content).hexdigest() for name, content in self.components.items()}
+        self.expected = expected
+        builds = {'v2.8.3': {'framework_version': '2.8.1', 'components': expected}}
         for context in (
-            patch.object(self.mxu, 'EXPECTED_COMPONENTS', expected),
+            patch.object(self.mxu, 'SUPPORTED_BUILDS', builds),
             patch.object(maagf2, 'executable_product_name', return_value='mxu'),
             patch.object(self.mxu, 'elevation_report', return_value={'elevated': True}),
             patch.object(self.mxu, 'desktop_report', return_value={'status': 'observed_available'}),
@@ -309,7 +311,7 @@ class MxuPreparationTests(unittest.TestCase):
                 self.assertNotIn('残留 MFA', message)
                 self.assertNotIn('请更新', message)
                 self.assertNotIn(str(self.root), message)
-                self.assertNotIn(self.mxu.EXPECTED_COMPONENTS[name][:12], message)
+                self.assertNotIn(self.expected[name][:12], message)
                 self.assertNotIn(self._digest_of(name)[:12], message)
                 component.write_bytes(component.read_bytes().replace(b'-drifted', b''))
 
@@ -325,7 +327,7 @@ class MxuPreparationTests(unittest.TestCase):
         self.assertEqual(set(listed), {'MaaGF2Exilium.exe', 'maafw/MaaFramework.dll'})
         for name, row in listed.items():
             self.assertEqual(row['actual_sha256'], self._digest_of(name)[:12])
-            self.assertEqual(row['expected_sha256'], self.mxu.EXPECTED_COMPONENTS[name][:12])
+            self.assertEqual(row['expected_sha256'], self.expected[name][:12])
 
     def test_resource_version_only_drift_reports_not_adapted_with_versions(self):
         self.interface['version'] = 'v2.8.4'
@@ -413,9 +415,9 @@ class MxuPreparationTests(unittest.TestCase):
         details = entry['build_diagnostics']
         self.assertEqual({c['component'] for c in details['components']}, {'MaaGF2Exilium.exe'})
         self.assertEqual(details['components'][0]['expected_sha256'],
-                         self.mxu.EXPECTED_COMPONENTS['MaaGF2Exilium.exe'][:12])
+                         self.expected['MaaGF2Exilium.exe'][:12])
         exported = json.dumps(payload)
-        self.assertNotIn(self.mxu.EXPECTED_COMPONENTS['MaaGF2Exilium.exe'], exported)
+        self.assertNotIn(self.expected['MaaGF2Exilium.exe'], exported)
         self.assertNotIn(self._digest_of('MaaGF2Exilium.exe'), exported)
 
     def test_diagnostics_export_refuses_path_like_or_free_form_fields(self):
@@ -533,7 +535,7 @@ class MxuPreparationTests(unittest.TestCase):
         self.assertEqual(entry['build_diagnostics']['components'],
                          [{'component': 'maafw/MaaFramework.dll',
                            'actual_sha256': hashlib.sha256(b'drifted-framework').hexdigest()[:12],
-                           'expected_sha256': self.mxu.EXPECTED_COMPONENTS['maafw/MaaFramework.dll'][:12]}])
+                           'expected_sha256': self.expected['maafw/MaaFramework.dll'][:12]}])
         # The fixture EXE has no version resource, so no version may be
         # invented for it; the end-to-end path is what matters here.
         self.assertEqual(entry['build_diagnostics']['versions'], {})
@@ -559,6 +561,69 @@ class MxuPreparationTests(unittest.TestCase):
         exported = json.loads(build_diagnostic_preview(summaries[0].parents[1]).payload)
         entry = next(r['summary'] for r in exported['records'] if r['evidence'].endswith('node-01/summary.json'))
         self.assertEqual(entry['build_diagnostics']['versions'], {'entry_file_version': expected_version})
+
+
+    def _builds_with_v288(self):
+        """Two reviewed bundles whose exe/maafw differ, python/agent shared,
+        mirroring how the official v2.8.8 asset differs from v2.8.3."""
+        v288 = dict(self.expected)
+        for name in ('MaaGF2Exilium.exe', 'maafw/MaaFramework.dll'):
+            content = self.components[name] + b'-v288'
+            (self.root / name).write_bytes(content)
+            v288[name] = hashlib.sha256(content).hexdigest()
+        return {'v2.8.3': {'framework_version': '2.8.1', 'components': dict(self.expected)},
+                'v2.8.8': {'framework_version': '2.11.2', 'components': v288}}
+
+    def test_official_v288_bundle_is_admitted_with_its_own_framework_version(self):
+        builds = self._builds_with_v288()
+        with patch.object(self.mxu, 'SUPPORTED_BUILDS', builds):
+            self.interface['version'] = 'v2.8.8'; self.flush()
+            prepared = prepare_assistant(self.row)
+            self.assertFalse(prepared['blockers'])
+            self.assertEqual(prepared['runner_version'], 'v2.8.8')
+            self.assertEqual(prepared['mxu_framework_version'], '2.11.2')
+            self.assertEqual(prepared['completion_kind'], 'maa-gf2-mxu')
+            verify_installation_stamp(prepared)
+            # The reviewed v2.8.3 bundle stays admitted side by side.
+            for name in ('MaaGF2Exilium.exe', 'maafw/MaaFramework.dll'):
+                (self.root / name).write_bytes(self.components[name])
+            self.interface['version'] = 'v2.8.3'; self.flush()
+            prepared = prepare_assistant(self.row)
+            self.assertEqual(prepared['runner_version'], 'v2.8.3')
+            self.assertEqual(prepared['mxu_framework_version'], '2.8.1')
+
+    def test_components_mixed_from_two_reviewed_bundles_are_not_adapted(self):
+        builds = self._builds_with_v288()
+        # The helper leaves both drifted files at v2.8.8 bytes; put the EXE
+        # back on the v2.8.3 bundle so the mixture is EXE v2.8.3 + DLL v2.8.8:
+        # each byte is reviewed, the mixture is not.
+        (self.root / 'MaaGF2Exilium.exe').write_bytes(self.components['MaaGF2Exilium.exe'])
+        self.interface['version'] = 'v2.8.3'; self.flush()
+        with patch.object(self.mxu, 'SUPPORTED_BUILDS', builds):
+            with self.assertRaisesRegex(ValueError, '尚未适配') as caught:
+                prepare_assistant(self.row)
+        details = caught.exception.build_diagnostics
+        self.assertEqual(details['reason'], 'component_or_version_mismatch')
+        listed = {row['component'] for row in details['components']}
+        self.assertEqual(listed, {'maafw/MaaFramework.dll'})
+        for row in details['components']:
+            self.assertEqual(row['actual_sha256'],
+                             hashlib.sha256(self.components[row['component']] + b'-v288').hexdigest()[:12])
+
+    def test_matching_resource_version_alone_never_admits_drifted_components(self):
+        builds = self._builds_with_v288()
+        for name in self.components:
+            (self.root / name).write_bytes(self.components[name] + b'-foreign')
+        self.interface['version'] = 'v2.8.8'; self.flush()
+        with patch.object(self.mxu, 'SUPPORTED_BUILDS', builds):
+            with self.assertRaisesRegex(ValueError, '尚未适配') as caught:
+                prepare_assistant(self.row)
+        details = caught.exception.build_diagnostics
+        # Hashes are decided before any configuration content is read, so a
+        # reviewed resource-version string cannot leak into the diagnostics.
+        self.assertNotIn('resource_interface', details['versions'])
+        self.assertEqual(len(details['components']), 4)
+
 
 
 class MxuCompletionTests(unittest.TestCase):
