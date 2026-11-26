@@ -639,6 +639,46 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()
 
+    def test_execution_lock_occupation_shows_chinese_reason_and_keeps_raw_error(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); path = root / 'fixture.json'
+            path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
+                id='fixture', adapter='ok-ww', installation_root=str(root), enabled=True)])), encoding='utf-8')
+            session = root / 'session'; session.mkdir()
+            raw = 'gachaops: another GachaOps chain owns the execution lock'
+            (session / 'worker.log').write_text(raw + '\n', encoding='utf-8')
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.session = session; window.action = 'run-assistants'; window.summary_path = None
+                with patch.object(window, 'set_problems') as problems:
+                    window.finished(2, QProcess.ExitStatus.NormalExit)
+                    problem = problems.call_args.args[0][0]
+                self.assertIn('另一个 GachaOps 窗口正在运行', problem['detail'])
+                self.assertNotIn('another GachaOps chain owns', problem['detail'])
+                self.assertIn(raw, problem.get('error', ''))
+                # An unrelated failure keeps its reason untouched.
+                (session / 'worker.log').write_text('gachaops: config file rejected\n', encoding='utf-8')
+                with patch.object(window, 'set_problems') as problems:
+                    window.finished(2, QProcess.ExitStatus.NormalExit)
+                    unrelated = problems.call_args.args[0][0]
+                self.assertNotIn('另一个 GachaOps 窗口正在运行', unrelated['detail'])
+                self.assertIn('当前轮未启动', unrelated['detail'])
+                window.close()
+
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QProcess, 'start', side_effect=AssertionError('no process launch')), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--config', str(path)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
     def test_timeout_input_clamps_saves_and_enters_worker_snapshot(self):
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         from PySide6.QtCore import QProcess

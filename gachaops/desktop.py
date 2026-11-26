@@ -2438,7 +2438,12 @@ def main():
                                 error = stream.read().decode('utf-8', errors='replace').strip()
                         except OSError:
                             pass
-                    if 'previous execution has unverified cleanup; manual inspection required' in error:
+                    if 'another GachaOps chain owns the execution lock' in error:
+                        # The English worker line stays in the error field
+                        # for diagnostics; the panel names the situation and
+                        # the remedy like every other blocker.
+                        explanation = '另一个 GachaOps 窗口正在运行，请等它结束或关闭后再试。'
+                    elif 'previous execution has unverified cleanup; manual inspection required' in error:
                         from .recovery_check import recovery_instructions
                         explanation = recovery_instructions(self.workspace, NAMES)
                     else:
