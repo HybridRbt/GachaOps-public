@@ -426,6 +426,34 @@ def commit_registration_migration(data_root, preview, choices):
                                         profiles=preview['profiles'])
 
 
+def _staged_path(backup_dir, subdirectory, relative):
+    """The staged location a manifest row may name, or ConfigError.
+
+    The manifest is a local, forgeable file — its digest proves only that it
+    was not changed, never that it is trustworthy — so every row path must
+    be a relative spelling with no drive, no '..' and no empty component,
+    every level from the backup's own subdirectory down must be a real
+    directory (no symlinks), and the location must resolve inside that
+    subdirectory. Checked once here, so the integrity and publish loops
+    only ever walk validated rows."""
+    if (not isinstance(relative, str) or not relative
+            or Path(relative).drive or Path(relative).is_absolute()
+            or '..' in Path(relative).parts
+            or any(part == '' for part in relative.split('/'))):
+        raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    base = backup_dir / subdirectory
+    if base.is_symlink():
+        raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    current = base
+    for part in Path(relative).parts:
+        current = current / part
+        if current.is_symlink():
+            raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    if not current.resolve().is_relative_to(base.resolve()):
+        raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    return current
+
+
 def _load_manifest(backup_dir, expected_sha256):
     path = backup_dir / 'manifest.json'
     if path.is_symlink() or not path.exists():
@@ -443,6 +471,24 @@ def _load_manifest(backup_dir, expected_sha256):
             or not isinstance(manifest.get('targets'), list)
             or not isinstance(manifest.get('profiles'), list)):
         raise ConfigError('事务清单格式无效，无法继续')
+    # Row shape and row paths are validated here, before any backup file is
+    # read, so the integrity and publish loops consume validated rows only.
+    for source in manifest['sources']:
+        if (not isinstance(source, dict)
+                or not isinstance(source.get('path'), str)
+                or not isinstance(source.get('exists'), bool)
+                or not isinstance(source.get('sha256'), str)):
+            raise ConfigError('事务清单格式无效，无法继续')
+        _staged_path(backup_dir, 'sources', source['path'])
+    for target in manifest['targets']:
+        if (not isinstance(target, dict)
+                or not isinstance(target.get('path'), str)
+                or not isinstance(target.get('sha256'), str)):
+            raise ConfigError('事务清单格式无效，无法继续')
+        _staged_path(backup_dir, 'targets', target['path'])
+    for row in manifest['profiles']:
+        if not isinstance(row, dict) or not isinstance(row.get('id'), str):
+            raise ConfigError('事务清单格式无效，无法继续')
     return manifest
 
 
