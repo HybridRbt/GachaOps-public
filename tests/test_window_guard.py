@@ -498,44 +498,58 @@ class WindowGuardTests(unittest.TestCase):
     def test_posix_symlinked_lock_directory_reads_as_not_acquired(self):
         # A planted symlink at the per-user directory would redirect the
         # lock file entirely: refused without following it, never raised.
+        # The whole scenario lives in a private temporary directory — the
+        # real per-user directory under the shared temp is left alone, so
+        # test order cannot matter.
         if os.name == 'nt':
             self.skipTest('POSIX flock branch')
         from gachaops import window_guard
-        lock = window_guard.posix_lock_path(unique_name())
-        decoy = lock.parent.with_name(lock.parent.name + '.fixture-target')
-        decoy.mkdir(parents=True, exist_ok=True)
-        os.symlink(decoy, lock.parent)
+        name = unique_name()
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            # Bound before the patch: inside the with-block the module
+            # global is the stand-in itself, so the closure must call the
+            # original captured here, not look it up again.
+            real_lock_path = window_guard.posix_lock_path
 
-        def cleanup():
-            if lock.parent.is_symlink():
-                os.unlink(lock.parent)
-            if decoy.is_dir():
-                decoy.rmdir()
+            def private_lock_path(guard_name):
+                # The real helper's name derivation and layout, relocated
+                # into this test's private directory.
+                real = real_lock_path(guard_name)
+                return base / real.parent.name / real.name
 
-        self.addCleanup(cleanup)
-        guard = window_guard.WindowGuard(unique_name())
-        self.assertFalse(guard.acquire())
-        self.assertIsNone(guard.stream)
+            lock = private_lock_path(name)
+            decoy = base / (lock.parent.name + '.fixture-target')
+            decoy.mkdir()
+            os.symlink(decoy, lock.parent)
+            with patch.object(window_guard, 'posix_lock_path', private_lock_path):
+                guard = window_guard.WindowGuard(name)
+                self.assertFalse(guard.acquire())
+                self.assertIsNone(guard.stream)
 
     def test_posix_lock_directory_path_taken_by_file_reads_as_not_acquired(self):
         # A plain file where the per-user directory belongs makes mkdir
         # raise FileExistsError — not a PermissionError subclass, so the
         # broad OSError catch is what keeps this from escaping as a
-        # traceback before the GUI's error handling exists.
+        # traceback before the GUI's error handling exists. Private
+        # directory again: nothing outside it is touched or left behind.
         if os.name == 'nt':
             self.skipTest('POSIX flock branch')
         from gachaops import window_guard
-        lock = window_guard.posix_lock_path(unique_name())
-        lock.parent.write_text('x', encoding='utf-8')
+        name = unique_name()
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            real_lock_path = window_guard.posix_lock_path
 
-        def cleanup():
-            if lock.parent.is_file():
-                lock.parent.unlink()
+            def private_lock_path(guard_name):
+                real = real_lock_path(guard_name)
+                return base / real.parent.name / real.name
 
-        self.addCleanup(cleanup)
-        guard = window_guard.WindowGuard(unique_name())
-        self.assertFalse(guard.acquire())
-        self.assertIsNone(guard.stream)
+            private_lock_path(name).parent.write_text('x', encoding='utf-8')
+            with patch.object(window_guard, 'posix_lock_path', private_lock_path):
+                guard = window_guard.WindowGuard(name)
+                self.assertFalse(guard.acquire())
+                self.assertIsNone(guard.stream)
 
 
 @unittest.skipUnless(importlib.util.find_spec('PySide6'),
