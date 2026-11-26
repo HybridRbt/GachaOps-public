@@ -510,7 +510,12 @@ def main():
             self.check_report = None
             self.log_seen = 0
             self.started = None
-            self.run_confirm_timer = None
+            # One deferred "start not confirmed" timer for the window's
+            # lifetime; begin() restarts it, so repeated runs do not
+            # accumulate Qt children.
+            self.run_confirm_timer = QTimer(self)
+            self.run_confirm_timer.setSingleShot(True)
+            self.run_confirm_timer.timeout.connect(self._run_confirm_timeout)
             self.run_confirm_timeout_ms = RUN_CONFIRM_TIMEOUT_MS
             self.run_confirmed_minimized = False
             self.run_confirm_warned = False
@@ -2039,9 +2044,6 @@ def main():
                         # minimizing there cannot hide a gate refusal. If the
                         # worker neither confirms the flow nor exits in time,
                         # the timeout keeps the window visible and says so.
-                        self.run_confirm_timer = QTimer(self)
-                        self.run_confirm_timer.setSingleShot(True)
-                        self.run_confirm_timer.timeout.connect(self._run_confirm_timeout)
                         self.run_confirm_timer.start(self.run_confirm_timeout_ms)
                     process.started.connect(handoff)
                 self.refresh_controls(); self.refresh_checklist()

@@ -679,6 +679,48 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()
 
+    def test_run_confirm_timer_is_created_once_and_reused(self):
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtCore import QProcess, QTimer
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from gachaops import desktop
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); path = root / 'fixture.json'
+            path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
+                id='fixture', adapter='ok-ww', installation_root=str(root), enabled=True,
+                game_start='assistant')])), encoding='utf-8')
+            write_registry(root, {'ok-ww': {'installation_root': str(root)}})
+
+            def exercise(window, root):
+                window.timer.stop(); window.recheck_timer.stop()
+                # The window opens recovery-locked; release that so begin()
+                # reaches the worker start and the deferred run-confirm
+                # handoff. The enabled fixture row is selected on load.
+                counts = []
+                warnings = []
+                with patch.object(QMessageBox, 'warning', side_effect=lambda *a: warnings.append(a)), \
+                     patch.object(window, 'needs_recovery', return_value=False), \
+                     patch.object(QProcess, 'start', lambda process: process.started.emit()), \
+                     patch('gachaops.foreground.allow_foreground'):
+                    for _ in range(3):
+                        window.begin('run-assistants')
+                        counts.append(len(window.findChildren(QTimer)))
+                self.assertEqual(warnings, [])
+                # The deferred "start not confirmed" timer is created once at
+                # initialization; repeated begins must not accumulate copies.
+                self.assertEqual(counts[0], counts[1])
+                self.assertEqual(counts[1], counts[2])
+                window.process = None
+                window.close()
+
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', lambda window: exercise(window, root), create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--config', str(path)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
     def test_timeout_input_clamps_saves_and_enters_worker_snapshot(self):
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         from PySide6.QtCore import QProcess
