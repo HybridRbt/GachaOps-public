@@ -2488,8 +2488,10 @@ def main():
 
     app = QApplication(sys.argv)
     configure_appearance(app)
-    # Machine-wide single window guard (issue #24): one GachaOps graphical
-    # window per machine, regardless of data directory. It is taken before
+    # Single window guard (issue #24): one GachaOps graphical window,
+    # regardless of data directory — machine-wide on Windows (the Global\
+    # named mutex), per-user on Linux and macOS (a lock file in the
+    # per-user temp directory). It is taken before
     # the startup gate inside Window(), so a refused relaunch never reads
     # or writes data, and held until this process exits. Automation skips
     # it: --smoke-test drives its own window and quits, and layout previews

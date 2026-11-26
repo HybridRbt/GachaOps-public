@@ -64,12 +64,14 @@ def posix_lock_path(name):
 
 
 class WindowGuard:
-    """Kernel-wide guard held for the lifetime of one GUI window.
+    """Guard held for the lifetime of one GUI window: a machine-global
+    named mutex on Windows, a per-user lock file on Linux and macOS.
 
     Windows: a named mutex whose abandoned ownership is taken over — a
     crashed prior window is exactly the case the next launch must recover
-    from. POSIX: a non-blocking flock on a lock file named after the guard;
-    the OS releases it when the holder dies, which is the same contract.
+    from. POSIX: a non-blocking flock on a lock file named after the guard
+    inside the per-user lock directory; the OS releases it when the holder
+    dies, which is the same contract.
     """
 
     def __init__(self, name=GUARD_NAME):
@@ -117,18 +119,23 @@ class WindowGuard:
             return False
         try:
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        except PermissionError:
-            # The temp area is not writable for us: without our own lock
-            # file we cannot own the window either.
+        except OSError:
+            # Creating the directory can fail in more ways than missing
+            # permission: a planted plain file at the path makes mkdir
+            # raise FileExistsError, and a read-only or full volume fails
+            # too. This runs before the GUI's error handling exists, so
+            # any of them must read as not acquired, never escape.
             return False
         flags = os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0)
         try:
             self.stream = os.fdopen(os.open(path, flags, 0o600), 'r+')
         except OSError as error:
-            # The lock file lives in a shared temp directory: a second user
-            # hits PermissionError on the 0600 file, and a planted symlink
-            # trips O_NOFOLLOW (ELOOP). Neither is our own window holding
-            # the guard, so both read as "not acquired" instead of raising.
+            # The lock file is ours alone (per-user directory), so a
+            # PermissionError here is no longer another user's file; what
+            # remains is hostile or broken state — a planted symlink trips
+            # O_NOFOLLOW (ELOOP), racing cleanup or a failing volume raises
+            # the rest. None of that is our own window holding the guard,
+            # so it reads as "not acquired" instead of raising.
             if isinstance(error, PermissionError) or error.errno == errno.ELOOP:
                 return False
             raise
@@ -153,12 +160,14 @@ class WindowGuard:
 
 
 def acquire_gui_guard(name=None, wait_seconds=0.0):
-    """Take the machine-wide window guard.
+    """Take the window guard (machine-wide on Windows, per-user on Linux
+    and macOS).
 
-    Returns the acquired guard, or None when the machine already has a
-    window. With wait_seconds above zero (the elevation handoff) it polls
-    for the retiring window to release for up to that long before giving
-    up. The name resolves at call time so tests can patch GUARD_NAME.
+    Returns the acquired guard, or None when the platform's scope already
+    has a window. With wait_seconds above zero (the elevation handoff) it
+    polls for the retiring window to release for up to that long before
+    giving up. The name resolves at call time so tests can patch
+    GUARD_NAME.
     """
     if name is None:
         name = GUARD_NAME

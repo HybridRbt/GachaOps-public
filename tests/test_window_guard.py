@@ -79,6 +79,26 @@ def stop_child(child):
             child.stdout.close()
 
 
+def open_witness(name):
+    """Open (never own) the named mutex on Windows so the kernel object
+    outlives any handle lifecycle bug in release(): without a witness, a
+    release that drops only ReleaseMutex but keeps CloseHandle destroys
+    the owned object along with the last handle, and no other process
+    can observe the leaked ownership. Returns (api, handle), or None off
+    Windows."""
+    if os.name != 'nt':
+        return None
+    api = ctypes.WinDLL('kernel32', use_last_error=True)
+    api.CreateMutexW.argtypes = [ctypes.c_void_p, w.BOOL, w.LPCWSTR]
+    api.CreateMutexW.restype = w.HANDLE
+    api.CloseHandle.argtypes = [w.HANDLE]
+    api.CloseHandle.restype = w.BOOL
+    handle = api.CreateMutexW(None, False, 'Global\\' + name)
+    if not handle:
+        raise AssertionError('witness mutex creation failed')
+    return api, handle
+
+
 def handoff_document():
     from gachaops.desktop_model import write_handoff
     from gachaops.profiles import default_profile
@@ -151,17 +171,23 @@ class WindowGuardTests(unittest.TestCase):
         gachaops_hwnd = api.CreateWindowExW(
             noactivate_tool, 'STATIC', 'GachaOps — 助手编排 (window find probe)',
             popup_visible, -32000, -32000, 0, 0, None, None, None, None)
+        # Created later, so it sits on top of the z-order; the candidate
+        # list must preserve that order (topmost first).
+        topmost_hwnd = api.CreateWindowExW(
+            noactivate_tool, 'STATIC', 'GachaOps — 助手编排 (window find probe 2)',
+            popup_visible, -32000, -32000, 0, 0, None, None, None, None)
         other_hwnd = api.CreateWindowExW(
             noactivate_tool, 'STATIC', 'some other tool',
             popup_visible, -32000, -32000, 0, 0, None, None, None, None)
-        self.assertTrue(gachaops_hwnd and other_hwnd)
+        self.assertTrue(gachaops_hwnd and topmost_hwnd and other_hwnd)
         try:
             from gachaops import window_guard
             found = window_guard._find_own_window()
-            self.assertEqual(found, [int(gachaops_hwnd)])
+            self.assertEqual(found, [int(topmost_hwnd), int(gachaops_hwnd)])
             self.assertNotIn(int(other_hwnd), found)
         finally:
             api.DestroyWindow(gachaops_hwnd)
+            api.DestroyWindow(topmost_hwnd)
             api.DestroyWindow(other_hwnd)
 
     def test_frozen_enumeration_includes_gate_dialogs_and_skips_untitled(self):
@@ -469,6 +495,48 @@ class WindowGuardTests(unittest.TestCase):
         self.assertEqual(path.parent.name,
                          'gachaops-window-' + str(uid()))
 
+    def test_posix_symlinked_lock_directory_reads_as_not_acquired(self):
+        # A planted symlink at the per-user directory would redirect the
+        # lock file entirely: refused without following it, never raised.
+        if os.name == 'nt':
+            self.skipTest('POSIX flock branch')
+        from gachaops import window_guard
+        lock = window_guard.posix_lock_path(unique_name())
+        decoy = lock.parent.with_name(lock.parent.name + '.fixture-target')
+        decoy.mkdir(parents=True, exist_ok=True)
+        os.symlink(decoy, lock.parent)
+
+        def cleanup():
+            if lock.parent.is_symlink():
+                os.unlink(lock.parent)
+            if decoy.is_dir():
+                decoy.rmdir()
+
+        self.addCleanup(cleanup)
+        guard = window_guard.WindowGuard(unique_name())
+        self.assertFalse(guard.acquire())
+        self.assertIsNone(guard.stream)
+
+    def test_posix_lock_directory_path_taken_by_file_reads_as_not_acquired(self):
+        # A plain file where the per-user directory belongs makes mkdir
+        # raise FileExistsError — not a PermissionError subclass, so the
+        # broad OSError catch is what keeps this from escaping as a
+        # traceback before the GUI's error handling exists.
+        if os.name == 'nt':
+            self.skipTest('POSIX flock branch')
+        from gachaops import window_guard
+        lock = window_guard.posix_lock_path(unique_name())
+        lock.parent.write_text('x', encoding='utf-8')
+
+        def cleanup():
+            if lock.parent.is_file():
+                lock.parent.unlink()
+
+        self.addCleanup(cleanup)
+        guard = window_guard.WindowGuard(unique_name())
+        self.assertFalse(guard.acquire())
+        self.assertIsNone(guard.stream)
+
 
 @unittest.skipUnless(importlib.util.find_spec('PySide6'),
                      'optional desktop dependencies unavailable')
@@ -621,6 +689,12 @@ class DesktopLaunchTests(unittest.TestCase):
         from PySide6.QtWidgets import QApplication, QMessageBox
         self.addCleanup(self._qt)
         name = unique_name()
+        # Same witness rationale as the normal-exit test: the mutex object
+        # must outlive a release that closes handles without releasing
+        # ownership, or the leak is invisible to the probing child.
+        witness = open_witness(name)
+        if witness is not None:
+            self.addCleanup(witness[0].CloseHandle, witness[1])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             boxes = []
@@ -659,6 +733,13 @@ class DesktopLaunchTests(unittest.TestCase):
         from PySide6.QtWidgets import QApplication
         self.addCleanup(self._qt)
         name = unique_name()
+        # A witness keeps the mutex object alive even if release() drops
+        # only ReleaseMutex while keeping CloseHandle: the object would
+        # otherwise die with the last handle and no other process could
+        # observe the leaked ownership.
+        witness = open_witness(name)
+        if witness is not None:
+            self.addCleanup(witness[0].CloseHandle, witness[1])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             boxes = self._mute_boxes()
