@@ -2519,6 +2519,12 @@ def main():
         try:
             window = Window(); window.show()
         except (OSError, ValueError) as error:
+            # The user may fix the problem and relaunch while this box is
+            # still up: release the guard before showing it, so the fresh
+            # launch takes over instead of fronting this stale box.
+            if guard is not None:
+                guard.release()
+                guard = None
             QMessageBox.critical(None, 'GachaOps 无法打开', str(error)); return 2
         if '--recover' in sys.argv and elevation_report().get('elevated') is True:
             QTimer.singleShot(0, window.begin_recovery)

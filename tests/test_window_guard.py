@@ -136,9 +136,10 @@ class WindowGuardTests(unittest.TestCase):
         hwnd = 4321
 
         class FakeApi:
-            def __init__(self, iconic, foreground):
+            def __init__(self, iconic, foreground, roots=None):
                 self.iconic = iconic
                 self.foreground = foreground
+                self.roots = roots or {}
                 self.calls = []
 
             def IsIconic(self, hwnd):
@@ -157,6 +158,11 @@ class WindowGuardTests(unittest.TestCase):
                 self.calls.append('GetForegroundWindow')
                 return self.foreground
 
+            def GetAncestor(self, hwnd, flag):
+                self.calls.append(('GetAncestor', hwnd, flag))
+                # Unmapped windows are unowned top-levels: their own root.
+                return self.roots.get(hwnd, hwnd)
+
         # Minimized: restored with SW_RESTORE (9), then set foreground, and
         # the real foreground read confirms the switch.
         restored = FakeApi(iconic=True, foreground=hwnd)
@@ -171,12 +177,159 @@ class WindowGuardTests(unittest.TestCase):
         # the result reads False and the caller points at the taskbar.
         denied = FakeApi(iconic=False, foreground=9999)
         self.assertFalse(window_guard._bring_to_front(denied, hwnd))
+        # SetForegroundWindow on a disabled owner activates its modal
+        # dialog instead: the foreground hwnd differs from the target but
+        # shares its root owner, which still counts as switched.
+        dialog = 555
+        modal = FakeApi(iconic=False, foreground=dialog,
+                        roots={dialog: hwnd, hwnd: hwnd})
+        self.assertTrue(window_guard._bring_to_front(modal, hwnd))
+
+    def test_activation_tries_candidates_in_z_order_until_one_fronts(self):
+        from gachaops import window_guard
+
+        class FakeApi:
+            def __init__(self, foreground, roots):
+                self.foreground = foreground
+                self.roots = roots
+                self.fronted = []
+
+            def IsIconic(self, hwnd):
+                return False
+
+            def ShowWindow(self, hwnd, command):
+                pass
+
+            def SetForegroundWindow(self, hwnd):
+                self.fronted.append(hwnd)
+                return True
+
+            def GetForegroundWindow(self):
+                return self.foreground
+
+            def GetAncestor(self, hwnd, flag):
+                return self.roots.get(hwnd, hwnd)
+
+        # Z-order topmost-first: the topmost candidate fronts
+        # unsuccessfully while the window behind it is frontable, so both
+        # are tried in order and the second one decides the result.
+        api = FakeApi(333, {333: 222, 111: 111, 222: 222})
+        with patch.object(window_guard, '_find_own_window',
+                          return_value=[111, 222]), \
+             patch.object(window_guard.time, 'sleep', lambda seconds: None):
+            self.assertTrue(window_guard.activate_existing_window(
+                attempts=1, api=api))
+        self.assertEqual(api.fronted, [111, 222])
+        # Every candidate refusing the foreground reads as failure — the
+        # caller then tells the user to switch manually.
+        api = FakeApi(444, {444: 444, 111: 111, 222: 222})
+        with patch.object(window_guard, '_find_own_window',
+                          return_value=[111, 222]), \
+             patch.object(window_guard.time, 'sleep', lambda seconds: None):
+            self.assertFalse(window_guard.activate_existing_window(
+                attempts=1, api=api))
+        self.assertEqual(api.fronted, [111, 222])
+
+    def test_acquire_with_empty_mutex_handle_never_waits(self):
+        # CreateMutexW can fail; the guard must report not-acquired without
+        # touching the dead handle — no WaitForSingleObject, and the raw
+        # wait result stays unset.
+        if os.name != 'nt':
+            self.skipTest('Windows mutex branch')
+        from gachaops import window_guard
+
+        class FakeKernel:
+            def __init__(self):
+                self.waits = []
+                def create(*args):
+                    return None
+                def wait(*args):
+                    self.waits.append(args)
+                    return 0
+                def accept(*args):
+                    return True
+                # Plain functions: acquire declares argtypes/restype on
+                # them, which bound methods would refuse.
+                self.CreateMutexW = create
+                self.WaitForSingleObject = wait
+                self.ReleaseMutex = accept
+                self.CloseHandle = accept
+
+        fake = FakeKernel()
+        with patch.object(window_guard.ctypes, 'WinDLL', return_value=fake):
+            guard = window_guard.WindowGuard(unique_name())
+            self.assertFalse(guard.acquire())
+        self.assertIsNone(guard.wait_result)
+        self.assertEqual(fake.waits, [])
+        guard.release()
+
+    def test_posix_permission_error_reads_as_not_acquired(self):
+        # The lock file lives in a shared temp directory with 0600: a
+        # second user cannot open it, which is not our own window holding
+        # the guard — read as not acquired instead of raising.
+        if os.name == 'nt':
+            self.skipTest('POSIX flock branch')
+        from gachaops import window_guard
+        guard = window_guard.WindowGuard(unique_name())
+        with patch.object(window_guard.os, 'open',
+                          side_effect=PermissionError(13, 'fixture')):
+            self.assertFalse(guard.acquire())
+        self.assertIsNone(guard.wait_result)
+        self.assertIsNone(guard.stream)
+
+    def test_posix_symlinked_lock_file_reads_as_not_acquired(self):
+        # A planted symlink at the lock path trips O_NOFOLLOW (ELOOP):
+        # neither a real holder nor ours — not acquired, never followed.
+        if os.name == 'nt':
+            self.skipTest('POSIX flock branch')
+        from gachaops import window_guard
+        name = unique_name()
+        digest = hashlib.sha256(name.encode()).hexdigest()
+        lock = Path(tempfile.gettempdir()) / ('gachaops-window-' + digest + '.lock')
+        target = lock.with_name(lock.name + '.fixture-target')
+        target.write_text('x', encoding='utf-8')
+        os.symlink(target, lock)
+
+        def cleanup():
+            if lock.is_symlink():
+                lock.unlink()
+            if target.exists():
+                target.unlink()
+
+        self.addCleanup(cleanup)
+        guard = window_guard.WindowGuard(name)
+        self.assertFalse(guard.acquire())
+        self.assertIsNone(guard.stream)
+
+    def test_posix_held_flock_reads_as_not_acquired(self):
+        # flock conflicts across open file descriptions even inside one
+        # process, so a second description holding LOCK_EX reproduces
+        # another holder (EAGAIN) without a helper child.
+        if os.name == 'nt':
+            self.skipTest('POSIX flock branch')
+        import fcntl
+        from gachaops import window_guard
+        name = unique_name()
+        digest = hashlib.sha256(name.encode()).hexdigest()
+        lock = Path(tempfile.gettempdir()) / ('gachaops-window-' + digest + '.lock')
+        holder = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+        self.addCleanup(os.close, holder)
+        fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            guard = window_guard.WindowGuard(name)
+            self.assertFalse(guard.acquire())
+            # The refused attempt leaves no stream of its own behind.
+            self.assertIsNone(guard.stream)
+        finally:
+            fcntl.flock(holder, fcntl.LOCK_UN)
 
     def test_find_own_window_matches_by_real_enumeration(self):
         # Real enumeration against two zero-size offscreen top-level windows
         # created in this process (predefined STATIC class, WS_POPUP visible,
-        # parked at -32000,-32000): nothing is visible on the user's desktop
-        # and both are destroyed before the test returns.
+        # WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW so a run inside a foreground-
+        # privileged terminal never steals focus briefly, parked at
+        # -32000,-32000): nothing is visible on the user's desktop and both
+        # are destroyed before the test returns.
         if os.name != 'nt':
             self.skipTest('Windows window enumeration')
         api = ctypes.WinDLL('user32', use_last_error=True)
@@ -187,27 +340,63 @@ class WindowGuardTests(unittest.TestCase):
         api.CreateWindowExW.restype = w.HWND
         api.DestroyWindow.argtypes = [w.HWND]
         api.DestroyWindow.restype = w.BOOL
+        noactivate_tool = 0x08000080  # WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
         popup_visible = 0x90000000  # WS_POPUP | WS_VISIBLE
         gachaops_hwnd = api.CreateWindowExW(
-            0, 'STATIC', 'GachaOps — 助手编排 (window find probe)',
+            noactivate_tool, 'STATIC', 'GachaOps — 助手编排 (window find probe)',
             popup_visible, -32000, -32000, 0, 0, None, None, None, None)
         other_hwnd = api.CreateWindowExW(
-            0, 'STATIC', 'some other tool',
+            noactivate_tool, 'STATIC', 'some other tool',
             popup_visible, -32000, -32000, 0, 0, None, None, None, None)
         self.assertTrue(gachaops_hwnd and other_hwnd)
         try:
             from gachaops import window_guard
             found = window_guard._find_own_window()
-            self.assertEqual(found, int(gachaops_hwnd))
-            self.assertNotEqual(found, int(other_hwnd))
+            self.assertEqual(found, [int(gachaops_hwnd)])
+            self.assertNotIn(int(other_hwnd), found)
         finally:
             api.DestroyWindow(gachaops_hwnd)
             api.DestroyWindow(other_hwnd)
 
+    def test_frozen_enumeration_includes_gate_dialogs_and_skips_untitled(self):
+        # Frozen builds must find windows whose title does not start with
+        # GachaOps — the startup-gate dialogs are the only visible windows
+        # while the main window is still hidden — but an untitled popup is
+        # never a candidate: topmost in the z-order it would fail the
+        # foreground check and hide the frontable window behind it.
+        if os.name != 'nt':
+            self.skipTest('Windows window enumeration')
+        api = ctypes.WinDLL('user32', use_last_error=True)
+        api.CreateWindowExW.argtypes = [w.DWORD, w.LPCWSTR, w.LPCWSTR, w.DWORD,
+                                        ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                        ctypes.c_int, w.HWND, w.HANDLE, w.HINSTANCE,
+                                        w.LPVOID]
+        api.CreateWindowExW.restype = w.HWND
+        api.DestroyWindow.argtypes = [w.HWND]
+        api.DestroyWindow.restype = w.BOOL
+        noactivate_tool = 0x08000080  # WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
+        popup_visible = 0x90000000  # WS_POPUP | WS_VISIBLE
+        gate_hwnd = api.CreateWindowExW(
+            noactivate_tool, 'STATIC', '继续迁移 / 继续导入',
+            popup_visible, -32000, -32000, 0, 0, None, None, None, None)
+        untitled_hwnd = api.CreateWindowExW(
+            noactivate_tool, 'STATIC', '',
+            popup_visible, -32000, -32000, 0, 0, None, None, None, None)
+        self.assertTrue(gate_hwnd and untitled_hwnd)
+        try:
+            from gachaops import window_guard
+            with patch.object(sys, 'frozen', True, create=True):
+                found = window_guard._find_own_window()
+            self.assertIn(int(gate_hwnd), found)
+            self.assertNotIn(int(untitled_hwnd), found)
+        finally:
+            api.DestroyWindow(gate_hwnd)
+            api.DestroyWindow(untitled_hwnd)
+
     def test_activation_wait_is_bounded_on_the_handoff_scale(self):
         from gachaops import window_guard
         sleeps = []
-        with patch.object(window_guard, '_find_own_window', return_value=0), \
+        with patch.object(window_guard, '_find_own_window', return_value=[]), \
              patch.object(window_guard.time, 'sleep',
                           side_effect=lambda seconds: sleeps.append(seconds)):
             self.assertFalse(window_guard.activate_existing_window())
@@ -331,6 +520,45 @@ class WindowGuardTests(unittest.TestCase):
             # No window, no gate: the timed-out handoff wrote nothing.
             self.assertEqual(list((root / 'runs').iterdir()), [handoff.parent])
             self.assertFalse((root / 'config').exists())
+
+    def test_gate_failure_releases_the_guard_before_the_box(self):
+        from gachaops import desktop, window_guard
+        from gachaops.planner import ConfigError
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        self.addCleanup(self._qt)
+        name = unique_name()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            boxes = []
+
+            def probe_at_box_time(*args, **kwargs):
+                # The critical box is up only after the guard is gone: a
+                # fresh process must be able to take the name right now,
+                # or relaunching while the old box lingers would just front
+                # that stale box. A child cannot mask via reentrancy.
+                child, held = hold_in_child(name, '0')
+                self.assertEqual(held, 'HELD')
+                stop_child(child)
+
+            record = lambda *a, **k: boxes.append(a)
+            # Window is a local class inside main(); the failure is
+            # injected through workspace_root, which Window.__init__ calls
+            # inside the guarded try (the gate's own failure surface).
+            with patch.object(window_guard, 'GUARD_NAME', name), \
+                 patch.object(desktop, 'workspace_root',
+                              side_effect=ConfigError('fixture gate failure')), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(QMessageBox, 'critical',
+                              side_effect=lambda *a, **k:
+                                  (boxes.append(a), probe_at_box_time())), \
+                 patch.object(QMessageBox, 'information', side_effect=record), \
+                 patch.object(QMessageBox, 'warning', side_effect=record), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 2)
+            self.assertEqual(boxes[0][1], 'GachaOps 无法打开')
+            # The gate never ran: nothing was written.
+            self.assertEqual(list(root.iterdir()), [])
 
     def test_window_guard_abandoned_ownership_is_taken_over(self):
         from gachaops import window_guard

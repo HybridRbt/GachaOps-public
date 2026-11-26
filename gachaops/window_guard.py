@@ -1,10 +1,14 @@
-"""Machine-wide single GUI window guard, independent of the execution lock.
+"""Single GUI window guard, independent of the execution lock.
 
-One named kernel mutex (Windows) or lock file (POSIX) admits exactly one
-GachaOps graphical window per machine, regardless of data directory. Unlike
-the execution lock, abandoned ownership is taken over: a crashed prior
-window must never keep the next launch from opening. The guard is held in
-the GUI process from before the window's startup gate until process exit;
+A named kernel mutex (Windows) or a lock file under the system temp
+directory (POSIX) admits exactly one GachaOps graphical window per
+machine, regardless of data directory — with one honest exception: the
+POSIX lock file lives where tempfile.gettempdir() points, which is
+machine-level on Windows/Linux setups but per-user on macOS, so there
+the guard holds per user rather than per machine. Unlike the execution
+lock, abandoned ownership is taken over: a crashed prior window must
+never keep the next launch from opening. The guard is held in the GUI
+process from before the window's startup gate until process exit;
 automation launches (--smoke-test, layout previews) never take it, and
 command-line/worker processes are never touched by it.
 """
@@ -162,18 +166,27 @@ def window_matches(image_name, title, own_image, frozen=False):
     program's window must not be fronted — and excludes the app's own
     dropdown popups and tooltips. Known trade-off: a source run's
     startup-gate dialogs are therefore not found by the second launch.
+    Windows with an empty title are never candidates: the main window and
+    every dialog carry a title, while dropdowns, tooltips and IME layers
+    do not — and an untitled popup at the top of the z-order would fail
+    the foreground check and hide the frontable window behind it.
     """
     if os.path.normcase(os.path.basename(image_name)) != os.path.normcase(own_image):
+        return False
+    if not title:
         return False
     return frozen or title.startswith(ACTIVATION_TITLE_PREFIX)
 
 
 def _find_own_window():
-    """The first visible top-level window of a same-image process, or 0.
+    """Visible top-level windows of same-image processes, in z-order.
 
+    Enumeration reports windows topmost first, so the list starts with
+    what a second launch would most plausibly want; the caller tries
+    them front to back until one actually takes the foreground.
     Enumeration only sees the calling session's desktop, so a window in
-    another Windows session is simply not found and the caller falls back
-    to telling the user. Windows: ctypes only, no synthetic input.
+    another Windows session is simply not found and the caller falls
+    back to telling the user. Windows: ctypes only, no synthetic input.
     """
     if os.name != 'nt':
         return 0
@@ -225,31 +238,26 @@ def _find_own_window():
         return True
 
     api.EnumWindows(collect, 0)
-    return found[0] if found else 0
+    return found
 
 
 def _bring_to_front(api, hwnd):
     """Restore the window if minimized, set it foreground, and return
     whether it really sits in the foreground afterwards — a denial reads
     as False so the caller can point the user at the taskbar instead of
-    exiting silently."""
+    exiting silently. The foreground window may be a modal dialog owned
+    by the target (SetForegroundWindow on a disabled owner activates the
+    dialog), so the check compares root owners rather than exact hwnd."""
     if api.IsIconic(hwnd):
         api.ShowWindow(hwnd, 9)  # SW_RESTORE; no synthetic input
     api.SetForegroundWindow(hwnd)
-    return api.GetForegroundWindow() == hwnd
+    foreground = api.GetForegroundWindow()
+    root_owner = 3  # GA_ROOTOWNER
+    return api.GetAncestor(foreground, root_owner) == api.GetAncestor(hwnd, root_owner)
 
 
-def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
-                             interval=ACTIVATION_INTERVAL_SECONDS):
-    """Restore and foreground the existing window, retrying briefly.
-
-    Returns whether a matching window was found and actually sits in the
-    foreground now. The guard holder may still be between acquiring the
-    guard and showing its window, so a few bounded retries precede the
-    manual-switch report.
-    """
-    if os.name != 'nt':
-        return False
+def _user32_activation_api():
+    """The user32 handle for activation, with declarations filled in."""
     api = ctypes.WinDLL('user32', use_last_error=True)
     api.IsIconic.argtypes = [w.HWND]
     api.IsIconic.restype = w.BOOL
@@ -259,9 +267,30 @@ def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
     api.SetForegroundWindow.restype = w.BOOL
     api.GetForegroundWindow.argtypes = []
     api.GetForegroundWindow.restype = w.HWND
+    api.GetAncestor.argtypes = [w.HWND, w.UINT]
+    api.GetAncestor.restype = w.HWND
+    return api
+
+
+def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
+                             interval=ACTIVATION_INTERVAL_SECONDS, api=None):
+    """Restore and foreground the existing window, retrying briefly.
+
+    Returns whether a matching window was found and actually sits in the
+    foreground now. The guard holder may still be between acquiring the
+    guard and showing its window, so a few bounded retries precede the
+    manual-switch report.
+    """
+    if os.name != 'nt':
+        return False
+    if api is None:
+        api = _user32_activation_api()
     for _ in range(attempts):
-        hwnd = _find_own_window()
-        if hwnd:
-            return _bring_to_front(api, hwnd)
+        # Candidates are z-ordered topmost-first; the topmost one may not
+        # actually take the foreground (a popup being torn down, a layered
+        # window), so walk the list until the check passes.
+        for hwnd in _find_own_window():
+            if _bring_to_front(api, hwnd):
+                return True
         time.sleep(interval)
     return False
