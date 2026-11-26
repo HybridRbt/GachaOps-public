@@ -1,14 +1,20 @@
 """Offline migration/import regressions with fixture directories only."""
+import hashlib
 import json
+import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+import uuid
 from unittest.mock import patch
 
-from gachaops.migration_journal import JOURNAL_KIND, backup_root, journal_path, read_journal
+from gachaops.migration_journal import (JOURNAL_KIND, archive_journal, backup_directory,
+                                        backup_root, journal_path, read_journal,
+                                        reparse_point)
 from gachaops.planner import ConfigError
 from gachaops.profiles import ProfileStore
 from gachaops.recovery import save
@@ -252,6 +258,73 @@ class MigrationContinueTests(unittest.TestCase):
             self.assertEqual(startup_state(root)['status'], 'ready')
             with self.assertRaises(ConfigError):
                 continue_registration_transaction(root)
+
+    def prepare_interrupted_without_registry(self, root):
+        """First migration on an old-layout root: one schema 1 combination
+        and no global registry yet. The registry source row is written
+        without a sha256 (nothing to digest); publishing stops after the
+        registry target so the transaction stays prepared."""
+        from gachaops import registration_migration
+        write_profile(root, UUID_A, schema1(root, [ok_row(root, enabled=True)]), name='A')
+        preview = preview_registration_migration(root)
+        real_publish = registration_migration._publish_targets
+
+        def flaky(root_arg, targets):
+            real_publish(root_arg, targets[:1])  # registry lands, profiles do not
+            raise PermissionError('fixture interruption')
+        with patch.object(registration_migration, '_publish_targets', flaky):
+            with self.assertRaises(PermissionError):
+                commit_registration_migration(root, preview, {})
+        journal = read_journal(root)
+        self.assertIsNotNone(journal)
+        self.assertEqual(journal['state'], 'prepared')
+        return preview
+
+    def test_first_migration_without_registry_recovers_and_completes(self):
+        """A first migration on a machine with no global registry writes the
+        registry source row without a sha256; the manifest reader must
+        accept the program's own shape or every interrupted first migration
+        would block the data root forever."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted_without_registry(root)
+            self.assertEqual(startup_state(root)['status'], 'prepared')
+            result = continue_registration_transaction(root)
+            self.assertEqual(result['kind'], 'migration')
+            document = ProfileStore(root).load_profile(UUID_A)
+            self.assertTrue(document['assistants'][0]['enabled'])
+            registry = RegistrationStore(root).read_required()
+            self.assertEqual(registry['assistants']['ok-ww'], {'installation_root': str(root)})
+            self.assertIsNone(read_journal(root))
+            self.assertEqual(startup_state(root)['status'], 'ready')
+
+    def test_schema2_only_first_migration_recovers_and_completes(self):
+        """Schema 2 combinations without a registry take the other
+        migration_required branch of startup_state; their manifest has no
+        source rows besides the digest-less registry row, and an
+        interrupted migration of this shape must continue like any other."""
+        from gachaops.profiles import default_profile, profile_document
+        from gachaops import registration_migration
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_profile(root, UUID_B, profile_document(default_profile(), 1), name='乙')
+            self.assertEqual(startup_state(root)['status'], 'migration_required')
+            preview = preview_registration_migration(root)
+            real_publish = registration_migration._publish_targets
+
+            def flaky(root_arg, targets):
+                real_publish(root_arg, targets[:1])  # registry lands
+                raise PermissionError('fixture interruption')
+            with patch.object(registration_migration, '_publish_targets', flaky):
+                with self.assertRaises(PermissionError):
+                    commit_registration_migration(root, preview, {})
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+            result = continue_registration_transaction(root)
+            self.assertEqual(result['kind'], 'migration')
+            self.assertTrue(ProfileStore(root).load_profile(UUID_B)['assistants'])
+            RegistrationStore(root).read_required()  # the registry now exists
+            self.assertIsNone(read_journal(root))
+            self.assertEqual(startup_state(root)['status'], 'ready')
 
     def test_external_edits_and_backup_damage_stop_continuation(self):
         from gachaops.profiles import default_profile, profile_document
@@ -664,6 +737,422 @@ class ContinueRegistrationRaceTests(unittest.TestCase):
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=30)
+
+
+class JournalBackupValidationTests(unittest.TestCase):
+    """A forged or damaged journal's backup value must not point backup
+    reads or writes outside this data root's backup directory."""
+
+    @staticmethod
+    def journal(backup, state='complete'):
+        return {'schema_version': 1, 'kind': JOURNAL_KIND, 'state': state,
+                'transaction': 'migration', 'backup': backup,
+                'manifest_sha256': '0' * 64, 'created_at': '2026-01-01T00:00:00+00:00'}
+
+    def test_read_journal_rejects_non_canonical_backup_values(self):
+        # The only value the program writes is uuid4().hex; every other
+        # spelling is a forged journal and is refused outright.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            for value in ('../../outside', 'C:/outside/x', str(Path(temp) / 'elsewhere'),
+                          'nested/value', 'a' * 31, 'a' * 33, 'A' * 32, '0' * 32 + ' '):
+                save(journal_path(root), self.journal(value))
+                with self.subTest(value=value):
+                    with self.assertRaises(ConfigError):
+                        read_journal(root)
+                (journal_path(root)).unlink()
+
+    def test_relative_backup_escape_is_refused_for_archiving(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            escape = '../../outside-' + uuid.uuid4().hex
+            save(journal_path(root), self.journal(escape))
+            with self.assertRaises(ConfigError):
+                read_journal(root)
+            with self.assertRaises(ConfigError):
+                archive_journal(root, self.journal(escape))
+            self.assertFalse((root / escape.split('/')[-1] / 'complete.json').exists())
+
+    def test_absolute_backup_value_is_refused_for_archiving(self):
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            initialize_fresh(root)
+            save(journal_path(root), self.journal(str(Path(elsewhere) / 'abs')))
+            with self.assertRaises(ConfigError):
+                read_journal(root)
+            with self.assertRaises(ConfigError):
+                archive_journal(root, self.journal(str(Path(elsewhere) / 'abs')))
+            self.assertFalse((Path(elsewhere) / 'abs' / 'complete.json').exists())
+
+    def test_continue_read_stays_inside_the_backup_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            escape = '../../outside-' + uuid.uuid4().hex
+            manifest = json.dumps({'kind': 'registration_migration', 'sources': [],
+                                   'targets': [], 'profiles': []}).encode('utf-8')
+            # The '..' spelling lands at the data root itself: outside the
+            # backup root (the containment boundary) but inside the data root.
+            escaped = (backup_root(root) / escape)
+            escaped.mkdir(parents=True, exist_ok=True)
+            (escaped / 'manifest.json').write_bytes(manifest)
+            save(journal_path(root), self.journal(escape, state='prepared') | {
+                'manifest_sha256': hashlib.sha256(manifest).hexdigest()})
+            # Refused at the schema layer before any lock or backup access:
+            # the unfixed product reads the planted manifest from outside the
+            # backup root and fails later with a different message.
+            with self.assertRaisesRegex(ConfigError, 'invalid migration journal schema'):
+                continue_registration_transaction(root)
+            # Nothing is deleted or rewritten: the forged journal file stays
+            # exactly as it was found.
+            self.assertTrue(journal_path(root).exists())
+            self.assertEqual(json.loads(journal_path(root).read_text(
+                encoding='utf-8-sig'))['backup'], escape)
+            self.assertFalse((escaped / 'complete.json').exists())
+            self.assertEqual((escaped / 'manifest.json').read_bytes(), manifest)
+
+    def test_symlinked_backup_directory_is_refused_for_archiving(self):
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            initialize_fresh(root)
+            (root / 'backups' / 'registration-migrations').mkdir(parents=True)
+            target = Path(elsewhere) / 'real'
+            target.mkdir()
+            link = backup_root(root) / ('a' * 32)
+            try:
+                os.symlink(target, link, target_is_directory=True)
+            except OSError:
+                self.skipTest(f'symlink creation unavailable: {sys.exc_info()[1]}')
+            save(journal_path(root), self.journal('a' * 32))
+            with self.assertRaises(ConfigError):
+                archive_journal(root, self.journal('a' * 32))
+            self.assertFalse((target / 'complete.json').exists())
+
+    def test_canonical_hex_backup_still_archives(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            backup = 'c' * 32
+            (backup_root(root) / backup).mkdir(parents=True)
+            save(journal_path(root), self.journal(backup))
+            archive_journal(root, self.journal(backup))
+            self.assertTrue((backup_root(root) / backup / 'complete.json').is_file())
+            self.assertFalse(journal_path(root).exists())
+
+    def test_backup_directory_rejects_non_canonical_names(self):
+        # backup_directory must enforce the hex name itself, not trust its
+        # caller to have passed the journal's schema check first.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            with self.assertRaises(ConfigError):
+                backup_directory(root, '.')
+            with self.assertRaises(ConfigError):
+                backup_directory(root, str(backup_root(root)))
+            with self.assertRaises(ConfigError):
+                backup_directory(root, 'A' * 32)
+            self.assertEqual(backup_directory(root, 'c' * 32),
+                             backup_root(root) / ('c' * 32))
+
+    def test_reparse_point_tolerates_plain_file_and_missing_levels(self):
+        # lstat below a plain file fails with FileNotFoundError on Windows
+        # and NotADirectoryError on POSIX; either way the level carries no
+        # reparse point and must read as False, not raise a path-carrying
+        # OSError. A missing path reads as False for the same reason.
+        with tempfile.TemporaryDirectory() as temp:
+            plain = Path(temp) / 'plain.json'
+            plain.write_bytes(b'{}')
+            self.assertFalse(reparse_point(plain / 'child'))
+            self.assertFalse(reparse_point(plain / 'missing'))
+            self.assertFalse(reparse_point(Path(temp) / 'no-such-name'))
+            self.assertTrue(reparse_point(plain) is False)
+
+
+class ManifestRowPathValidationTests(unittest.TestCase):
+    """A manifest is a local, forgeable file: its digest proves only that it
+    was not changed, never that it is trustworthy. Every row path must stay
+    inside its own staged subdirectory before any backup file is read."""
+
+    def prepare_interrupted(self, root):
+        """A real staged transaction (manifest, copies, prepared journal)."""
+        return MigrationContinueTests.prepare_interrupted(self, root)
+
+    @staticmethod
+    def _rewrite_manifest(root, mutate):
+        """Mutate one row of the staged manifest and re-sign the journal, so
+        only the row validation itself can refuse the document."""
+        manifest_path = next(backup_root(root).glob('*/manifest.json'))
+        manifest = json.loads(manifest_path.read_bytes().decode('utf-8'))
+        mutate(manifest)
+        payload = json.dumps(manifest, ensure_ascii=False).encode('utf-8')
+        manifest_path.write_bytes(payload)
+        journal = json.loads(journal_path(root).read_text(encoding='utf-8-sig'))
+        journal['manifest_sha256'] = hashlib.sha256(payload).hexdigest()
+        save(journal_path(root), journal)
+
+    @staticmethod
+    def _recording_reads():
+        """Patch Path.read_bytes to record every resolved path it reads."""
+        real_read = Path.read_bytes
+        reads = []
+
+        def recording(path):
+            reads.append(path.resolve())
+            return real_read(path)
+        return patch.object(Path, 'read_bytes', recording), reads
+
+    @staticmethod
+    def _make_junction(target, link):
+        """A Windows directory junction at `link` referring to `target`;
+        needs no privilege, unlike a symlink."""
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+
+    def _redirect_subdirectory(self, root, outside_base, subdirectory, planted_bytes):
+        """Point <backup>/<subdirectory> at a copy outside the data root
+        (staged contents included, so every staged digest still matches)
+        and return the planted file with its digest."""
+        backup_dir = next(backup_root(root).glob('*/manifest.json')).parent
+        outside = outside_base / subdirectory
+        outside.mkdir(parents=True)
+        shutil.copytree(backup_dir / subdirectory, outside, dirs_exist_ok=True)
+        planted = outside / 'planted.json'
+        planted.write_bytes(planted_bytes)
+        shutil.rmtree(backup_dir / subdirectory)
+        self._make_junction(outside, backup_dir / subdirectory)
+        return planted, hashlib.sha256(planted_bytes).hexdigest()
+
+    def test_sources_directory_junction_is_refused_before_any_read(self):
+        if sys.platform != 'win32':
+            self.skipTest('Windows directory junction')
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            planted, row_digest = self._redirect_subdirectory(
+                root, Path(elsewhere), 'sources', b'junction payload')
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['sources'].append(
+                        {'path': 'planted.json', 'exists': True, 'sha256': row_digest}))
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+                # Nothing outside the data root was read across the call.
+                # Both sides resolved: temp paths can contain 8.3 short
+                # names (as on the CI's Windows runner) that resolve()
+                # expands.
+                self.assertTrue(all(read.is_relative_to(root.resolve())
+                                    for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_targets_directory_junction_is_refused_before_any_read(self):
+        if sys.platform != 'win32':
+            self.skipTest('Windows directory junction')
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            planted, row_digest = self._redirect_subdirectory(
+                root, Path(elsewhere), 'targets', b'junction payload')
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['targets'].append(
+                        {'path': 'planted.json', 'sha256': row_digest}))
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+                self.assertTrue(all(read.is_relative_to(root.resolve())
+                                    for read in reads))
+            self.assertFalse((root / 'planted.json').exists())
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_junction_at_intermediate_directory_level_is_refused(self):
+        # A junction one level below the staged subdirectory must be refused
+        # by the explicit per-level check (the resolved-containment net
+        # alone cannot be relied on to be the reason).
+        if sys.platform != 'win32':
+            self.skipTest('Windows directory junction')
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            backup_dir = next(backup_root(root).glob('*/manifest.json')).parent
+            outside = Path(elsewhere) / 'config-copy'
+            outside.mkdir(parents=True)
+            shutil.copytree(backup_dir / 'sources' / 'config', outside, dirs_exist_ok=True)
+            shutil.rmtree(backup_dir / 'sources' / 'config')
+            self._make_junction(outside, backup_dir / 'sources' / 'config')
+            guard, reads = self._recording_reads()
+            with guard:
+                # No manifest mutation needed: the staged rows themselves
+                # walk through the redirected 'config' level.
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+            self.assertTrue(reads)
+            self.assertTrue(all(read == (backup_dir / 'manifest.json').resolve()
+                                for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_sources_alias_junction_into_targets_is_refused_by_per_level_check(self):
+        # This junction points at the backup's own targets directory, so
+        # every path through it resolves inside the backup and the resolved
+        # containment net alone would pass the row: only the per-level
+        # reparse-point check can refuse it.
+        if sys.platform != 'win32':
+            self.skipTest('Windows directory junction')
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            backup_dir = next(backup_root(root).glob('*/manifest.json')).parent
+            staged = backup_dir / 'targets' / 'config' / 'assistant-registry.json'
+            row_digest = hashlib.sha256(staged.read_bytes()).hexdigest()
+            self._make_junction(backup_dir / 'targets', backup_dir / 'sources' / 'alias')
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['sources'].append(
+                        {'path': 'alias/config/assistant-registry.json',
+                         'exists': True, 'sha256': row_digest}))
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+            self.assertTrue(reads)
+            self.assertTrue(all(read == (backup_dir / 'manifest.json').resolve()
+                                for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_manifest_row_absolute_path_is_refused_before_any_read(self):
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            outside = Path(elsewhere) / 'abs-source.json'
+            outside.write_bytes(b'outside payload')
+            row_digest = hashlib.sha256(b'outside payload').hexdigest()
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['sources'][-1].update(
+                        {'path': str(outside), 'sha256': row_digest}))
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+                # Across the whole call nothing outside the data root was read.
+                self.assertNotIn(outside.resolve(), reads)
+            self.assertEqual(outside.read_bytes(), b'outside payload')
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+            self.assertFalse(list(backup_root(root).glob('*/complete.json')))
+
+    def test_manifest_row_relative_escape_is_refused_before_any_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            # Four '..' from the targets directory land at the data root:
+            # outside the staged subdirectory, the boundary that matters.
+            escape = '../../../../outside-' + uuid.uuid4().hex
+            escaped = root / escape.split('/')[-1]
+            escaped.write_bytes(b'planted target')
+            row_digest = hashlib.sha256(b'planted target').hexdigest()
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['targets'][0].update(
+                        {'path': escape, 'sha256': row_digest}))
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+                self.assertNotIn(escaped.resolve(), reads)
+            self.assertEqual(escaped.read_bytes(), b'planted target')
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_manifest_row_symlink_escape_is_refused_before_any_read(self):
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            outside = Path(elsewhere) / 'linked-target.json'
+            outside.write_bytes(b'linked payload')
+            row_digest = hashlib.sha256(b'linked payload').hexdigest()
+            targets_dir = next(backup_root(root).glob('*/manifest.json')).parent / 'targets'
+            link = targets_dir / ('b' * 32 + '.json')
+            try:
+                os.symlink(outside, link, target_is_directory=False)
+            except OSError:
+                self.skipTest(f'symlink creation unavailable: {sys.exc_info()[1]}')
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['targets'][0].update(
+                        {'path': 'b' * 32 + '.json', 'sha256': row_digest}))
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+                self.assertNotIn(outside.resolve(), reads)
+            self.assertEqual(outside.read_bytes(), b'linked payload')
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_manifest_row_dot_component_is_refused_before_any_read(self):
+        # '.' has no parts in pathlib's view, so a row naming a directory -
+        # itself or through a 'sub/.' spelling - must be refused here: such
+        # a row can only end in a digest mismatch that echoes the row path,
+        # or a bare PermissionError from read_bytes on a directory.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            manifest_path = next(backup_root(root).glob('*/manifest.json'))
+            guard, reads = self._recording_reads()
+            with guard:
+                for spelling in ('.', 'sub/.'):
+                    with self.subTest(spelling=spelling):
+                        self._rewrite_manifest(
+                            root, lambda m, s=spelling: m['targets'][0].update(
+                                {'path': s, 'sha256': '0' * 64}))
+                        with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                            continue_registration_transaction(root)
+            # The manifest itself is read for validation; no staged source or
+            # target file ever is.
+            self.assertTrue(reads)
+            self.assertTrue(all(read == manifest_path.resolve() for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_manifest_row_trailing_space_or_dot_components_are_refused(self):
+        # Windows strips trailing spaces and dots from every component when
+        # Win32 resolves a path, so '.. ' opens as '..' and '...' as '.'.
+        # The lexical rule must refuse such spellings before any filesystem
+        # access instead of leaving them to the containment check.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            manifest_path = next(backup_root(root).glob('*/manifest.json'))
+            guard, reads = self._recording_reads()
+            with guard:
+                for spelling in ('.. ', '...', 'sub/.. '):
+                    with self.subTest(spelling=spelling):
+                        self._rewrite_manifest(
+                            root, lambda m, s=spelling: m['targets'][0].update(
+                                {'path': s, 'sha256': '0' * 64}))
+                        with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                            continue_registration_transaction(root)
+            self.assertTrue(all(read == manifest_path.resolve() for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_source_row_marked_existing_requires_a_string_digest(self):
+        # The sha256 freedom introduced for not-existing rows (the registry
+        # row of a first migration) must not loosen the rows that claim a
+        # file: those still carry a string digest, exactly as the program
+        # writes them.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+
+            def mutate_source(extra):
+                def apply(manifest):
+                    row = manifest['sources'][-1]
+                    row.pop('sha256', None)
+                    row['exists'] = True
+                    row.update(extra)
+                return apply
+
+            for mutation in ({}, {'sha256': None}, {'sha256': 123}):
+                with self.subTest(mutation=mutation):
+                    self._rewrite_manifest(root, mutate_source(mutation))
+                    with self.assertRaisesRegex(ConfigError, '事务清单格式无效'):
+                        continue_registration_transaction(root)
+                    self.assertEqual(read_journal(root)['state'], 'prepared')
 
 
 if __name__ == '__main__':

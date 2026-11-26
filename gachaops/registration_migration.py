@@ -18,8 +18,9 @@ from .adapter_catalog import get_adapter, list_adapters
 from .assistants import validate_assistants
 from .config_lock import config_lock
 from .execution_lock import ExecutionLock
-from .migration_journal import (JOURNAL_KIND, archive_journal, backup_root, journal_path,
-                                read_journal)
+from .migration_journal import (JOURNAL_KIND, archive_journal, backup_directory, backup_root,
+                                journal_path,
+                                read_journal, reparse_point)
 from .planner import ConfigError
 from .profiles import ProfileStore, profile_document, run_content, validate_profile_document
 from .recovery import RecoveryRequired, read_state, save, save_bytes
@@ -425,6 +426,56 @@ def commit_registration_migration(data_root, preview, choices):
                                         profiles=preview['profiles'])
 
 
+def _staged_path(backup_dir, subdirectory, relative):
+    """The staged location a manifest row may name, or ConfigError.
+
+    The manifest is a local, forgeable file — its digest proves only that it
+    was not changed, never that it is trustworthy — so every row path must
+    name one concrete file: a relative spelling with no drive, no empty,
+    '.' or '..' component under either separator, and every directory level
+    from the backup's own subdirectory down must be a real directory (no
+    symlink, junction or other reparse point — the staged file itself is
+    only checked for symlinks, matching profiles' convention that files may
+    carry non-link reparse points), with the location resolving inside the
+    backup itself — the anchor backup_directory has already validated — so
+    a redirected subdirectory cannot quietly move the anchor. Checked once
+    here, so the integrity and publish loops only ever walk validated
+    rows."""
+    if (not isinstance(relative, str) or not relative
+            or Path(relative).drive or Path(relative).is_absolute()):
+        raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    # A component carrying a trailing space or dot does not reliably name
+    # one file: Windows opens a final 'file.json.' or 'file.json ' as
+    # 'file.json', and elsewhere in the path such a spelling may fail to
+    # open at all while resolve() maps it onto the undecorated location.
+    # The program never writes one, so a row must not carry one: compare
+    # each component after removing trailing spaces and dots, and refuse
+    # those that change or strip to empty, '.' or '..'.
+    for part in relative.replace('\\', '/').split('/'):
+        stripped = part.rstrip(' .')
+        if stripped != part or stripped in ('', '.', '..'):
+            raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    base = backup_dir / subdirectory
+    if reparse_point(base) or not base.resolve().is_relative_to(backup_dir.resolve()):
+        raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    parts = Path(relative).parts
+    current = base
+    for part in parts[:-1]:
+        current = current / part
+        if reparse_point(current):
+            raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    # The last component is the file itself and only a symlink counts as a
+    # redirection for it - matching profiles._path's convention: ordinary
+    # files may carry non-link reparse points (cloud on-demand placeholders
+    # and the like) without pointing anywhere else.
+    current = current / parts[-1]
+    if current.is_symlink():
+        raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    if not current.resolve().is_relative_to(backup_dir.resolve()):
+        raise ConfigError('事务清单内出现非法备份路径，停止继续')
+    return current
+
+
 def _load_manifest(backup_dir, expected_sha256):
     path = backup_dir / 'manifest.json'
     if path.is_symlink() or not path.exists():
@@ -442,6 +493,29 @@ def _load_manifest(backup_dir, expected_sha256):
             or not isinstance(manifest.get('targets'), list)
             or not isinstance(manifest.get('profiles'), list)):
         raise ConfigError('事务清单格式无效，无法继续')
+    # Row shape and row paths are validated here, before any backup file is
+    # read, so the integrity and publish loops consume validated rows only.
+    for source in manifest['sources']:
+        if (not isinstance(source, dict)
+                or not isinstance(source.get('path'), str)
+                or not isinstance(source.get('exists'), bool)):
+            raise ConfigError('事务清单格式无效，无法继续')
+        # A row that claims a file must carry a string digest; a row marked
+        # not-existing may not - the program writes the registry source row
+        # of a first migration without one, and the integrity loop skips
+        # not-existing rows anyway.
+        if source['exists'] and not isinstance(source.get('sha256'), str):
+            raise ConfigError('事务清单格式无效，无法继续')
+        _staged_path(backup_dir, 'sources', source['path'])
+    for target in manifest['targets']:
+        if (not isinstance(target, dict)
+                or not isinstance(target.get('path'), str)
+                or not isinstance(target.get('sha256'), str)):
+            raise ConfigError('事务清单格式无效，无法继续')
+        _staged_path(backup_dir, 'targets', target['path'])
+    for row in manifest['profiles']:
+        if not isinstance(row, dict) or not isinstance(row.get('id'), str):
+            raise ConfigError('事务清单格式无效，无法继续')
     return manifest
 
 
@@ -476,7 +550,7 @@ def continue_registration_transaction(data_root):
             if (current['transaction'], current['backup']) != (journal['transaction'], journal['backup']):
                 raise ConfigError('待继续的事务已变化（其他窗口开始了新事务）；请重新打开程序后再继续最新事务')
             journal = current
-            backup_dir = backup_root(root) / journal['backup']
+            backup_dir = backup_directory(root, journal['backup'])
             manifest = _load_manifest(backup_dir, journal['manifest_sha256'])
             for source in manifest['sources']:
                 if not source['exists']:
