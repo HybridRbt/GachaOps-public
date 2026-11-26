@@ -2488,26 +2488,54 @@ def main():
 
     app = QApplication(sys.argv)
     configure_appearance(app)
+    # Machine-wide single window guard (issue #24): one GachaOps graphical
+    # window per machine, regardless of data directory. It is taken before
+    # the startup gate inside Window(), so a refused relaunch never reads
+    # or writes data, and held until this process exits. Automation skips
+    # it: --smoke-test drives its own window and quits, and layout previews
+    # must not front the user's window. Elevation handoffs (--handoff,
+    # --recover) wait — bounded — for the retiring window to release.
+    preview_factory = globals().get('PREVIEW_FACTORY')
+    automated = '--smoke-test' in sys.argv or preview_factory is not None
+    from . import window_guard
+    guard = None
+    if not automated:
+        handoff = '--handoff' in sys.argv or '--recover' in sys.argv
+        guard, reason = window_guard.acquire_gui_guard(
+            wait_seconds=window_guard.HANDOFF_WAIT_SECONDS if handoff else 0.0)
+        if guard is None:
+            if handoff:
+                QMessageBox.information(None, 'GachaOps 管理员窗口未接管',
+                    '等待上一个 GachaOps 窗口退出时超时，管理员窗口未打开。'
+                    '请先手动关闭已打开的 GachaOps 窗口，再重新以管理员身份启动。')
+            elif not window_guard.activate_existing_window():
+                QMessageBox.information(None, 'GachaOps 已在运行',
+                    '本机已有一个 GachaOps 窗口在运行，请切换到它；'
+                    '同一台机器同时只允许一个 GachaOps 窗口。')
+            return 0
     try:
         window = Window(); window.show()
     except (OSError, ValueError) as error:
+        if guard is not None: guard.release()
         QMessageBox.critical(None, 'GachaOps 无法打开', str(error)); return 2
-    if '--recover' in sys.argv and elevation_report().get('elevated') is True:
-        QTimer.singleShot(0, window.begin_recovery)
-    # Layout-preview hook for off-Windows UI work; never set during real runs.
-    preview_factory = globals().get('PREVIEW_FACTORY')
-    if preview_factory is not None:
-        preview_factory(window)
-    if '--smoke-test' in sys.argv:
-        output = Path(sys.argv[sys.argv.index('--smoke-test') + 1])
-        def smoke():
-            if window.busy():
-                QTimer.singleShot(500, smoke); return
-            output.parent.mkdir(parents=True, exist_ok=True)
-            window.grab().save(str(output)); window.close(); app.quit()
-        if '--smoke-check' in sys.argv: window.begin('check-assistants')
-        QTimer.singleShot(800, smoke)
-    return app.exec()
+    try:
+        if '--recover' in sys.argv and elevation_report().get('elevated') is True:
+            QTimer.singleShot(0, window.begin_recovery)
+        if preview_factory is not None:
+            preview_factory(window)
+        if '--smoke-test' in sys.argv:
+            output = Path(sys.argv[sys.argv.index('--smoke-test') + 1])
+            def smoke():
+                if window.busy():
+                    QTimer.singleShot(500, smoke); return
+                output.parent.mkdir(parents=True, exist_ok=True)
+                window.grab().save(str(output)); window.close(); app.quit()
+            if '--smoke-check' in sys.argv: window.begin('check-assistants')
+            QTimer.singleShot(800, smoke)
+        return app.exec()
+    finally:
+        if guard is not None:
+            guard.release()
 
 
 if __name__ == '__main__':
