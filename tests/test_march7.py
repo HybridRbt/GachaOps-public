@@ -249,7 +249,13 @@ class March7Tests(unittest.TestCase):
             launch.write_text(json.dumps(descriptor), encoding='utf-8')
             identity = {'image': str(root / 'March7th Assistant.exe'), 'pid': 4242,
                         'creation_ticks': 10}
+            # run_child reads the live runner environment and passes a
+            # Windows-only creation flag; both are pinned here so the worker's
+            # version acceptance is exercised on every CI platform, not just
+            # where SystemRoot happens to exist.
             with patch.object(march7.subprocess, 'Popen') as popen, \
+                 patch.object(march7, 'runner_environment', return_value={}), \
+                 patch.object(march7.subprocess, 'CREATE_NO_WINDOW', 0, create=True), \
                  patch.object(march7, 'creation_ticks', return_value=10), \
                  patch.object(march7, 'observation_api', return_value=object()), \
                  patch.object(march7, 'process_identity', return_value=identity):
@@ -495,6 +501,21 @@ class March7Tests(unittest.TestCase):
         result = march7.evaluate(progress_body, 0)
         self.assertEqual(result['status'], 'partial_failure')
         self.assertIn('委托', result['failed_applications'])
+
+
+
+    def test_daily_training_completion_settles_only_itself(self):
+        # 「每日实训已完成」 settles the training's own failure entry; a
+        # failed delegation stays failed even though the training closed.
+        body = ('| 开始运行 |\n16:34:00 | INFO | 任务无法完成: 委托\n'
+                '16:34:10 | INFO | 每日实训活跃度 200/500\n'
+                '16:34:20 | INFO | 每日实训已完成\n'
+                '| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(body, 0)
+        self.assertEqual(result['status'], 'partial_failure')
+        self.assertIn('委托', result['failed_applications'])
+        self.assertNotIn('每日实训活跃度', result['failed_applications'])
+        self.assertFalse(result['daily_training_incomplete'])
 
 
 

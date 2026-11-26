@@ -532,8 +532,10 @@ def task_details(lines):
         if message == '每日实训未完成':
             daily_incomplete = True
         elif message == '每日实训已完成':
+            # The daily-training completion settles only its own failure
+            # entry; it says nothing about other tasks.
             daily_incomplete = False
-            failed.clear()
+            failed.pop('每日实训活跃度', None)
         if re.search(r'\|\s*WARNING\s*\|', line) and re.search(r'失败|超时|异常', line):
             switch = re.fullmatch(r'切换到 (.+) 超时，准备重试', message)
             # Only the immediate retry with an explicit matching destination is
