@@ -135,7 +135,9 @@ class March7Tests(unittest.TestCase):
                 config.write_text(original.replace('cloud_game_enable: false', 'cloud_game_enable: true'), encoding='utf-8')
                 self.assertIn('march7_local_game_required', march7.prepare(row)['blockers'])
                 config.write_text(original+'game_path: other\n', encoding='utf-8')
-                with self.assertRaisesRegex(ValueError, 'duplicate'): march7.prepare(row)
+                prepared = march7.prepare(row)
+                self.assertIn('march7_config_entry_unreadable', prepared['blockers'])
+                self.assertEqual(prepared['unreadable_config_key'], 'game_path')
                 config.write_text(original, encoding='utf-8')
                 (root/'assets/config/version.txt').write_text('unknown')
                 with self.assertRaisesRegex(ValueError, '核验'): march7.prepare(row)
@@ -200,6 +202,382 @@ class March7Tests(unittest.TestCase):
                 self.assertEqual(march7.worker_main(['--launch',str(launch)]),2)
                 popen.assert_not_called()
                 self.assertTrue((root/'march7-error.txt').exists())
+
+
+    def test_v2026_11_24_prepare_worker_and_platform_guards(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            row = self.installation(root)
+            version = root / 'assets/config/version.txt'
+            config = root / 'config.yaml'
+            original = config.read_text(encoding='utf-8')
+            with patch.object(march7, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(march7, 'desktop_report', return_value={'status': 'observed_available'}), \
+                 patch.object(march7, 'find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                # The new tag is admitted; old configs without the platform
+                # keys keep working with no new blockers.
+                version.write_text('v2026.11.24', encoding='utf-8')
+                self.assertEqual(march7.prepare(row)['blockers'], [])
+                # Local explicit backend wins over cloud_game_enable.
+                config.write_text(original + 'ui_profile: pc_1080\ncontrol_backend: local\n'
+                                  'local_control_mode: foreground\nno_run_immediately: false\n',
+                                  encoding='utf-8')
+                self.assertEqual(march7.prepare(row)['blockers'], [])
+                config.write_text(original.replace('cloud_game_enable: false', 'cloud_game_enable: true')
+                                  + 'control_backend: local\n', encoding='utf-8')
+                self.assertNotIn('march7_local_game_required', march7.prepare(row)['blockers'])
+                # Fail-closed guards, each with its user-facing blocker code.
+                for addition, expected in (
+                        ('control_backend: cloud\n', 'march7_local_backend_required'),
+                        ('control_backend: adb\n', 'march7_local_backend_required'),
+                        ('control_backend: teleport\n', 'march7_local_backend_required'),
+                        ('ui_profile: touch_720\n', 'march7_local_pc_profile_required'),
+                        ('ui_profile: arcade\n', 'march7_local_pc_profile_required'),
+                        ('local_control_mode: background\n', 'march7_local_foreground_control_required'),
+                        ('no_run_immediately: true\n', 'march7_run_immediately_required')):
+                    config.write_text(original + addition, encoding='utf-8')
+                    with self.subTest(addition=addition.strip()):
+                        self.assertIn(expected, march7.prepare(row)['blockers'])
+
+    def test_worker_accepts_v2026_11_24_when_prepared_version_matches(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); self.installation(root)
+            (root / 'assets/config/version.txt').write_text('v2026.11.24', encoding='utf-8')
+            descriptor = dict(installation_root=str(root), cwd=str(root), token='t',
+                argv_candidate=[str(root / 'March7th Assistant.exe'), 'main'],
+                runner_version='v2026.11.24',
+                config_sha256=hashlib.sha256((root / 'config.yaml').read_bytes()).hexdigest())
+            launch = root / 'march7-launch.json'
+            launch.write_text(json.dumps(descriptor), encoding='utf-8')
+            identity = {'image': str(root / 'March7th Assistant.exe'), 'pid': 4242,
+                        'creation_ticks': 10}
+            # run_child reads the live runner environment and passes a
+            # Windows-only creation flag; both are pinned here so the worker's
+            # version acceptance is exercised on every CI platform, not just
+            # where SystemRoot happens to exist.
+            with patch.object(march7.subprocess, 'Popen') as popen, \
+                 patch.object(march7, 'runner_environment', return_value={}), \
+                 patch.object(march7.subprocess, 'CREATE_NO_WINDOW', 0, create=True), \
+                 patch.object(march7, 'creation_ticks', return_value=10), \
+                 patch.object(march7, 'observation_api', return_value=object()), \
+                 patch.object(march7, 'process_identity', return_value=identity):
+                instance = popen.return_value.__enter__.return_value
+                instance.wait.return_value = 0
+                instance.pid = 4242
+                march7.run_child(['--launch', str(launch)])
+            self.assertTrue(popen.called)
+            receipt = json.loads((root / 'march7-result.json').read_text(encoding='utf-8'))
+            self.assertEqual(receipt['exit_code'], 0)
+            self.assertEqual(receipt['native_identity']['pid'], 4242)
+
+    def test_v2026_11_24_training_report_text_is_parsed_both_ways(self):
+        # 活跃度不满：plain claim line means the daily training is incomplete
+        # even though start/stop markers and the exit code are clean.
+        partial = ('| 开始运行 |\n'
+                   '16:34:30 | WARNING | 实训未完成：清除冗余单元\n'
+                   '16:34:40 | WARNING | 实训「模拟宇宙」未完成后无法返回实训页：超时\n'
+                   '16:35:00 | INFO | 已领取实训奖励，活跃度 200/500\n'
+                   '| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(partial, 0)
+        self.assertEqual(result['status'], 'partial_failure')
+        self.assertIn('清除冗余单元', result['failed_applications'])
+        self.assertIn('每日实训活跃度', result['failed_applications'])
+        self.assertEqual(result['daily_training_score'], '200/500')
+        self.assertTrue(result['daily_training_incomplete'])
+        self.assertTrue(any('无法返回实训页' in line for line in result['failure_warnings']))
+        self.assertEqual(result['evidence'], 'owned_native_full_run_and_stop_completed')
+        # A healthy new-format run stays a clean success.
+        healthy = ('| 开始运行 |\n| 停止运行 |\n--- 完成 ---\n')
+        self.assertEqual(march7.evaluate(healthy, 0)['status'], 'success')
+        self.assertFalse(march7.evaluate(healthy, 0)['daily_training_incomplete'])
+        # Non-zero exit still dominates.
+        self.assertEqual(march7.evaluate(partial, 1)['status'], 'runner_failed')
+
+
+    def _prepare_with_config(self, root, row, addition, cloud=False, replace=None):
+        return self._prepare_full_with_config(root, row, addition, cloud=cloud, replace=replace)['blockers']
+
+    def _prepare_full_with_config(self, root, row, addition, cloud=False, replace=None):
+        """The whole prepared result, for assertions on fields beside blockers."""
+        config = root / 'config.yaml'
+        pristine = getattr(self, '_pristine_config', None)
+        if pristine is None or self._pristine_root != str(root):
+            self._pristine_root = str(root)
+            pristine = self._pristine_config = config.read_text(encoding='utf-8')
+        if cloud:
+            pristine = pristine.replace('cloud_game_enable: false', 'cloud_game_enable: true')
+        if replace:
+            pristine = pristine.replace(*replace)
+        config.write_text(pristine + addition, encoding='utf-8')
+        with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+             patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+             patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+            return march7.prepare(row)
+
+    def test_quoted_keys_go_through_the_guards_like_upstream(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); row = self.installation(root)
+            body = (root / 'config.yaml').read_text(encoding='utf-8')
+            # Quoted key spellings are legal YAML; upstream reads their values,
+            # so the guards must fire on them instead of silently skipping.
+            blockers = self._prepare_with_config(root, row, '"control_backend": adb\n')
+            self.assertIn('march7_local_backend_required', blockers)
+            blockers = self._prepare_with_config(root, row, "'control_backend': cloud\n")
+            self.assertIn('march7_local_backend_required', blockers)
+            blockers = self._prepare_with_config(root, row, '"ui_profile": touch_720\n')
+            self.assertIn('march7_local_pc_profile_required', blockers)
+            blockers = self._prepare_with_config(root, row, '"no_run_immediately": "false"\n')
+            self.assertIn('march7_run_immediately_required', blockers)
+            # Quoted keys still count for duplicate detection, and the
+            # duplicated setting is named in the blocker.
+            prepared = self._prepare_full_with_config(root, row, '"game_path": other\n')
+            self.assertIn('march7_config_entry_unreadable', prepared['blockers'])
+            self.assertEqual(prepared['unreadable_config_key'], 'game_path')
+            # A quoted or spaced-colon spelling of a needed required key must
+            # be read, not treated as missing. Spelled in place: the same key
+            # twice (even quoted) is a duplicate upstream.
+            config = root / 'config.yaml'
+            config.write_text(body.replace('log_level: INFO', "'log_level' : DEBUG"), encoding='utf-8')
+            with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                 patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                 patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                self.assertNotIn('march7_info_logging_required', march7.prepare(row)['blockers'])
+
+    def test_values_keep_yaml_types_like_upstream(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); row = self.installation(root)
+            # Empty, ~ and null resolve to YAML null upstream; the reviewed
+            # fallback then comes from cloud_game_enable (false in the
+            # fixture), so no cloud/backend blocker may appear.
+            for spelling in ('control_backend:\n', 'control_backend:  # 设备后端\n',
+                             'control_backend: ~\n'):
+                blockers = self._prepare_with_config(root, row, spelling)
+                self.assertNotIn('march7_local_backend_required', blockers, spelling)
+                self.assertNotIn('march7_local_game_required', blockers, spelling)
+            # Bare null is YAML null upstream: the cloud_game_enable fallback
+            # decides, so with the false fixture nothing blocks.
+            blockers = self._prepare_with_config(root, row, 'control_backend: null\n')
+            self.assertNotIn('march7_local_backend_required', blockers)
+            self.assertNotIn('march7_local_game_required', blockers)
+            # With the cloud switch on, the same null falls back to cloud.
+            blockers = self._prepare_with_config(root, row, 'control_backend: null\n',
+                                                 cloud=True)
+            self.assertIn('march7_local_game_required', blockers)
+            # The quoted "null" is a real string upstream and an unknown
+            # backend there, so it blocks regardless of the cloud switch.
+            blockers = self._prepare_with_config(root, row, 'control_backend: "null"\n')
+            self.assertIn('march7_local_backend_required', blockers)
+            # YAML 1.2 booleans are case-insensitive; FALSE is a false boolean,
+            # so the run-immediately guard must not fire on it.
+            blockers = self._prepare_with_config(root, row, 'no_run_immediately: FALSE\n')
+            self.assertNotIn('march7_run_immediately_required', blockers)
+            blockers = self._prepare_with_config(root, row, 'no_run_immediately: 0\n')
+            self.assertNotIn('march7_run_immediately_required', blockers)
+            # A quoted "false" is a truthy string upstream: cloud game enabled.
+            blockers = self._prepare_with_config(root, row, '',
+                                                 replace=('cloud_game_enable: false',
+                                                          'cloud_game_enable: "false"'))
+            self.assertIn('march7_local_game_required', blockers)
+            blockers = self._prepare_with_config(root, row, '',
+                                                 replace=('cloud_game_enable: false',
+                                                          'cloud_game_enable: False'))
+            self.assertNotIn('march7_local_game_required', blockers)
+            # Quoted "true" is the same string upstream as bare true.
+            blockers = self._prepare_with_config(root, row, '',
+                                                 replace=('auto_update: true', 'auto_update: "true"'))
+            self.assertNotIn('march7_complete_native_first_setup', blockers)
+            # A null game path stays unverifiable instead of crashing.
+            blockers = self._prepare_with_config(root, row, '',
+                                                 replace=("game_path: '" + str(root / 'StarRail.exe') + "' # location",
+                                                          'game_path:'))
+            self.assertIn('game_path_unverified', blockers)
+
+    def test_non_string_game_path_stays_inside_prepare(self):
+        # The real loader returns ruamel's own types. A game path that is not
+        # a usable string must not leak past prepare into the observation
+        # targets or the prepared result: it is dropped here, the blocker
+        # stays, and everything returned stays JSON-serializable.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); row = self.installation(root)
+            config = root / 'config.yaml'
+            original = config.read_text(encoding='utf-8')
+            old_path = "game_path: '" + str(root / 'StarRail.exe') + "' # location\n"
+            for spelling in ('game_path: [a, b]\n', 'game_path: {a: b}\n',
+                             'game_path: !!str C:/somewhere\n', 'game_path: 2026-01-01\n'):
+                config.write_text(original.replace(old_path, spelling), encoding='utf-8')
+                with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                     patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                     patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                    prepared = march7.prepare(row)
+                with self.subTest(spelling=spelling.strip()):
+                    self.assertIn('game_path_unverified', prepared['blockers'])
+                    self.assertIsNone(prepared['game_path'])
+                    self.assertEqual(len(prepared['observation_targets']), 3)
+                    json.dumps(prepared)
+
+    def test_uniform_indent_spaced_colon_and_crlf_are_resolved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); row = self.installation(root)
+            config = root / 'config.yaml'
+            body = config.read_text(encoding='utf-8')
+            indented = ''.join('  ' + line + '\n' for line in body.splitlines())
+            config.write_text(indented, encoding='utf-8')
+            with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                 patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                 patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                self.assertEqual(march7.prepare(row)['blockers'], [])
+            # A space before the colon is the same key upstream.
+            config.write_text(body.replace('log_level: INFO', 'log_level : DEBUG'), encoding='utf-8')
+            with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                 patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                 patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                self.assertNotIn('march7_info_logging_required', march7.prepare(row)['blockers'])
+            # CRLF endings must not change anything.
+            config.write_text(body.replace('\n', '\r\n'), encoding='utf-8')
+            with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                 patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                 patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                self.assertEqual(march7.prepare(row)['blockers'], [])
+
+    def test_loader_refusals_block_on_codes_and_resolvable_spellings_reach_the_guards(self):
+        # The reader is the assistant's own YAML loader. Forms it resolves
+        # are read and handed to the guards like any canonical spelling;
+        # forms it refuses become blocker codes, never free text: a named
+        # setting only when one can be blamed, the structure code otherwise.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); row = self.installation(root)
+            config = root / 'config.yaml'
+            original_body = config.read_text(encoding='utf-8')
+            # Anchors resolve upstream: an anchored local value is local.
+            self.assertNotIn('march7_local_backend_required',
+                             self._prepare_with_config(root, row, 'control_backend: &b local\n'))
+            # Tagged, block-scalar and flow-sequence values are not the plain
+            # string upstream compares against, so the backend guard fires.
+            for spelling in ('control_backend: !!str local\n', 'control_backend: |\n  local\n',
+                             'control_backend: [local]\n'):
+                self.assertIn('march7_local_backend_required',
+                              self._prepare_with_config(root, row, spelling), spelling)
+            # Escaped keys name the same setting; a space before the colon is
+            # the same key; a merge key brings the setting to the top level.
+            for spelling in ('"control\\u005fbackend": adb\n', 'control_backend : adb\n',
+                             'z: &z\n  control_backend: adb\n<<: *z\n'):
+                self.assertIn('march7_local_backend_required',
+                              self._prepare_with_config(root, row, spelling), spelling)
+            # A whole-document flow mapping is real YAML: all nine keys are
+            # read out of it and the guards fire like on the block form.
+            config.write_text('{game_path: ' + json.dumps(str(root / 'StarRail.exe'))
+                              + ', cloud_game_enable: false, after_finish: Exit, auto_update: true,'
+                                ' log_level: INFO, control_backend: adb, ui_profile: pc_1080,'
+                                ' local_control_mode: foreground, no_run_immediately: false}\n',
+                              encoding='utf-8')
+            with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                 patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                 patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                self.assertIn('march7_local_backend_required', march7.prepare(row)['blockers'])
+            # A needed key inside a multi-line flow belongs to that flow, not
+            # to the top level; upstream stores it nested, so nothing blocks.
+            prepared = self._prepare_full_with_config(root, row, 'webhook: [a,\n  control_backend: adb\n]\n')
+            self.assertNotIn('march7_local_backend_required', prepared['blockers'])
+            self.assertNotIn('march7_config_entry_unreadable', prepared['blockers'])
+            self.assertIsNone(prepared['unreadable_config_key'])
+            # Values the loader returns but the guards cannot use stay
+            # fail-closed per setting: a nested mapping or a block scalar
+            # under game_path is not a verifiable path.
+            old_path = "game_path: '" + str(root / 'StarRail.exe') + "' # location\n"
+            for spelling in ('game_path:\n  sub: x\n', 'game_path: |\n  C:\\somewhere\n'):
+                self.assertIn('game_path_unverified',
+                              self._prepare_with_config(root, row, '', replace=(old_path, spelling)),
+                              spelling)
+            # Forms the loader refuses block on the structure code: the file
+            # as a whole cannot be read, so no single setting is named.
+            for spelling in ('control_backend :local\n', 'control_backend:#x\n',
+                             'control_backend\n', 'control_backend: *anchor\n',
+                             "note: \"never closed\n", 'a:\n\tb: 1\n', '---\n'):
+                prepared = self._prepare_full_with_config(root, row, spelling)
+                with self.subTest(spelling=spelling.strip()):
+                    self.assertIn('march7_config_structure_unreadable', prepared['blockers'])
+                    self.assertNotIn('march7_config_entry_unreadable', prepared['blockers'])
+                    self.assertIsNone(prepared['unreadable_config_key'])
+                    self.assertFalse(any('无法识别' in b for b in prepared['blockers']), prepared['blockers'])
+            # A top-level document that is not a mapping at all refuses on the
+            # structure code; a missing required key is named because that
+            # setting can be blamed.
+            for content, expected, key in (
+                    ('', 'march7_config_structure_unreadable', None),
+                    (original_body.replace('log_level: INFO\n', ''),
+                     'march7_config_entry_unreadable', 'log_level')):
+                config.write_text(content, encoding='utf-8')
+                with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                     patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                     patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                    prepared = march7.prepare(row)
+                with self.subTest(expected=expected):
+                    self.assertIn(expected, prepared['blockers'])
+                    self.assertEqual(prepared['unreadable_config_key'], key)
+
+    def test_activity_progress_line_stands_alone_without_a_claim(self):
+        body = ('| 开始运行 |\n16:34:30 | INFO | 每日实训活跃度 {score}\n'
+                '| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(body.format(score='200/500'), 0)
+        self.assertEqual(result['status'], 'partial_failure')
+        self.assertEqual(result['daily_training_score'], '200/500')
+        self.assertTrue(result['daily_training_incomplete'])
+        self.assertIn('每日实训活跃度', result['failed_applications'])
+        # Full activity without any claim line is a clean success.
+        result = march7.evaluate(body.format(score='500/500'), 0)
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(result['daily_training_score'], '500/500')
+        self.assertFalse(result['daily_training_incomplete'])
+        # Both lines, in either order: the later evidence wins, a full number
+        # completes the training even when an earlier line was partial.
+        both = ('| 开始运行 |\n16:34:30 | INFO | 每日实训活跃度 200/500\n'
+                '16:35:00 | INFO | 已领取实训奖励，活跃度 500/500\n| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(both, 0)
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(result['daily_training_score'], '500/500')
+        reversed_both = ('| 开始运行 |\n16:34:30 | INFO | 已领取实训奖励，活跃度 200/500\n'
+                         '16:35:00 | INFO | 每日实训活跃度 500/500\n| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(reversed_both, 0)
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(result['daily_training_score'], '500/500')
+
+    def test_full_activity_claim_keeps_other_task_failures(self):
+        body = ('| 开始运行 |\n16:34:00 | INFO | 任务无法完成: 委托\n'
+                '16:34:30 | INFO | 已领取实训奖励，活跃度 500/500\n'
+                '| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(body, 0)
+        self.assertEqual(result['status'], 'partial_failure')
+        self.assertIn('委托', result['failed_applications'])
+        # The training's own partial entry is settled by a later full claim,
+        # while the unrelated failure stays.
+        settling = ('| 开始运行 |\n16:34:00 | INFO | 任务无法完成: 委托\n'
+                    '16:34:10 | INFO | 已领取实训奖励，活跃度 200/500\n'
+                    '16:34:30 | INFO | 已领取实训奖励，活跃度 500/500\n'
+                    '| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(settling, 0)
+        self.assertEqual(result['status'], 'partial_failure')
+        self.assertEqual(result['failed_applications'], ['委托'])
+        self.assertFalse(result['daily_training_incomplete'])
+        progress_body = body.replace('已领取实训奖励，活跃度 500/500', '每日实训活跃度 500/500')
+        result = march7.evaluate(progress_body, 0)
+        self.assertEqual(result['status'], 'partial_failure')
+        self.assertIn('委托', result['failed_applications'])
+
+
+
+    def test_daily_training_completion_settles_only_itself(self):
+        # 「每日实训已完成」 settles the training's own failure entry; a
+        # failed delegation stays failed even though the training closed.
+        body = ('| 开始运行 |\n16:34:00 | INFO | 任务无法完成: 委托\n'
+                '16:34:10 | INFO | 每日实训活跃度 200/500\n'
+                '16:34:20 | INFO | 每日实训已完成\n'
+                '| 停止运行 |\n--- 完成 ---\n')
+        result = march7.evaluate(body, 0)
+        self.assertEqual(result['status'], 'partial_failure')
+        self.assertIn('委托', result['failed_applications'])
+        self.assertNotIn('每日实训活跃度', result['failed_applications'])
+        self.assertFalse(result['daily_training_incomplete'])
+
 
 
 if __name__ == '__main__':

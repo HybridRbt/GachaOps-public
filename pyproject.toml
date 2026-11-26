@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Capability-based orchestration of existing game assistants"
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
-dependencies = []
+dependencies = ["ruamel.yaml==0.19.1"]
 
 [project.scripts]
 gachaops = "gachaops.__main__:main"

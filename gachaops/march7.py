@@ -10,6 +10,9 @@ import subprocess
 import sys
 import uuid
 
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
+
 from .ok_adapter import runner_environment
 from .preflight import desktop_report
 from .recovery import save
@@ -19,40 +22,66 @@ from .onedragon_bridge import creation_ticks
 from .app_paths import workspace_root
 
 SUPPORTED_VERSION = 'v2026.9.30'
-# v2026.10.16 and v2026.11.8 were reviewed against v2026.9.30: CLI, pause
-# control and completion markers are unchanged. Unknown builds still require
-# review.
-SUPPORTED_VERSIONS = frozenset({SUPPORTED_VERSION, 'v2026.10.16', 'v2026.11.8'})
+# v2026.10.16 and v2026.11.8 were reviewed against v2026.9.30: CLI entry,
+# GUI-started skip and the full-run markers are unchanged. v2026.11.24 was
+# reviewed offline against its published source: the same lifecycle surface
+# is unchanged, the daily-training report text changed (both formats are
+# parsed), and its config gained platform keys that are read and gated to
+# the reviewed local-PC mode. GachaOps does not integrate March7th's native
+# pause/resume/stop file protocol; stopping and timeouts rely on owned-Job
+# cleanup. Unknown builds still require review.
+SUPPORTED_VERSIONS = frozenset({SUPPORTED_VERSION, 'v2026.10.16', 'v2026.11.8',
+                                'v2026.11.24'})
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
 
+REQUIRED_KEYS = frozenset({'game_path', 'cloud_game_enable', 'after_finish', 'auto_update', 'log_level'})
+PLATFORM_KEYS = frozenset({'ui_profile', 'control_backend', 'local_control_mode', 'no_run_immediately'})
+# ruamel reports duplicate keys with the key name quoted inside its problem
+# phrase, so a duplicated needed setting can still be named to the user
+# instead of falling back to the file-level refusal.
+DUPLICATE_KEY_PROBLEM = re.compile(r'found duplicate key "([^"]+)"')
+
+
+class March7ConfigUnreadable(ValueError):
+    """One specific config setting could be named as unreadable.
+
+    Carries the key name so the user is told which setting to re-save in
+    the assistant; file-level refusals take the plain ValueError path.
+    """
+
+    def __init__(self, key):
+        super().__init__('unrecognized March7 config entry: ' + str(key))
+        self.key = key
+
+
+def metadata_from_text(text):
+    """Load the lifecycle values exactly like the assistant itself does.
+
+    Upstream reads this file with ruamel.yaml's YAML() (module/config/
+    config.py), so the same loader runs here and the values it returns are
+    passed on untouched: types, truthiness and refusal cases match upstream
+    by construction. Only the nine top-level lifecycle keys are projected;
+    tasks, accounts and every other part of the file stay opaque.
+    """
+    try:
+        document = YAML().load(text)
+    except YAMLError as error:
+        duplicate = DUPLICATE_KEY_PROBLEM.search(getattr(error, 'problem', '') or '')
+        if duplicate and duplicate[1] in REQUIRED_KEYS | PLATFORM_KEYS:
+            raise March7ConfigUnreadable(duplicate[1]) from error
+        raise ValueError('March7 config cannot be read; re-save the settings in the assistant. '
+                         + str(error)) from error
+    if not isinstance(document, dict):
+        raise ValueError('March7 config must be a mapping; re-save the settings in the assistant')
+    missing = REQUIRED_KEYS.difference(document)
+    if missing:
+        raise March7ConfigUnreadable(sorted(missing)[0])
+    return {key: document[key] for key in REQUIRED_KEYS | PLATFORM_KEYS if key in document}
+
+
 def launch_metadata(path):
-    # Read only five top-level lifecycle scalars. Tasks/accounts stay opaque.
-    keys = {'game_path', 'cloud_game_enable', 'after_finish', 'auto_update', 'log_level'}
-    values = {}
-    for line in Path(path).read_text(encoding='utf-8-sig').splitlines():
-        match = re.fullmatch(r'([a-z_]+):\s*(.*?)\s*', line)
-        if not match or match[1] not in keys:
-            continue
-        key, value = match.groups()
-        if key in values:
-            raise ValueError('duplicate March7 launch metadata: ' + key)
-        if value.startswith('"'):
-            value, consumed = json.JSONDecoder().raw_decode(value)
-            remainder = match[2][consumed:].strip()
-            if remainder and not remainder.startswith('#'):
-                raise ValueError('unsupported March7 launch scalar')
-        elif value.startswith("'"):
-            quoted = re.fullmatch(r"'((?:[^']|'')*)'\s*(?:#.*)?", value)
-            if not quoted:
-                raise ValueError('unsupported March7 launch scalar')
-            value = quoted[1].replace("''", "'")
-        else:
-            value = re.split(r'\s+#', value, maxsplit=1)[0].strip()
-        values[key] = value
-    if set(values) != keys:
-        raise ValueError('missing March7 launch metadata')
-    return values
+    return metadata_from_text(Path(path).read_text(encoding='utf-8-sig'))
 
 
 def prepare(row):
@@ -67,35 +96,88 @@ def prepare(row):
     version = version_file.read_text(encoding='utf-8-sig').strip()
     if version not in SUPPORTED_VERSIONS:
         raise ValueError(f'三月七版本尚未核验：{version}。请更新 GachaOps 兼容支持后重新检查。')
-    meta = launch_metadata(config)
     blockers = []
-    if meta['cloud_game_enable'] != 'false':
-        blockers.append('march7_local_game_required')
-    if meta['after_finish'] != 'Exit':
-        blockers.append('march7_select_exit_in_assistant_gui')
-    if meta['auto_update'] != 'true':
-        blockers.append('march7_complete_native_first_setup')
-    if meta['log_level'] not in ('INFO', 'DEBUG'):
-        blockers.append('march7_info_logging_required')
-    game = meta['game_path']
-    if not Path(game).is_absolute() or not Path(game).is_file():
-        blockers.append('game_path_unverified')
+    meta = None
+    unreadable_key = None
+    try:
+        meta = launch_metadata(config)
+    except March7ConfigUnreadable as unreadable:
+        # One specific setting could be blamed: a required key is missing or
+        # the same setting appears twice with different values. Block on a
+        # code like every other adapter so blocker lists stay codes; the key
+        # travels in its own field for the desktop to name it.
+        blockers.append('march7_config_entry_unreadable' if unreadable.key
+                        else 'march7_config_structure_unreadable')
+        unreadable_key = unreadable.key
+    except ValueError:
+        # The loader's own refusals point at line and column marks rather
+        # than key names, so no single setting can be blamed; re-saving in
+        # the assistant rewrites the file in the form upstream itself writes.
+        blockers.append('march7_config_structure_unreadable')
+    if meta is not None:
+        backend = meta.get('control_backend')
+        # Upstream resolution (module/config/platform.py get_control_backend):
+        # explicit control_backend wins; None falls back to cloud_game_enable
+        # truthiness; anything but 'local'/'cloud'/'adb' raises upstream.
+        if backend is not None and backend != 'local':
+            blockers.append('march7_local_backend_required')
+        elif backend is None and meta.get('cloud_game_enable'):
+            blockers.append('march7_local_game_required')
+        # Upstream defaults a missing/null ui_profile to pc_1080
+        # (get_ui_profile), so only a present non-matching value blocks.
+        profile = meta.get('ui_profile')
+        if profile is not None and profile != 'pc_1080':
+            blockers.append('march7_local_pc_profile_required')
+        # Upstream treats anything but 'background' as foreground
+        # (module/automation/input_base.py), and a null entry keeps the
+        # foreground default.
+        control_mode = meta.get('local_control_mode')
+        if control_mode is not None and control_mode != 'foreground':
+            blockers.append('march7_local_foreground_control_required')
+        # Upstream runs immediately unless this value is truthy
+        # (main.py: args.no_run_immediately or cfg.get_value(...)), so a YAML
+        # bool False passes while the string "false" blocks.
+        if meta.get('no_run_immediately'):
+            blockers.append('march7_run_immediately_required')
+        if meta['after_finish'] != 'Exit':
+            blockers.append('march7_select_exit_in_assistant_gui')
+        if not meta['auto_update']:
+            blockers.append('march7_complete_native_first_setup')
+        if meta['log_level'] not in ('INFO', 'DEBUG'):
+            blockers.append('march7_info_logging_required')
+        game = meta['game_path']
+        if isinstance(game, str) and Path(game).is_absolute() and Path(game).is_file():
+            targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe'), game]
+        else:
+            # A value the loader returned but that is not a usable path (a
+            # list, mapping, tag or date) must not leak past prepare: it
+            # would only fail later inside observation with a TypeError, so
+            # it is dropped here and the blocker states the fact instead.
+            blockers.append('game_path_unverified')
+            game = None
+            targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe')]
+    else:
+        # The config could not be read; the named-setting blocker above is the
+        # actionable message, and the game path is simply unknown.
+        game = None
+        targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe')]
     if elevation_report()['elevated'] is not True:
         blockers.append('supervisor_elevation_required')
     desktop = desktop_report()
     if desktop['status'] != 'observed_available':
         blockers.extend(desktop.get('blockers') or ['desktop_unavailable'])
-    targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe'), game]
     observed = find_matching_processes(targets)
     if observed['status'] != 'observed' or observed['matches']:
         blockers.append('existing_runner_or_game_not_exclusive')
     return {'installation_root': str(root), 'cwd': str(root), 'launcher': str(launcher),
-            'argv_candidate': [str(exe), 'main'], 'game_path': game,
+            'argv_candidate': [str(exe), 'main'],
+            'game_path': game,
             'observation_targets': targets, 'runner_version': version,
             'config_sha256': hashlib.sha256(config.read_bytes()).hexdigest(),
             'completion_kind': 'march7', 'blockers': blockers,
             'game_start': 'assistant', 'borrowed_game': [],
-            'task_configuration': 'assistant_current_saved_preset'}
+            'task_configuration': 'assistant_current_saved_preset',
+            'unreadable_config_key': unreadable_key}
 
 
 @dataclass(frozen=True)
@@ -174,11 +256,38 @@ def task_details(lines):
         match = re.search(r'(?:当前累计分数|当前分数)[:：]\s*(\d+/\d+)', message)
         if match:
             score = match[1]
+        progress = re.search(r'每日实训活跃度\s*(\d+)/(\d+)', message)
+        if progress:
+            # v2026.11.24 logs the current activity on every record_progress
+            # (tasks/daily/training.py), claim or not.
+            score = f'{progress[1]}/{progress[2]}'
+            if int(progress[1]) < int(progress[2]):
+                daily_incomplete = True
+                failed['每日实训活跃度'] = line
+            else:
+                daily_incomplete = False
+                failed.pop('每日实训活跃度', None)
+        claim = re.search(r'已领取实训奖励，活跃度\s*(\d+)/(\d+)', message)
+        if claim:
+            # A full claim only settles the training's own failure entry; it
+            # says nothing about other tasks, so nothing else is cleared.
+            score = f'{claim[1]}/{claim[2]}'
+            if int(claim[1]) < int(claim[2]):
+                daily_incomplete = True
+                failed['每日实训活跃度'] = line
+            else:
+                daily_incomplete = False
+                failed.pop('每日实训活跃度', None)
+        match = re.fullmatch(r'实训未完成[:：]\s*(.+)', message)
+        if match:
+            failed[match[1].strip()] = line
         if message == '每日实训未完成':
             daily_incomplete = True
         elif message == '每日实训已完成':
+            # The daily-training completion settles only its own failure
+            # entry; it says nothing about other tasks.
             daily_incomplete = False
-            failed.clear()
+            failed.pop('每日实训活跃度', None)
         if re.search(r'\|\s*WARNING\s*\|', line) and re.search(r'失败|超时|异常', line):
             switch = re.fullmatch(r'切换到 (.+) 超时，准备重试', message)
             # Only the immediate retry with an explicit matching destination is

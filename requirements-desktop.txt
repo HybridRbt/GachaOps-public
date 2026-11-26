@@ -1,3 +1,5 @@
-# Optional UI/build dependencies; supervisor and CLI remain standard-library only.
+# The core itself depends on ruamel.yaml (declared in pyproject.toml); the
+# UI/build extras remain PySide6-Essentials and PyInstaller.
 PySide6-Essentials==6.10.2
 PyInstaller==6.22.0
+ruamel.yaml==0.19.1

@@ -12,6 +12,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # The core imports ruamel.yaml (pyproject dependencies), so every
+      # platform installs the package itself; Windows additionally fetches
+      # the desktop extras for the GUI fixtures.
+      - run: python -m pip install .
       - if: runner.os == 'Windows'
         run: python -m pip install --target build/gui-deps -r requirements-desktop.txt
       - if: runner.os == 'Windows'
