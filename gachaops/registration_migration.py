@@ -477,8 +477,13 @@ def _load_manifest(backup_dir, expected_sha256):
     for source in manifest['sources']:
         if (not isinstance(source, dict)
                 or not isinstance(source.get('path'), str)
-                or not isinstance(source.get('exists'), bool)
-                or not isinstance(source.get('sha256'), str)):
+                or not isinstance(source.get('exists'), bool)):
+            raise ConfigError('事务清单格式无效，无法继续')
+        # A row that claims a file must carry a string digest; a row marked
+        # not-existing may not - the program writes the registry source row
+        # of a first migration without one, and the integrity loop skips
+        # not-existing rows anyway.
+        if source['exists'] and not isinstance(source.get('sha256'), str):
             raise ConfigError('事务清单格式无效，无法继续')
         _staged_path(backup_dir, 'sources', source['path'])
     for target in manifest['targets']:

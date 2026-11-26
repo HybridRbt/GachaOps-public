@@ -257,6 +257,45 @@ class MigrationContinueTests(unittest.TestCase):
             with self.assertRaises(ConfigError):
                 continue_registration_transaction(root)
 
+    def prepare_interrupted_without_registry(self, root):
+        """First migration on an old-layout root: one schema 1 combination
+        and no global registry yet. The registry source row is written
+        without a sha256 (nothing to digest); publishing stops after the
+        registry target so the transaction stays prepared."""
+        from gachaops import registration_migration
+        write_profile(root, UUID_A, schema1(root, [ok_row(root, enabled=True)]), name='A')
+        preview = preview_registration_migration(root)
+        real_publish = registration_migration._publish_targets
+
+        def flaky(root_arg, targets):
+            real_publish(root_arg, targets[:1])  # registry lands, profiles do not
+            raise PermissionError('fixture interruption')
+        with patch.object(registration_migration, '_publish_targets', flaky):
+            with self.assertRaises(PermissionError):
+                commit_registration_migration(root, preview, {})
+        journal = read_journal(root)
+        self.assertIsNotNone(journal)
+        self.assertEqual(journal['state'], 'prepared')
+        return preview
+
+    def test_first_migration_without_registry_recovers_and_completes(self):
+        """A first migration on a machine with no global registry writes the
+        registry source row without a sha256; the manifest reader must
+        accept the program's own shape or every interrupted first migration
+        would block the data root forever."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted_without_registry(root)
+            self.assertEqual(startup_state(root)['status'], 'prepared')
+            result = continue_registration_transaction(root)
+            self.assertEqual(result['kind'], 'migration')
+            document = ProfileStore(root).load_profile(UUID_A)
+            self.assertTrue(document['assistants'][0]['enabled'])
+            registry = RegistrationStore(root).read_required()
+            self.assertEqual(registry['assistants']['ok-ww'], {'installation_root': str(root)})
+            self.assertIsNone(read_journal(root))
+            self.assertEqual(startup_state(root)['status'], 'ready')
+
     def test_external_edits_and_backup_damage_stop_continuation(self):
         from gachaops.profiles import default_profile, profile_document
         with tempfile.TemporaryDirectory() as temp:
@@ -909,6 +948,30 @@ class ManifestRowPathValidationTests(unittest.TestCase):
             self.assertTrue(reads)
             self.assertTrue(all(read == manifest_path.resolve() for read in reads))
             self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_source_row_marked_existing_requires_a_string_digest(self):
+        # The sha256 freedom introduced for not-existing rows (the registry
+        # row of a first migration) must not loosen the rows that claim a
+        # file: those still carry a string digest, exactly as the program
+        # writes them.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+
+            def mutate_source(extra):
+                def apply(manifest):
+                    row = manifest['sources'][-1]
+                    row.pop('sha256', None)
+                    row['exists'] = True
+                    row.update(extra)
+                return apply
+
+            for mutation in ({}, {'sha256': None}, {'sha256': 123}):
+                with self.subTest(mutation=mutation):
+                    self._rewrite_manifest(root, mutate_source(mutation))
+                    with self.assertRaisesRegex(ConfigError, '事务清单格式无效'):
+                        continue_registration_transaction(root)
+                    self.assertEqual(read_journal(root)['state'], 'prepared')
 
 
 if __name__ == '__main__':
