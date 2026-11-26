@@ -287,6 +287,10 @@ class March7Tests(unittest.TestCase):
 
 
     def _prepare_with_config(self, root, row, addition, cloud=False, replace=None):
+        return self._prepare_full_with_config(root, row, addition, cloud=cloud, replace=replace)['blockers']
+
+    def _prepare_full_with_config(self, root, row, addition, cloud=False, replace=None):
+        """The whole prepared result, for assertions on fields beside blockers."""
         config = root / 'config.yaml'
         pristine = getattr(self, '_pristine_config', None)
         if pristine is None or self._pristine_root != str(root):
@@ -300,7 +304,7 @@ class March7Tests(unittest.TestCase):
         with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
              patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
              patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
-            return march7.prepare(row)['blockers']
+            return march7.prepare(row)
 
     def test_quoted_keys_go_through_the_guards_like_upstream(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -403,15 +407,20 @@ class March7Tests(unittest.TestCase):
                 self.assertEqual(march7.prepare(row)['blockers'], [])
 
     def test_unresolvable_needed_entries_are_rejected_with_the_setting_named(self):
+        # An entry that cannot be resolved blocks on a code like every other
+        # blocker, and the offending key travels in its own field so the
+        # desktop can name the setting; it never becomes free text in the list.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); row = self.installation(root)
             for spelling in ('control_backend: [local]\n', 'control_backend: *anchor\n',
                              'control_backend: &b local\n', 'control_backend: !!str local\n',
                              'control_backend :local\n', 'control_backend:#x\n',
                              'control_backend\n'):
-                blockers = self._prepare_with_config(root, row, spelling)
+                prepared = self._prepare_full_with_config(root, row, spelling)
                 with self.subTest(spelling=spelling.strip()):
-                    self.assertTrue(any('无法识别' in b for b in blockers), blockers)
+                    self.assertIn('march7_config_entry_unreadable', prepared['blockers'])
+                    self.assertEqual(prepared['unreadable_config_key'], 'control_backend')
+                    self.assertFalse(any('无法识别' in b for b in prepared['blockers']), prepared['blockers'])
             # A nested or block-spelled value under game_path (replacing the
             # fixture's own entry, not duplicating it) is equally undecidable.
             config = root / 'config.yaml'
@@ -423,17 +432,21 @@ class March7Tests(unittest.TestCase):
                 with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
                      patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
                      patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
-                    blockers = march7.prepare(row)['blockers']
+                    prepared = march7.prepare(row)
                 with self.subTest(spelling=spelling.splitlines()[0]):
-                    self.assertTrue(any('无法识别' in b for b in blockers), blockers)
+                    self.assertIn('march7_config_entry_unreadable', prepared['blockers'])
+                    self.assertEqual(prepared['unreadable_config_key'], 'game_path')
             # A needed key inside a multi-line flow belongs to that flow, not
             # to the top level; upstream stores it nested, so nothing blocks.
-            blockers = self._prepare_with_config(root, row, 'webhook: [a,\n  control_backend: adb\n]\n')
-            self.assertNotIn('march7_local_backend_required', blockers)
-            self.assertFalse(any('无法识别' in b for b in blockers), blockers)
-            # An unterminated quote leaves the document structure unknown.
-            blockers = self._prepare_with_config(root, row, "note: \"never closed\n")
-            self.assertTrue(any('无法识别' in b for b in blockers), blockers)
+            prepared = self._prepare_full_with_config(root, row, 'webhook: [a,\n  control_backend: adb\n]\n')
+            self.assertNotIn('march7_local_backend_required', prepared['blockers'])
+            self.assertNotIn('march7_config_entry_unreadable', prepared['blockers'])
+            self.assertIsNone(prepared['unreadable_config_key'])
+            # An unterminated quote leaves the document structure unknown:
+            # no single setting can be named, so the structure code is used.
+            prepared = self._prepare_full_with_config(root, row, "note: \"never closed\n")
+            self.assertIn('march7_config_structure_unreadable', prepared['blockers'])
+            self.assertIsNone(prepared['unreadable_config_key'])
 
     def test_activity_progress_line_stands_alone_without_a_claim(self):
         body = ('| 开始运行 |\n16:34:30 | INFO | 每日实训活跃度 {score}\n'

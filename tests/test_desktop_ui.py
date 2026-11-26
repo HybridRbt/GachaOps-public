@@ -1060,6 +1060,54 @@ class DesktopUiTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
         self._release_qt()
 
+    def test_checklist_names_an_unreadable_march7_setting_in_words(self):
+        # An unreadable config entry blocks on a code; the checklist must show
+        # what is wrong and what to do, name the setting in the words the
+        # assistant's own UI uses, and never surface the raw code alone.
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        from PySide6.QtWidgets import QApplication, QLabel
+        from gachaops import desktop
+
+        def checklist_text(window):
+            return ' '.join(label.text() for row in range(window.checklist.count())
+                            for label in window.checklist.itemAt(row).widget().findChildren(QLabel))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = root / 'fixture.json'
+            path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
+                id='honkai-star-rail', adapter='march7', installation_root=str(root), enabled=True)])), encoding='utf-8')
+
+            def exercise(window):
+                window.timer.stop(); window.recheck_timer.stop()
+                window.check_report = {'assistants': [dict(
+                    id='honkai-star-rail', status='blocked',
+                    blockers=['march7_config_entry_unreadable'], unreadable_config_key='control_backend')]}
+                window.refresh_checklist()
+                shown = checklist_text(window)
+                self.assertIn('三月七', shown)
+                self.assertIn('无法识别', shown)
+                self.assertIn('控制方式', shown)        # the setting, in the user's words
+                self.assertIn('重新保存', shown)        # what to do
+                self.assertNotIn('march7_config_entry_unreadable', shown)
+                # Structure problems name no single setting but stay actionable.
+                window.check_report['assistants'][0].update(
+                    blockers=['march7_config_structure_unreadable'])
+                window.refresh_checklist()
+                shown = checklist_text(window)
+                self.assertIn('配置文件格式无法识别', shown)
+                self.assertIn('重新保存', shown)
+                self.assertNotIn('march7_config_structure_unreadable', shown)
+                window.recheck_timer.stop(); window.close()
+
+            with patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', exercise, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--config', str(path)]):
+                self.assertEqual(desktop.main(), 0)
+        self._release_qt()
+
     def test_idle_views_share_columns_and_full_row_tint(self):
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         from PySide6.QtCore import QProcess

@@ -358,17 +358,18 @@ def prepare(row):
         raise ValueError(f'三月七版本尚未核验：{version}。请更新 GachaOps 兼容支持后重新检查。')
     blockers = []
     meta = None
+    unreadable_key = None
     try:
         meta = launch_metadata(config)
     except March7ConfigUnreadable as unreadable:
-        # A needed entry exists but its spelling cannot be resolved; name the
-        # setting and ask the user to re-save it in the assistant, which
-        # rewrites the file in the canonical form upstream itself writes.
-        if unreadable.key:
-            blockers.append('三月七的配置里有一项无法识别（' + unreadable.key
-                            + '）；请在三月七助手里把该设置重新保存一次，再回来点“重新检查”。')
-        else:
-            blockers.append('三月七的配置文件结构无法识别；请在三月七助手里重新保存设置后点“重新检查”。')
+        # A needed entry exists but its spelling cannot be resolved. Block on
+        # a code like every other adapter so blocker lists stay codes; the
+        # offending key travels in its own field for the desktop to name it.
+        # Re-saving in the assistant rewrites the file in the canonical form
+        # upstream itself writes.
+        blockers.append('march7_config_entry_unreadable' if unreadable.key
+                        else 'march7_config_structure_unreadable')
+        unreadable_key = unreadable.key
     if meta is not None:
         backend = meta.get('control_backend')
         # Upstream resolution (module/config/platform.py get_control_backend):
@@ -423,7 +424,8 @@ def prepare(row):
             'config_sha256': hashlib.sha256(config.read_bytes()).hexdigest(),
             'completion_kind': 'march7', 'blockers': blockers,
             'game_start': 'assistant', 'borrowed_game': [],
-            'task_configuration': 'assistant_current_saved_preset'}
+            'task_configuration': 'assistant_current_saved_preset',
+            'unreadable_config_key': unreadable_key}
 
 
 @dataclass(frozen=True)
