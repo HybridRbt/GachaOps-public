@@ -1,4 +1,4 @@
-"""Local user profiles with UUID storage, backups and explicit import previews.
+"""Local user profiles: combination storage and management with UUID keys and backups.
 
 Schema 2 profiles keep run settings only (order, selection, game start,
 timeout, repeat limit); installation paths live in the global registration
