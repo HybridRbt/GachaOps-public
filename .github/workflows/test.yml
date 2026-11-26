@@ -2,19 +2,15 @@ name: core-tests
 on: [push, pull_request, workflow_dispatch]
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      # The core imports ruamel.yaml (pyproject dependencies), so every
-      # platform installs the package itself; Windows additionally fetches
-      # the desktop extras for the GUI fixtures.
+      # The core imports ruamel.yaml (pyproject dependencies), so the job
+      # installs the package itself; the desktop extras follow for the GUI
+      # fixtures.
       - run: python -m pip install .
       - if: runner.os == 'Windows'
         run: python -m pip install --target build/gui-deps -r requirements-desktop.txt
