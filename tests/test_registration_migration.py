@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -859,6 +860,65 @@ class ManifestRowPathValidationTests(unittest.TestCase):
             reads.append(path.resolve())
             return real_read(path)
         return patch.object(Path, 'read_bytes', recording), reads
+
+    @staticmethod
+    def _make_junction(target, link):
+        """A Windows directory junction at `link` referring to `target`;
+        needs no privilege, unlike a symlink."""
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+
+    def _redirect_subdirectory(self, root, outside_base, subdirectory, planted_bytes):
+        """Point <backup>/<subdirectory> at a copy outside the data root
+        (staged contents included, so every staged digest still matches)
+        and return the planted file with its digest."""
+        backup_dir = next(backup_root(root).glob('*/manifest.json')).parent
+        outside = outside_base / subdirectory
+        outside.mkdir(parents=True)
+        shutil.copytree(backup_dir / subdirectory, outside, dirs_exist_ok=True)
+        planted = outside / 'planted.json'
+        planted.write_bytes(planted_bytes)
+        shutil.rmtree(backup_dir / subdirectory)
+        self._make_junction(outside, backup_dir / subdirectory)
+        return planted, hashlib.sha256(planted_bytes).hexdigest()
+
+    def test_sources_directory_junction_is_refused_before_any_read(self):
+        if sys.platform != 'win32':
+            self.skipTest('Windows directory junction')
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            planted, row_digest = self._redirect_subdirectory(
+                root, Path(elsewhere), 'sources', b'junction payload')
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['sources'].append(
+                        {'path': 'planted.json', 'exists': True, 'sha256': row_digest}))
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+                # Nothing outside the data root was read across the call.
+                self.assertTrue(all(read.is_relative_to(root) for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
+    def test_targets_directory_junction_is_refused_before_any_read(self):
+        if sys.platform != 'win32':
+            self.skipTest('Windows directory junction')
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            planted, row_digest = self._redirect_subdirectory(
+                root, Path(elsewhere), 'targets', b'junction payload')
+            guard, reads = self._recording_reads()
+            with guard:
+                self._rewrite_manifest(
+                    root, lambda m: m['targets'].append(
+                        {'path': 'planted.json', 'sha256': row_digest}))
+                with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                    continue_registration_transaction(root)
+                self.assertTrue(all(read.is_relative_to(root) for read in reads))
+            self.assertFalse((root / 'planted.json').exists())
+            self.assertEqual(read_journal(root)['state'], 'prepared')
 
     def test_manifest_row_absolute_path_is_refused_before_any_read(self):
         with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:

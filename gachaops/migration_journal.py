@@ -7,6 +7,7 @@ archived into its backup directory once complete.
 """
 import json
 import re
+import stat
 from pathlib import Path
 
 from .planner import ConfigError
@@ -23,6 +24,18 @@ BACKUP_NAME = re.compile(r'[0-9a-f]{32}')
 
 def journal_path(data_root):
     return Path(data_root).resolve() / 'config' / JOURNAL_NAME
+
+
+def reparse_point(path):
+    """True when the path carries a symlink or any reparse point. On
+    Windows that includes directory junctions, which is_symlink() reports
+    as False; checking st_file_attributes follows the convention already
+    used by profiles and the maagf2 adapter."""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
 
 
 def backup_root(data_root):
@@ -43,13 +56,13 @@ def backup_directory(data_root, backup):
     current = Path(data_root).resolve()
     for part in Path(BACKUP_DIRECTORY).parts:
         current = current / part
-        if current.is_symlink():
+        if reparse_point(current):
             raise ConfigError('external migration backup location')
     root = current
     if not root.resolve().is_relative_to(current):
         raise ConfigError('external migration backup location')
     current = root / backup
-    if current.is_symlink() or (current.exists() and not current.is_dir()):
+    if reparse_point(current) or (current.exists() and not current.is_dir()):
         raise ConfigError('external migration backup location')
     if not current.resolve().is_relative_to(root.resolve()):
         raise ConfigError('external migration backup location')

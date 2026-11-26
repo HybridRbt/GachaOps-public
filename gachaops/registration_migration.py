@@ -20,7 +20,7 @@ from .config_lock import config_lock
 from .execution_lock import ExecutionLock
 from .migration_journal import (JOURNAL_KIND, archive_journal, backup_directory, backup_root,
                                 journal_path,
-                                read_journal)
+                                read_journal, reparse_point)
 from .planner import ConfigError
 from .profiles import ProfileStore, profile_document, run_content, validate_profile_document
 from .recovery import RecoveryRequired, read_state, save, save_bytes
@@ -433,9 +433,11 @@ def _staged_path(backup_dir, subdirectory, relative):
     was not changed, never that it is trustworthy — so every row path must
     name one concrete file: a relative spelling with no drive, no empty,
     '.' or '..' component under either separator, and every level from the
-    backup's own subdirectory down must be a real directory (no symlinks),
-    with the location resolving inside that subdirectory. Checked once
-    here, so the integrity and publish loops only ever walk validated
+    backup's own subdirectory down must be a real directory (no symlink,
+    junction or other reparse point), with the location resolving inside
+    the backup itself — the anchor backup_directory has already validated —
+    so a redirected subdirectory cannot quietly move the anchor. Checked
+    once here, so the integrity and publish loops only ever walk validated
     rows."""
     if (not isinstance(relative, str) or not relative
             or Path(relative).drive or Path(relative).is_absolute()
@@ -443,14 +445,14 @@ def _staged_path(backup_dir, subdirectory, relative):
                    for part in relative.replace('\\', '/').split('/'))):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
     base = backup_dir / subdirectory
-    if base.is_symlink():
+    if reparse_point(base) or not base.resolve().is_relative_to(backup_dir.resolve()):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
     current = base
     for part in Path(relative).parts:
         current = current / part
-        if current.is_symlink():
+        if reparse_point(current):
             raise ConfigError('事务清单内出现非法备份路径，停止继续')
-    if not current.resolve().is_relative_to(base.resolve()):
+    if not current.resolve().is_relative_to(backup_dir.resolve()):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
     return current
 
