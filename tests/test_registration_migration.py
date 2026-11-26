@@ -11,8 +11,8 @@ import unittest
 import uuid
 from unittest.mock import patch
 
-from gachaops.migration_journal import (JOURNAL_KIND, archive_journal, backup_root,
-                                        journal_path, read_journal)
+from gachaops.migration_journal import (JOURNAL_KIND, archive_journal, backup_directory,
+                                        backup_root, journal_path, read_journal)
 from gachaops.planner import ConfigError
 from gachaops.profiles import ProfileStore
 from gachaops.recovery import save
@@ -771,6 +771,21 @@ class JournalBackupValidationTests(unittest.TestCase):
             archive_journal(root, self.journal(backup))
             self.assertTrue((backup_root(root) / backup / 'complete.json').is_file())
             self.assertFalse(journal_path(root).exists())
+
+    def test_backup_directory_rejects_non_canonical_names(self):
+        # backup_directory must enforce the hex name itself, not trust its
+        # caller to have passed the journal's schema check first.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            with self.assertRaises(ConfigError):
+                backup_directory(root, '.')
+            with self.assertRaises(ConfigError):
+                backup_directory(root, str(backup_root(root)))
+            with self.assertRaises(ConfigError):
+                backup_directory(root, 'A' * 32)
+            self.assertEqual(backup_directory(root, 'c' * 32),
+                             backup_root(root) / ('c' * 32))
 
 
 class ManifestRowPathValidationTests(unittest.TestCase):

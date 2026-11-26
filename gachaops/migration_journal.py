@@ -36,7 +36,10 @@ def backup_directory(data_root, backup):
     no level from the data root down may be a symlink; and the resolved
     directory must stay inside this data root's backup root. Checked at
     every use, so a journal forged after prepare cannot move reads or
-    writes elsewhere."""
+    writes elsewhere. The name check lives here, not only in read_journal:
+    a direct call must not trust its caller to have validated the value."""
+    if not isinstance(backup, str) or not BACKUP_NAME.fullmatch(backup):
+        raise ConfigError('external migration backup location')
     current = Path(data_root).resolve()
     for part in Path(BACKUP_DIRECTORY).parts:
         current = current / part
