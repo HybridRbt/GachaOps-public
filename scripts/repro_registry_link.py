@@ -1267,9 +1267,10 @@ def main():
     # repo and interpreter prefixes, each in every textual form.
     masks = foreign_masks()
     out_base = Path(arguments.out)
-    if not out_base.name:
-        # A filesystem root (or '.'/'..') has no name; with_name below would
-        # raise with the raw path in its traceback. Fixed text only.
+    if out_base.name in ('', '..'):
+        # A filesystem root and '.' have no file name at all, and '..' names
+        # the parent directory itself; with_name below would raise with the
+        # raw path in its traceback. Fixed text only.
         print('the --out path must name a result file, not a filesystem root',
               file=sys.stderr)
         return 1
