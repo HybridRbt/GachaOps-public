@@ -115,13 +115,21 @@ class WindowGuardTests(unittest.TestCase):
         # the file name has to equal ours, from any install location.
         self.assertTrue(match(r'C:\Apps\GachaOps\GachaOps.exe', 'GachaOps — 助手编排', own))
         self.assertTrue(match(r'D:\Elsewhere\GachaOps\GACHAOPS.EXE', 'GachaOps 无法打开', own))
-        # An image whose file name differs is refused, same title or not.
+        # Frozen builds match on the image alone: the startup-gate dialogs
+        # (「继续迁移」「无法准备迁移」…) do not start with GachaOps and are
+        # exactly the windows a second launch must be able to front.
+        self.assertTrue(match(r'C:\Apps\GachaOps\GachaOps.exe', '继续迁移 / 继续导入',
+                              own, frozen=True))
+        self.assertTrue(match(r'C:\Apps\GachaOps\GachaOps.exe', '任意标题', own, frozen=True))
+        # Source runs keep the title condition: python.exe is shared, and
+        # the app's own popups carry other titles.
         self.assertFalse(match(r'C:\Tools\python.exe', 'GachaOps — 助手编排', own))
-        self.assertFalse(match(r'C:\Apps\GachaOps\gachaops2.exe', 'GachaOps — 助手编排', own))
-        # Same image but a popup or tooltip title: refused.
         self.assertFalse(match(r'C:\Apps\GachaOps\GachaOps.exe', '查看原因', own))
+        self.assertFalse(match(r'C:\Apps\GachaOps\GachaOps.exe', '继续迁移 / 继续导入', own))
         self.assertFalse(match(r'C:\Apps\GachaOps\GachaOps.exe', '', own))
         self.assertFalse(match(r'C:\Apps\GachaOps\GachaOps.exe', 'some other tool', own))
+        # An image whose file name differs is refused, frozen or not.
+        self.assertFalse(match(r'C:\Tools\gachaops2.exe', '任意标题', own, frozen=True))
 
     def test_find_own_window_matches_by_real_enumeration(self):
         # Real enumeration against two zero-size offscreen top-level windows
@@ -182,6 +190,7 @@ class WindowGuardTests(unittest.TestCase):
             self.addCleanup(stop_child, child)
             activations = []
             boxes = self._mute_boxes()
+            started = time.monotonic()
             with patch.object(window_guard, 'GUARD_NAME', name), \
                  patch.object(window_guard, 'activate_existing_window',
                               side_effect=lambda *a, **k: activations.append(1) or True), \
@@ -190,6 +199,9 @@ class WindowGuardTests(unittest.TestCase):
                  patch.object(QApplication, 'exec', return_value=0), \
                  patch('sys.argv', ['desktop-test']):
                 self.assertEqual(desktop.main(), 0)
+            # With activation succeeding immediately there is no wait: the
+            # launch must not sit through the whole budget first.
+            self.assertLess(time.monotonic() - started, 2.0)
             self.assertEqual(len(activations), 1)
             self.assertEqual(boxes, [])
             # No window, no gate, no data: the refused launch touches nothing.
@@ -216,6 +228,7 @@ class WindowGuardTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
             self.assertEqual(len(boxes), 1)
             self.assertIn('GachaOps', boxes[0][1])
+            self.assertIn('任务栏', boxes[0][2])
             self.assertEqual(list(root.iterdir()), [])
 
     def test_handoff_launch_waits_for_guard_release_then_continues(self):
@@ -266,7 +279,9 @@ class WindowGuardTests(unittest.TestCase):
                  patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
                  patch.object(QApplication, 'exec', return_value=0), \
                  patch('sys.argv', ['desktop-test', '--handoff', str(handoff)]):
-                self.assertEqual(desktop.main(), 0)
+                # A timed-out handoff exits with its own non-zero code, so
+                # scripts can tell it apart from a successful activation.
+                self.assertEqual(desktop.main(), 3)
             self.assertEqual(len(boxes), 1)
             # No window, no gate: the timed-out handoff wrote nothing.
             self.assertEqual(list((root / 'runs').iterdir()), [handoff.parent])
@@ -294,6 +309,20 @@ class WindowGuardTests(unittest.TestCase):
         self.addCleanup(stop_child, child)
         child.wait(timeout=10)
         self.assertEqual(child.returncode, 3)
+        # The raw wait observes exactly WAIT_ABANDONED (0x80) once: the
+        # takeover contract this guard deliberately differs on.
+        if os.name == 'nt':
+            probe = ctypes.WinDLL('kernel32', use_last_error=True)
+            probe.CreateMutexW.argtypes = [ctypes.c_void_p, w.BOOL, w.LPCWSTR]
+            probe.CreateMutexW.restype = w.HANDLE
+            probe.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
+            probe.WaitForSingleObject.restype = w.DWORD
+            handle = probe.CreateMutexW(None, False, 'Global\\' + name)
+            self.assertTrue(handle)
+            try:
+                self.assertEqual(probe.WaitForSingleObject(handle, 0), 0x80)
+            finally:
+                probe.CloseHandle(handle)
         guard = window_guard.WindowGuard(name)
         self.assertTrue(guard.acquire())
         guard.release()
@@ -355,6 +384,58 @@ class WindowGuardTests(unittest.TestCase):
             self.assertTrue((root / 'config').is_dir())
             self.assertEqual(activations, [])
             self.assertEqual(boxes, [])
+
+    def test_preview_factory_launch_does_not_take_the_window_guard(self):
+        from gachaops import desktop, window_guard
+        from PySide6.QtWidgets import QApplication
+        self.addCleanup(self._qt)
+        name = unique_name()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            # Layout previews have the same exemption as smoke runs: a
+            # held guard must not block them or front the user's window.
+            child, held = hold_in_child(name, '30')
+            self.assertEqual(held, 'HELD')
+            self.addCleanup(stop_child, child)
+            boxes = self._mute_boxes()
+
+            def preview(window):
+                window.timer.stop(); window.recheck_timer.stop()
+
+            with patch.object(window_guard, 'GUARD_NAME', name), \
+                 patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(desktop, 'PREVIEW_FACTORY', preview, create=True), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test']):
+                self.assertEqual(desktop.main(), 0)
+            self.assertTrue((root / 'config').is_dir())
+            self.assertEqual(boxes, [])
+
+    def test_recover_launch_waits_for_guard_release_like_handoff(self):
+        from gachaops import desktop, window_guard
+        from PySide6.QtWidgets import QApplication
+        self.addCleanup(self._qt)
+        name = unique_name()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            child, held = hold_in_child(name, '1.2')
+            self.assertEqual(held, 'HELD')
+            self.addCleanup(stop_child, child)
+            boxes = self._mute_boxes()
+            started = time.monotonic()
+            with patch.object(window_guard, 'GUARD_NAME', name), \
+                 patch.object(desktop, 'workspace_root', return_value=root), \
+                 patch.object(desktop, 'elevation_report', return_value={'elevated': True}), \
+                 patch.object(QApplication, 'exec', return_value=0), \
+                 patch('sys.argv', ['desktop-test', '--recover']):
+                self.assertEqual(desktop.main(), 0)
+            self.assertGreaterEqual(time.monotonic() - started, 1.0)
+            self.assertEqual(boxes, [])
+            # The gate ran after the release; --recover then arms the
+            # recovery timer on the constructed window.
+            self.assertTrue((root / 'config').is_dir())
+            child.wait(timeout=10)
 
 
 if __name__ == '__main__':

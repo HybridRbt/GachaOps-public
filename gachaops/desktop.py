@@ -2501,17 +2501,18 @@ def main():
     guard = None
     if not automated:
         handoff = '--handoff' in sys.argv or '--recover' in sys.argv
-        guard, reason = window_guard.acquire_gui_guard(
+        guard = window_guard.acquire_gui_guard(
             wait_seconds=window_guard.HANDOFF_WAIT_SECONDS if handoff else 0.0)
         if guard is None:
             if handoff:
                 QMessageBox.information(None, 'GachaOps 管理员窗口未接管',
                     '等待上一个 GachaOps 窗口退出时超时，管理员窗口未打开。'
                     '请先手动关闭已打开的 GachaOps 窗口，再重新以管理员身份启动。')
-            elif not window_guard.activate_existing_window():
+                return 3
+            if not window_guard.activate_existing_window():
                 QMessageBox.information(None, 'GachaOps 已在运行',
-                    '本机已有一个 GachaOps 窗口在运行，请切换到它；'
-                    '同一台机器同时只允许一个 GachaOps 窗口。')
+                    '本机已有一个 GachaOps 窗口在运行（可能在另一个登录会话，或正在退出），'
+                    '请从任务栏切换到它；同一台机器同时只允许一个 GachaOps 窗口。')
             return 0
     try:
         try:

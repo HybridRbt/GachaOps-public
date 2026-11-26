@@ -81,11 +81,22 @@ class WindowGuard:
         digest = hashlib.sha256(self.name.encode()).hexdigest()
         path = Path(tempfile.gettempdir()) / ('gachaops-window-' + digest + '.lock')
         flags = os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0)
-        self.stream = os.fdopen(os.open(path, flags, 0o600), 'r+')
+        try:
+            self.stream = os.fdopen(os.open(path, flags, 0o600), 'r+')
+        except OSError as error:
+            # The lock file lives in a shared temp directory: a second user
+            # hits PermissionError on the 0600 file, and a planted symlink
+            # trips O_NOFOLLOW (ELOOP). Neither is our own window holding
+            # the guard, so both read as "not acquired" instead of raising.
+            if isinstance(error, PermissionError) or error.errno == errno.ELOOP:
+                return False
+            raise
         try:
             fcntl.flock(self.stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
             if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                self.stream.close()
+                self.stream = None
                 return False
             raise
         return True
@@ -99,21 +110,14 @@ class WindowGuard:
             self.stream.close()
             self.stream = None
 
-    def __enter__(self):
-        self.acquire()
-        return self
-
-    def __exit__(self, *_):
-        self.release()
-
 
 def acquire_gui_guard(name=None, wait_seconds=0.0):
     """Take the machine-wide window guard.
 
-    Returns (guard, reason). reason is 'acquired', 'busy' (another window
-    holds it right now) or 'timeout' (still held after wait_seconds, used
-    by the elevation handoff to bound its wait for the retiring window).
-    The name resolves at call time so tests can patch GUARD_NAME.
+    Returns the acquired guard, or None when the machine already has a
+    window. With wait_seconds above zero (the elevation handoff) it polls
+    for the retiring window to release for up to that long before giving
+    up. The name resolves at call time so tests can patch GUARD_NAME.
     """
     if name is None:
         name = GUARD_NAME
@@ -121,10 +125,10 @@ def acquire_gui_guard(name=None, wait_seconds=0.0):
     deadline = time.monotonic() + max(0.0, wait_seconds)
     while True:
         if guard.acquire():
-            return guard, 'acquired'
+            return guard
         if time.monotonic() >= deadline:
             guard.release()
-            return None, 'busy' if wait_seconds <= 0 else 'timeout'
+            return None
         guard.release()
         time.sleep(POLL_INTERVAL_SECONDS)
         guard = WindowGuard(name)
@@ -135,17 +139,24 @@ def own_image_name():
     return os.path.normcase(os.path.basename(sys.executable))
 
 
-def window_matches(image_name, title, own_image):
-    """Whether a candidate top-level window is the existing GachaOps GUI:
-    the executable image's file name equals our own (the enumeration
+def window_matches(image_name, title, own_image, frozen=False):
+    """Whether a candidate top-level window is the existing GachaOps GUI.
+
+    The executable image's file name must equal our own (the enumeration
     reports a full image path, so compare basenames — the existing window
-    may well come from a different install location) and the title starts
-    with GachaOps. The title condition is what keeps an unrelated Python
-    program's window (source runs have python.exe as their image) from
-    being fronted, and excludes the app's own dropdown popups and
-    tooltips, which carry other titles."""
-    return (os.path.normcase(os.path.basename(image_name)) == os.path.normcase(own_image)
-            and title.startswith(ACTIVATION_TITLE_PREFIX))
+    may well come from a different install location). Frozen builds match
+    on the image alone: GachaOps.exe has no lookalike problem, so the
+    startup-gate dialogs (「继续迁移 / 继续导入」「无法准备迁移」 and the
+    like, whose titles do not start with GachaOps) can be fronted while
+    the main window is still hidden. Source runs additionally require the
+    title prefix, because there the image is python.exe and another
+    program's window must not be fronted — and excludes the app's own
+    dropdown popups and tooltips. Known trade-off: a source run's
+    startup-gate dialogs are therefore not found by the second launch.
+    """
+    if os.path.normcase(os.path.basename(image_name)) != os.path.normcase(own_image):
+        return False
+    return frozen or title.startswith(ACTIVATION_TITLE_PREFIX)
 
 
 def _find_own_window():
@@ -158,6 +169,7 @@ def _find_own_window():
     if os.name != 'nt':
         return 0
     mine = own_image_name()
+    frozen = bool(getattr(sys, 'frozen', False))
     api = ctypes.WinDLL('user32', use_last_error=True)
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
     callback_type = ctypes.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
@@ -199,7 +211,7 @@ def _find_own_window():
             kernel.CloseHandle(handle)
         title = ctypes.create_unicode_buffer(256)
         api.GetWindowTextW(hwnd, title, len(title))
-        if window_matches(image.value, title.value, mine):
+        if window_matches(image.value, title.value, mine, frozen):
             found.append(int(hwnd))
         return True
 
@@ -211,10 +223,11 @@ def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
                              interval=ACTIVATION_INTERVAL_SECONDS):
     """Restore and foreground the existing window, retrying briefly.
 
-    The guard holder may still be between acquiring the guard and showing
-    its window, so a few bounded retries precede the manual-switch report.
-    Best effort: a foreground denial still reports success of the attempt
-    because the caller has no second window to offer either way.
+    Returns whether a matching window was found and actually sits in the
+    foreground now. The guard holder may still be between acquiring the
+    guard and showing its window, so a few bounded retries precede the
+    manual-switch report; a foreground denial reads as False so the
+    caller can point the user at the taskbar instead of exiting silently.
     """
     if os.name != 'nt':
         return False
@@ -225,12 +238,14 @@ def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
     api.ShowWindow.restype = w.BOOL
     api.SetForegroundWindow.argtypes = [w.HWND]
     api.SetForegroundWindow.restype = w.BOOL
+    api.GetForegroundWindow.argtypes = []
+    api.GetForegroundWindow.restype = w.HWND
     for _ in range(attempts):
         hwnd = _find_own_window()
         if hwnd:
             if api.IsIconic(hwnd):
                 api.ShowWindow(hwnd, 9)  # SW_RESTORE; no synthetic input
             api.SetForegroundWindow(hwnd)
-            return True
+            return api.GetForegroundWindow() == hwnd
         time.sleep(interval)
     return False
