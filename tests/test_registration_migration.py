@@ -1,14 +1,18 @@
 """Offline migration/import regressions with fixture directories only."""
+import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+import uuid
 from unittest.mock import patch
 
-from gachaops.migration_journal import JOURNAL_KIND, backup_root, journal_path, read_journal
+from gachaops.migration_journal import (JOURNAL_KIND, archive_journal, backup_root,
+                                        journal_path, read_journal)
 from gachaops.planner import ConfigError
 from gachaops.profiles import ProfileStore
 from gachaops.recovery import save
@@ -664,6 +668,107 @@ class ContinueRegistrationRaceTests(unittest.TestCase):
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=30)
+
+
+class JournalBackupValidationTests(unittest.TestCase):
+    """A forged or damaged journal's backup value must not point backup
+    reads or writes outside this data root's backup directory."""
+
+    @staticmethod
+    def journal(backup, state='complete'):
+        return {'schema_version': 1, 'kind': JOURNAL_KIND, 'state': state,
+                'transaction': 'migration', 'backup': backup,
+                'manifest_sha256': '0' * 64, 'created_at': '2026-01-01T00:00:00+00:00'}
+
+    def test_read_journal_rejects_non_canonical_backup_values(self):
+        # The only value the program writes is uuid4().hex; every other
+        # spelling is a forged journal and is refused outright.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            for value in ('../../outside', 'C:/outside/x', str(Path(temp) / 'elsewhere'),
+                          'nested/value', 'a' * 31, 'a' * 33, 'A' * 32, '0' * 32 + ' '):
+                save(journal_path(root), self.journal(value))
+                with self.subTest(value=value):
+                    with self.assertRaises(ConfigError):
+                        read_journal(root)
+                (journal_path(root)).unlink()
+
+    def test_relative_backup_escape_is_refused_for_archiving(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            escape = '../../outside-' + uuid.uuid4().hex
+            save(journal_path(root), self.journal(escape))
+            with self.assertRaises(ConfigError):
+                read_journal(root)
+            with self.assertRaises(ConfigError):
+                archive_journal(root, self.journal(escape))
+            self.assertFalse((root / escape.split('/')[-1] / 'complete.json').exists())
+
+    def test_absolute_backup_value_is_refused_for_archiving(self):
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            initialize_fresh(root)
+            save(journal_path(root), self.journal(str(Path(elsewhere) / 'abs')))
+            with self.assertRaises(ConfigError):
+                read_journal(root)
+            with self.assertRaises(ConfigError):
+                archive_journal(root, self.journal(str(Path(elsewhere) / 'abs')))
+            self.assertFalse((Path(elsewhere) / 'abs' / 'complete.json').exists())
+
+    def test_continue_read_stays_inside_the_backup_root(self):
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as outside:
+            root = Path(temp)
+            initialize_fresh(root)
+            escape = '../../outside-' + uuid.uuid4().hex
+            manifest = json.dumps({'kind': 'registration_migration', 'sources': [],
+                                   'targets': [], 'profiles': []}).encode('utf-8')
+            escaped = (backup_root(root) / escape)
+            escaped.mkdir(parents=True, exist_ok=True)
+            (escaped / 'manifest.json').write_bytes(manifest)
+            save(journal_path(root), self.journal(escape, state='prepared') | {
+                'manifest_sha256': hashlib.sha256(manifest).hexdigest()})
+            # Refused at the schema layer before any lock or backup access:
+            # the unfixed product reads the planted manifest outside the
+            # data root and fails later with a different message.
+            with self.assertRaisesRegex(ConfigError, 'invalid migration journal schema'):
+                continue_registration_transaction(root)
+            # Nothing is deleted or rewritten: the forged journal file stays
+            # exactly as it was found.
+            self.assertTrue(journal_path(root).exists())
+            self.assertEqual(json.loads(journal_path(root).read_text(
+                encoding='utf-8-sig'))['backup'], escape)
+            self.assertFalse((escaped / 'complete.json').exists())
+            self.assertEqual((escaped / 'manifest.json').read_bytes(), manifest)
+
+    def test_symlinked_backup_directory_is_refused_for_archiving(self):
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory() as elsewhere:
+            root = Path(temp)
+            initialize_fresh(root)
+            (root / 'backups' / 'registration-migrations').mkdir(parents=True)
+            target = Path(elsewhere) / 'real'
+            target.mkdir()
+            link = backup_root(root) / ('a' * 32)
+            try:
+                os.symlink(target, link, target_is_directory=True)
+            except OSError:
+                self.skipTest(f'symlink creation unavailable: {sys.exc_info()[1]}')
+            save(journal_path(root), self.journal('a' * 32))
+            with self.assertRaises(ConfigError):
+                archive_journal(root, self.journal('a' * 32))
+            self.assertFalse((target / 'complete.json').exists())
+
+    def test_canonical_hex_backup_still_archives(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            initialize_fresh(root)
+            backup = 'c' * 32
+            (backup_root(root) / backup).mkdir(parents=True)
+            save(journal_path(root), self.journal(backup))
+            archive_journal(root, self.journal(backup))
+            self.assertTrue((backup_root(root) / backup / 'complete.json').is_file())
+            self.assertFalse(journal_path(root).exists())
 
 
 if __name__ == '__main__':

@@ -18,7 +18,8 @@ from .adapter_catalog import get_adapter, list_adapters
 from .assistants import validate_assistants
 from .config_lock import config_lock
 from .execution_lock import ExecutionLock
-from .migration_journal import (JOURNAL_KIND, archive_journal, backup_root, journal_path,
+from .migration_journal import (JOURNAL_KIND, archive_journal, backup_directory, backup_root,
+                                journal_path,
                                 read_journal)
 from .planner import ConfigError
 from .profiles import ProfileStore, profile_document, run_content, validate_profile_document
@@ -476,7 +477,7 @@ def continue_registration_transaction(data_root):
             if (current['transaction'], current['backup']) != (journal['transaction'], journal['backup']):
                 raise ConfigError('待继续的事务已变化（其他窗口开始了新事务）；请重新打开程序后再继续最新事务')
             journal = current
-            backup_dir = backup_root(root) / journal['backup']
+            backup_dir = backup_directory(root, journal['backup'])
             manifest = _load_manifest(backup_dir, journal['manifest_sha256'])
             for source in manifest['sources']:
                 if not source['exists']:
