@@ -5,6 +5,7 @@ ownership fail closed. This coordinates GachaOps, not independently run tools.
 """
 import ctypes
 from ctypes import wintypes as w
+import errno
 import hashlib
 import os
 from pathlib import Path
@@ -57,8 +58,15 @@ class ExecutionLock:
                 if result == 0x80:  # WAIT_ABANDONED: we own it, but cannot assume cleanup.
                     self.api.ReleaseMutex(self.handle)
                     raise ExecutionBusy("abandoned execution mutex; inspect previous processes before retry")
+                if result == 0x102:  # WAIT_TIMEOUT: another GachaOps chain holds it right now.
+                    raise ExecutionBusy(BUSY_MESSAGE)
                 if result != 0:
-                    raise ExecutionBusy("another chain owns the execution mutex, or mutex wait failed")
+                    # WAIT_FAILED and anything unexpected is not provably
+                    # busy, so the message stays distinguishable from the
+                    # busy hint the desktop translates.
+                    raise ExecutionBusy(
+                        "execution mutex wait failed (winerror "
+                        + str(ctypes.get_last_error()) + "); inspect permissions")
                 self.owner_thread = threading.get_ident()
             else:
                 import fcntl
@@ -69,7 +77,14 @@ class ExecutionLock:
                 try:
                     fcntl.flock(self.stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except OSError as exc:
-                    raise ExecutionBusy("another chain owns the execution file lock") from exc
+                    if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                        raise ExecutionBusy(BUSY_MESSAGE) from exc
+                    # Anything else is not provably busy, so the message
+                    # stays distinguishable from the busy hint the desktop
+                    # translates.
+                    raise ExecutionBusy(
+                        "execution file lock failed (errno "
+                        + str(exc.errno) + "); inspect permissions") from exc
             return self
         except BaseException:
             self._dispose()

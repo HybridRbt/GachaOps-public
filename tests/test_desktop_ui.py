@@ -645,12 +645,15 @@ class DesktopUiTests(unittest.TestCase):
         from PySide6.QtWidgets import QApplication
         from gachaops import desktop
         from gachaops.execution_lock import BUSY_MESSAGE
+        from test_m1 import contend_for_default_lock
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve(); path = root / 'fixture.json'
             path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
                 id='fixture', adapter='ok-ww', installation_root=str(root), enabled=True)])), encoding='utf-8')
             session = root / 'session'; session.mkdir()
-            raw = 'gachaops: ' + BUSY_MESSAGE
+            # The line a user's second window actually produces, captured
+            # from a real cross-process contention.
+            raw = contend_for_default_lock().stderr.strip()
             (session / 'worker.log').write_text(raw + '\n', encoding='utf-8')
 
             def exercise(window):
