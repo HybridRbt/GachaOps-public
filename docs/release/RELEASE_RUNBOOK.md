@@ -10,7 +10,7 @@ v0.1.0 作为预发布提供。干净002042c/Python3.12.14本地候选及其确�
 
 ## 必要材料和包布局
 
-源码归档清单在 source-delivery/SOURCE_BUNDLE_MANIFEST.json，实际交付须包含全部六份归档，不只提供 URL。使用 prepare_release_materials.py 从已核对的本地缓存按完整摘要恢复归档；缺失、长度或摘要变化即停止，不联网补齐。
+源码归档清单在 source-delivery/SOURCE_BUNDLE_MANIFEST.json，实际交付须包含全部七份归档，不只提供 URL。使用 prepare_release_materials.py 从已核对的本地缓存按完整摘要恢复归档；缺失、长度或摘要变化即停止，不联网补齐。
 
 必要文档由 stage_release.py 的 REQUIRED 定义，源路径与交付目标一起审查。docs/QUICKSTART.md 保持 docs 目录布局；使用声明、数据目录说明、兼容矩阵、贡献接口和安全说明直接可读，根 README 指向快速开始。第三方原文放 THIRD_PARTY_LICENSES，源码与替换材料放 SOURCE_DELIVERY。普通使用者无需先解压应用源码 ZIP 才能阅读声明。
 
@@ -34,7 +34,7 @@ v0.1.0 作为预发布提供。干净002042c/Python3.12.14本地候选及其确�
 
 1. phase=build：只构建并上传 GachaOps-unreviewed-build，其中 build/GachaOps/ 是确切 app，review-input.json 默认 approved=false。完整 app 文件集合及 build-manifest 都纳入审查；记录 run ID 并在30天过期前留存。
 2. 维护者审查这组产物、源码归档及材料，分别准备精确 BINARY_DISPOSITIONS.json、DISTRIBUTION_APPROVAL.json 和 CANDIDATE_REVIEW.json。CANDIDATE_REVIEW 以 capture 输出为模板，app_files 不得重算后自动接受；sidecar_sha256 为 distribution_approval、source_bundle_manifest、binary_dispositions 原始文件的 SHA256，真正无 policy 时才可填 null。scope 固定 local_candidate_only，只有维护者批准后才 approved=true。审核必须包含代码提交/EXE、完整字节、原始命中、源码对应、变更说明和未完成发布条件。JSON 是经审阅的记录，不是数字签名。
-3. phase=materials：从已审材料提交准备 GachaOps-reviewed-materials。该提交必须已经提供清单中的全部六归档（包括对应本次 build 的应用源码 ZIP）；工具不联网恢复、不替换旧包。大归档不宜放产品常规分支，可用专用私有材料分支。旧9e归档不能冒充新build对应源码。归档缺失、摘要错误或审批字段不齐即失败，维护者须先补齐确切输入；此阶段不重新构建 EXE。
+3. phase=materials：从已审材料提交准备 GachaOps-reviewed-materials。该提交必须已经提供清单中的全部七归档（包括对应本次 build 的应用源码 ZIP）；工具不联网恢复、不替换旧包。大归档不宜放产品常规分支，可用专用私有材料分支。旧9e归档不能冒充新build对应源码。归档缺失、摘要错误或审批字段不齐即失败，维护者须先补齐确切输入；此阶段不重新构建 EXE。
 4. phase=stage：选择含 CANDIDATE_REVIEW.json 的审查提交，显式输入 build_run_id 和 materials_run_id。下载这两次的确切 artifact；重新校验完整 app、三 sidecar、全部归档和实际暂存，再生成 ZIP 并全 entry 校验。不会调用 Build-Desktop，也不从‘最新运行’猜测输入。
 5. 只有本轮 stage 成功才可能进入默认关闭的 publish。既有 tag 指向实际 build 提交，版本与包内 manifest、审查记录、pyproject 一致。candidate-review 和 public-release 环境须设置审核人；PUBLIC_RELEASE_ENABLED 未明确启用时不发布。
 

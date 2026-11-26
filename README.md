@@ -43,7 +43,7 @@ cd GachaOps-public
 
 ## 开发与验证
 
-Python >=3.11，核心仅标准库；Qt/打包依赖见 requirements-desktop.txt。在仓库根目录：
+Python >=3.11，核心依赖 ruamel.yaml==0.19.1（与三月七助手相同的配置 YAML 加载器，`pip install .` 会一并安装）；Qt/打包依赖见 requirements-desktop.txt。在仓库根目录：
 
 ```sh
 python -m unittest discover -s tests -v

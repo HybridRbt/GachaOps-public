@@ -5,6 +5,7 @@ GachaOps 自有代码和 OneDragon 桥接采用 AGPL-3.0-only，copyright Hybrid
 | 组件 | 版本与用途 | 许可和材料 |
 |---|---|---|
 | CPython | 3.12.14，冻结运行时 | PSF 及所含组件许可；installed/CPython-3.12.14/LICENSE.txt 与上游保守告知全集 |
+| ruamel.yaml | 0.19.1，核心配置读取器（与三月七助手相同的 YAML 加载器，纯 Python） | MIT，Copyright (c) 2014-2026 Anthon van der Neut, Ruamel bvba；原文在 dependency-licenses/installed/ruamel.yaml-0.19.1.dist-info/ |
 | Qt / PySide6-Essentials / Shiboken6 | 6.10.2，动态库、插件、翻译、绑定 | 本包采用 LGPLv3 路径，附 GPLv3/LGPLv3 原文与版本源码；Qt Copyright The Qt Company Ltd. and other contributors，逐组件年份及作者见原文 |
 | Mesa / LLVM 软件 OpenGL | Qt 供应方运行库 | MIT、Boost、LLVM/NCSA 及所含组件原始告知；THIRD_PARTY_LICENSES/upstream/mesa-11.2.2/ 与 THIRD_PARTY_LICENSES/upstream/llvm-3.6.2.src/ 保存许可 |
 | PyInstaller | 6.22.0，bootloader 与打包工具 | GPLv2-or-later，含 bootloader exception；完整 COPYING.txt 在 installed/pyinstaller-6.22.0.dist-info/ |
@@ -12,7 +13,7 @@ GachaOps 自有代码和 OneDragon 桥接采用 AGPL-3.0-only，copyright Hybrid
 | orbital-ring brand 03 | 程序标识 | 项目自有作品，AGPL-3.0-only |
 | packaging、altgraph、pefile、pywin32-ctypes、hooks-contrib、setuptools | 构建环境参考 | 附安装版本原始许可，不表示全部编入运行时 |
 
-允许为调试用户对 LGPL 库的修改而进行逆向工程。本项目允许修改应用、替换兼容动态库和运行修改版本，不要求签名密钥或在线批准。六份源码归档和摘要见 SOURCE_DELIVERY/SOURCE_BUNDLE_MANIFEST.json；替换及重建见同目录“源码与替换交付说明.md”。许可全集保守包含可选和仅构建组件，不是精确编译 SBOM。154 文件及构建后 CRT 替换摘要见 RUNTIME_MANIFEST.json。七张权利未明的游戏 PNG 不随包，界面使用文字后备显示。
+允许为调试用户对 LGPL 库的修改而进行逆向工程。本项目允许修改应用、替换兼容动态库和运行修改版本，不要求签名密钥或在线批准。七份源码归档和摘要见 SOURCE_DELIVERY/SOURCE_BUNDLE_MANIFEST.json（含随包附带的 ruamel.yaml 0.19.1 sdist）；替换及重建见同目录“源码与替换交付说明.md”。许可全集保守包含可选和仅构建组件，不是精确编译 SBOM。154 文件及构建后 CRT 替换摘要见 RUNTIME_MANIFEST.json。七张权利未明的游戏 PNG 不随包，界面使用文字后备显示。
 
 ## 微软 CRT 组件
 

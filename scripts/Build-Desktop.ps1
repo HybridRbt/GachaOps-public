@@ -25,7 +25,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Desktop dependency installation failed' }
     }
     $env:PYTHONPATH = (Resolve-Path -LiteralPath $DependenciesDirectory).Path
-    & $taskPython -c "from importlib.metadata import version; assert version('PySide6-Essentials') == '6.10.2'; assert version('PyInstaller') == '6.22.0'; assert version('shiboken6') == '6.10.2'"
+    & $taskPython -c "from importlib.metadata import version; assert version('PySide6-Essentials') == '6.10.2'; assert version('PyInstaller') == '6.22.0'; assert version('shiboken6') == '6.10.2'; assert version('ruamel.yaml') == '0.19.1'"
     if ($LASTEXITCODE -ne 0) { throw 'Pinned build dependencies do not match' }
     New-Item -ItemType Directory -Path $taskOutput | Out-Null
     # Native tools in a developer's PATH may carry incompatible ICU/Qt DLLs.
@@ -38,7 +38,7 @@ try {
     $taskManifest = @{
         schema_version=1; commit=$taskCommit; dirty=$taskDirty; version=$taskVersion;
         python=$taskPythonVersion; platform='windows-x64'; signature='unsigned';
-        dependencies=@{PySide6_Essentials='6.10.2'; Shiboken6='6.10.2'; PyInstaller='6.22.0'};
+        dependencies=@{PySide6_Essentials='6.10.2'; Shiboken6='6.10.2'; PyInstaller='6.22.0'; ruamel_yaml='0.19.1'};
         executable_sha256=(Get-FileHash -LiteralPath $taskExecutable -Algorithm SHA256).Hash
     }
     $taskManifest | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $taskOutput 'GachaOps/build-manifest.json')

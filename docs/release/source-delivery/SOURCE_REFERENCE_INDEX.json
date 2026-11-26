@@ -135,6 +135,20 @@
       "url": "https://archive.mesa3d.org/older-versions/11.x/11.2.2/mesa-11.2.2.tar.xz",
       "sha256": "40e148812388ec7c6d7b6657d5a16e2e8dabba8b97ddfceea5197947647bdfb4",
       "bytes": 7860932
+    },
+    {
+      "file": "ruamel_yaml-0.19.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b8/0c/51f6841f1d84f404f92463fc2b1ba0da357ca1e3db6b7fbda26956c3b82a/ruamel_yaml-0.19.1-py3-none-any.whl",
+      "sha256": "27592957fedf6e0b62f281e96effd28043345e0e66001f97683aa9a40c667c93",
+      "bytes": 118102,
+      "version_or_ref": "0.19.1"
+    },
+    {
+      "file": "ruamel.yaml-0.19.1.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/c7/3b/ebda527b56beb90cb7652cb1c7e4f91f48649fbcd8d2eb2fb6e77cd3329b/ruamel.yaml-0.19.1.tar.gz",
+      "sha256": "53eb66cd27849eff968ebf8f0bf61f46cdac2da1d1f3576dd4ccee9b25c31993",
+      "bytes": 142709,
+      "version_or_ref": "0.19.1"
     }
   ]
 }

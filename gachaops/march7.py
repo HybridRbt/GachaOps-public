@@ -10,6 +10,9 @@ import subprocess
 import sys
 import uuid
 
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
+
 from .ok_adapter import runner_environment
 from .preflight import desktop_report
 from .recovery import save
@@ -34,21 +37,17 @@ ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
 REQUIRED_KEYS = frozenset({'game_path', 'cloud_game_enable', 'after_finish', 'auto_update', 'log_level'})
 PLATFORM_KEYS = frozenset({'ui_profile', 'control_backend', 'local_control_mode', 'no_run_immediately'})
-NULL_SCALARS = frozenset({'~', 'null', 'Null', 'NULL'})
-TRUE_SCALARS = frozenset({'true', 'True', 'TRUE'})
-FALSE_SCALARS = frozenset({'false', 'False', 'FALSE'})
-# YAML 1.2 double-quoted escape table, verified against ruamel.yaml 0.19.1
-# with the exact loader upstream uses (module/config/config.py: YAML()).
-DOUBLE_ESCAPES = {'0': '\0', 'a': '\a', 'b': '\b', 't': '\t', 'n': '\n', 'v': '\v',
-                  'f': '\f', 'r': '\r', 'e': '\x1b', ' ': ' ', '"': '"', '/': '/',
-                  '\\': '\\', 'N': '\x85', '_': '\xa0', 'L': '\u2028', 'P': '\u2029'}
+# ruamel reports duplicate keys with the key name quoted inside its problem
+# phrase, so a duplicated needed setting can still be named to the user
+# instead of falling back to the file-level refusal.
+DUPLICATE_KEY_PROBLEM = re.compile(r'found duplicate key "([^"]+)"')
 
 
 class March7ConfigUnreadable(ValueError):
-    """A needed config entry appears but its value cannot be determined.
+    """One specific config setting could be named as unreadable.
 
-    Carries the key name (None for file-structure problems) so the user is
-    told which setting to re-save in the assistant.
+    Carries the key name so the user is told which setting to re-save in
+    the assistant; file-level refusals take the plain ValueError path.
     """
 
     def __init__(self, key):
@@ -56,292 +55,33 @@ class March7ConfigUnreadable(ValueError):
         self.key = key
 
 
-def _advance_scan(line, state):
-    """Track quotes/flow depth/comments across opaque lines so lines inside a
-    multi-line flow or quoted scalar are never mistaken for mapping keys."""
-    in_double, in_single, depth = state
-    index = 0
-    while index < len(line):
-        char = line[index]
-        if in_double:
-            if char == '\\':
-                index += 2
-                continue
-            if char == '"':
-                in_double = False
-            index += 1
-            continue
-        if in_single:
-            if char == "'":
-                if index + 1 < len(line) and line[index + 1] == "'":
-                    index += 2
-                    continue
-                in_single = False
-            index += 1
-            continue
-        if char == '#' and (index == 0 or line[index - 1] in ' \t'):
-            break
-        if char == '"':
-            in_double = True
-        elif char == "'":
-            in_single = True
-        elif char in '[{':
-            depth += 1
-        elif char in ']}':
-            depth = max(0, depth - 1)
-        index += 1
-    return [in_double, in_single, depth]
+def metadata_from_text(text):
+    """Load the lifecycle values exactly like the assistant itself does.
 
-
-def _hex_unit(text, index, digits, key):
-    if index + digits > len(text):
-        raise March7ConfigUnreadable(key)
-    chunk = text[index:index + digits]
-    if not all(c in '0123456789abcdefABCDEF' for c in chunk):
-        raise March7ConfigUnreadable(key)
-    return chr(int(chunk, 16)), index + digits
-
-
-def _double_quoted(key, text):
-    result = []
-    index = 1
-    while index < len(text):
-        char = text[index]
-        if char == '\\':
-            escape = text[index + 1] if index + 1 < len(text) else ''
-            if escape in DOUBLE_ESCAPES:
-                result.append(DOUBLE_ESCAPES[escape])
-                index += 2
-            elif escape == 'x':
-                unit, index = _hex_unit(text, index + 2, 2, key)
-                result.append(unit)
-            elif escape == 'u':
-                unit, index = _hex_unit(text, index + 2, 4, key)
-                result.append(unit)
-            elif escape == 'U':
-                unit, index = _hex_unit(text, index + 2, 8, key)
-                result.append(unit)
-            else:
-                raise March7ConfigUnreadable(key)
-            continue
-        if char == '"':
-            remainder = text[index + 1:].strip()
-            if remainder and not remainder.startswith('#'):
-                raise March7ConfigUnreadable(key)
-            return ''.join(result)
-        result.append(char)
-        index += 1
-    raise March7ConfigUnreadable(key)
-
-
-def _single_quoted(key, text):
-    result = []
-    index = 1
-    while index < len(text):
-        char = text[index]
-        if char == "'":
-            if index + 1 < len(text) and text[index + 1] == "'":
-                result.append("'")
-                index += 2
-                continue
-            remainder = text[index + 1:].strip()
-            if remainder and not remainder.startswith('#'):
-                raise March7ConfigUnreadable(key)
-            return ''.join(result)
-        result.append(char)
-        index += 1
-    raise March7ConfigUnreadable(key)
-
-
-def _scalar(text):
-    """YAML 1.2 core resolution for the forms a lifecycle value can take.
-    Unresolved forms keep their literal text; zero-valued numbers are the
-    only numeric distinction kept, because the guards reason by truthiness
-    exactly like upstream (`if cfg.<key>:` / `get_value(...) or`)."""
-    if text in NULL_SCALARS:
-        return None
-    if text in TRUE_SCALARS:
-        return True
-    if text in FALSE_SCALARS:
-        return False
-    if re.fullmatch(r'[-+]?(0[xX][0-9A-Fa-f]+|0o[0-7]+|[0-9]+)', text):
-        try:
-            return int(text, 0)
-        except ValueError:
-            return int(text, 10)
-    if re.fullmatch(r'[-+]?(\d+\.\d*|\.\d+|\d+)([eE][-+]?\d+)?', text):
-        try:
-            return float(text)
-        except ValueError:
-            return text
-    return text
-
-
-def _split_entry(stripped):
-    """Split one top-level line into (key, rest-after-colon).
-
-    Returns (None, None) for lines that are not mapping entries. A needed key
-    spelled in an unusable colon form raises instead of disappearing."""
-    care = REQUIRED_KEYS | PLATFORM_KEYS
-    if stripped[0] in '"\'':
-        quote = stripped[0]
-        index = 1
-        result = []
-        closed = False
-        while index < len(stripped):
-            char = stripped[index]
-            if quote == '"' and char == '\\':
-                result.append(stripped[index + 1] if index + 1 < len(stripped) else '')
-                index += 2
-                continue
-            if char == quote:
-                if quote == "'" and index + 1 < len(stripped) and stripped[index + 1] == "'":
-                    result.append("'")
-                    index += 2
-                    continue
-                closed = True
-                break
-            result.append(char)
-            index += 1
-        if not closed:
-            return None, None
-        key = ''.join(result)
-        after = stripped[index + 1:]
-        colon = after.find(':')
-        if colon == -1 or (colon + 1 < len(after) and after[colon + 1] not in ' \t'):
-            if key in REQUIRED_KEYS | PLATFORM_KEYS:
-                raise March7ConfigUnreadable(key)
-            return None, None
-        return key, after[colon + 1:]
-    position = stripped.find(':')
-    while position != -1:
-        if position + 1 == len(stripped) or stripped[position + 1] in ' \t':
-            break
-        position = stripped.find(':', position + 1)
-    if position == -1:
-        first = re.match(r'[A-Za-z0-9_]+', stripped)
-        if first and first[0] in care:
-            raise March7ConfigUnreadable(first[0])
-        return None, None
-    key = stripped[:position].rstrip()
-    rest = stripped[position + 1:]
-    if key in care and rest and rest[0] not in ' \t':
-        raise March7ConfigUnreadable(key)
-    return key, rest
-
-
-def _peek_null(key, lines, index, top_indent):
-    """Resolve `key:` with nothing after the colon on its own line: the value
-    is null unless a nested block or a same-indent sequence follows."""
-    while index < len(lines):
-        line = lines[index]
-        stripped = line.strip()
-        if not stripped or stripped.startswith('#'):
-            index += 1
-            continue
-        indent = len(line) - len(line.lstrip(' '))
-        if indent > top_indent or (indent == top_indent and stripped.startswith('-')):
-            raise March7ConfigUnreadable(key)
-        return None, index
-    return None, index
-
-
-def _parse_value(key, rest, lines, index, top_indent):
-    value_part = rest.strip()
-    if not value_part or value_part.startswith('#'):
-        return _peek_null(key, lines, index, top_indent)
-    first = value_part[0]
-    if first in '[{':
-        raise March7ConfigUnreadable(key)
-    if first in '|>':
-        raise March7ConfigUnreadable(key)
-    if first in '&*!':
-        raise March7ConfigUnreadable(key)
-    if first == '"':
-        return _double_quoted(key, value_part), index
-    if first == "'":
-        return _single_quoted(key, value_part), index
-    match = re.search(r'\s#', value_part)
-    if match:
-        value_part = value_part[:match.start()]
-    value_part = value_part.rstrip(' \t')
-    if not value_part:
-        return _peek_null(key, lines, index, top_indent)
-    return _scalar(value_part), index
+    Upstream reads this file with ruamel.yaml's YAML() (module/config/
+    config.py), so the same loader runs here and the values it returns are
+    passed on untouched: types, truthiness and refusal cases match upstream
+    by construction. Only the nine top-level lifecycle keys are projected;
+    tasks, accounts and every other part of the file stay opaque.
+    """
+    try:
+        document = YAML().load(text)
+    except YAMLError as error:
+        duplicate = DUPLICATE_KEY_PROBLEM.search(getattr(error, 'problem', '') or '')
+        if duplicate and duplicate[1] in REQUIRED_KEYS | PLATFORM_KEYS:
+            raise March7ConfigUnreadable(duplicate[1]) from error
+        raise ValueError('March7 config cannot be read; re-save the settings in the assistant. '
+                         + str(error)) from error
+    if not isinstance(document, dict):
+        raise ValueError('March7 config must be a mapping; re-save the settings in the assistant')
+    missing = REQUIRED_KEYS.difference(document)
+    if missing:
+        raise March7ConfigUnreadable(sorted(missing)[0])
+    return {key: document[key] for key in REQUIRED_KEYS | PLATFORM_KEYS if key in document}
 
 
 def launch_metadata(path):
-    """Read the top-level lifecycle scalars from the assistant's config.
-
-    Upstream loads this YAML 1.2 file with ruamel.yaml. We stay
-    dependency-free but fail closed: a needed key that appears in any form
-    this reader cannot resolve exactly raises March7ConfigUnreadable instead
-    of being skipped. Quoted-key spellings, uniform top-level indentation,
-    spaced colons, trailing comments and CRLF are resolved; lists, nested
-    blocks, block scalars, anchors/aliases, tags and multi-line values are
-    not, and values keep their YAML types.
-    """
-    lines = Path(path).read_text(encoding='utf-8-sig').splitlines()
-    values = {}
-    seen = set()
-    top_indent = None
-    content_seen = False
-    state = [False, False, 0]
-    block_indent = None
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        index += 1
-        if block_indent is not None:
-            stripped = line.strip()
-            if not stripped or stripped.startswith('#'):
-                continue
-            if len(line) - len(line.lstrip(' ')) > block_indent:
-                continue
-            block_indent = None
-        if state != [False, False, 0]:
-            state = _advance_scan(line, state)
-            continue
-        stripped = line.strip()
-        if not stripped or stripped.startswith('#'):
-            continue
-        indent = len(line) - len(line.lstrip(' '))
-        if '\t' in line[:indent]:
-            continue
-        if stripped in ('---', '...'):
-            if content_seen:
-                raise March7ConfigUnreadable(None)
-            continue
-        content_seen = True
-        if top_indent is None:
-            top_indent = indent
-        elif indent < top_indent:
-            raise March7ConfigUnreadable(None)
-        if indent > top_indent or stripped == '-' or stripped.startswith('- '):
-            state = _advance_scan(line, state)
-            continue
-        key, rest = _split_entry(stripped)
-        if key is None:
-            state = _advance_scan(line, state)
-            continue
-        if key in seen:
-            raise ValueError('duplicate March7 launch metadata: ' + key)
-        seen.add(key)
-        if key in REQUIRED_KEYS | PLATFORM_KEYS:
-            values[key], index = _parse_value(key, rest, lines, index, top_indent)
-        else:
-            # Opaque key: a block scalar's literal content must never be
-            # mistaken for mapping structure; quotes/flows still tracked.
-            match = re.match(r'[|>][+-]?[0-9]*([+-][0-9]*)?\s*(#.*)?$', rest.strip())
-            if match:
-                block_indent = indent
-            else:
-                state = _advance_scan(line, state)
-    if state != [False, False, 0] or block_indent is not None:
-        raise March7ConfigUnreadable(None)
-    if not REQUIRED_KEYS.issubset(values):
-        raise ValueError('missing March7 launch metadata')
-    return values
+    return metadata_from_text(Path(path).read_text(encoding='utf-8-sig'))
 
 
 def prepare(row):
@@ -362,14 +102,18 @@ def prepare(row):
     try:
         meta = launch_metadata(config)
     except March7ConfigUnreadable as unreadable:
-        # A needed entry exists but its spelling cannot be resolved. Block on
-        # a code like every other adapter so blocker lists stay codes; the
-        # offending key travels in its own field for the desktop to name it.
-        # Re-saving in the assistant rewrites the file in the canonical form
-        # upstream itself writes.
+        # One specific setting could be blamed: a required key is missing or
+        # the same setting appears twice with different values. Block on a
+        # code like every other adapter so blocker lists stay codes; the key
+        # travels in its own field for the desktop to name it.
         blockers.append('march7_config_entry_unreadable' if unreadable.key
                         else 'march7_config_structure_unreadable')
         unreadable_key = unreadable.key
+    except ValueError:
+        # The loader's own refusals point at line and column marks rather
+        # than key names, so no single setting can be blamed; re-saving in
+        # the assistant rewrites the file in the form upstream itself writes.
+        blockers.append('march7_config_structure_unreadable')
     if meta is not None:
         backend = meta.get('control_backend')
         # Upstream resolution (module/config/platform.py get_control_backend):

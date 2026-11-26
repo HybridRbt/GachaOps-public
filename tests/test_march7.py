@@ -135,7 +135,9 @@ class March7Tests(unittest.TestCase):
                 config.write_text(original.replace('cloud_game_enable: false', 'cloud_game_enable: true'), encoding='utf-8')
                 self.assertIn('march7_local_game_required', march7.prepare(row)['blockers'])
                 config.write_text(original+'game_path: other\n', encoding='utf-8')
-                with self.assertRaisesRegex(ValueError, 'duplicate'): march7.prepare(row)
+                prepared = march7.prepare(row)
+                self.assertIn('march7_config_entry_unreadable', prepared['blockers'])
+                self.assertEqual(prepared['unreadable_config_key'], 'game_path')
                 config.write_text(original, encoding='utf-8')
                 (root/'assets/config/version.txt').write_text('unknown')
                 with self.assertRaisesRegex(ValueError, '核验'): march7.prepare(row)
@@ -326,9 +328,11 @@ class March7Tests(unittest.TestCase):
             self.assertIn('march7_local_pc_profile_required', blockers)
             blockers = self._prepare_with_config(root, row, '"no_run_immediately": "false"\n')
             self.assertIn('march7_run_immediately_required', blockers)
-            # Quoted keys still count for duplicate detection.
-            with self.assertRaisesRegex(ValueError, 'duplicate'):
-                self._prepare_with_config(root, row, '"game_path": other\n')
+            # Quoted keys still count for duplicate detection, and the
+            # duplicated setting is named in the blocker.
+            prepared = self._prepare_full_with_config(root, row, '"game_path": other\n')
+            self.assertIn('march7_config_entry_unreadable', prepared['blockers'])
+            self.assertEqual(prepared['unreadable_config_key'], 'game_path')
             # A quoted or spaced-colon spelling of a needed required key must
             # be read, not treated as missing. Spelled in place: the same key
             # twice (even quoted) is a duplicate upstream.
@@ -412,47 +416,81 @@ class March7Tests(unittest.TestCase):
                  patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
                 self.assertEqual(march7.prepare(row)['blockers'], [])
 
-    def test_unresolvable_needed_entries_are_rejected_with_the_setting_named(self):
-        # An entry that cannot be resolved blocks on a code like every other
-        # blocker, and the offending key travels in its own field so the
-        # desktop can name the setting; it never becomes free text in the list.
+    def test_loader_refusals_block_on_codes_and_resolvable_spellings_reach_the_guards(self):
+        # The reader is the assistant's own YAML loader. Forms it resolves
+        # are read and handed to the guards like any canonical spelling;
+        # forms it refuses become blocker codes, never free text: a named
+        # setting only when one can be blamed, the structure code otherwise.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); row = self.installation(root)
-            for spelling in ('control_backend: [local]\n', 'control_backend: *anchor\n',
-                             'control_backend: &b local\n', 'control_backend: !!str local\n',
-                             'control_backend :local\n', 'control_backend:#x\n',
-                             'control_backend\n'):
-                prepared = self._prepare_full_with_config(root, row, spelling)
-                with self.subTest(spelling=spelling.strip()):
-                    self.assertIn('march7_config_entry_unreadable', prepared['blockers'])
-                    self.assertEqual(prepared['unreadable_config_key'], 'control_backend')
-                    self.assertFalse(any('无法识别' in b for b in prepared['blockers']), prepared['blockers'])
-            # A nested or block-spelled value under game_path (replacing the
-            # fixture's own entry, not duplicating it) is equally undecidable.
             config = root / 'config.yaml'
-            body = config.read_text(encoding='utf-8')
-            for spelling in ('game_path:\n  sub: x', "game_path: |\n  C:\\somewhere"):
-                lines = [spelling if line.startswith('game_path:') else line
-                         for line in body.splitlines()]
-                config.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-                with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
-                     patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
-                     patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
-                    prepared = march7.prepare(row)
-                with self.subTest(spelling=spelling.splitlines()[0]):
-                    self.assertIn('march7_config_entry_unreadable', prepared['blockers'])
-                    self.assertEqual(prepared['unreadable_config_key'], 'game_path')
+            original_body = config.read_text(encoding='utf-8')
+            # Anchors resolve upstream: an anchored local value is local.
+            self.assertNotIn('march7_local_backend_required',
+                             self._prepare_with_config(root, row, 'control_backend: &b local\n'))
+            # Tagged, block-scalar and flow-sequence values are not the plain
+            # string upstream compares against, so the backend guard fires.
+            for spelling in ('control_backend: !!str local\n', 'control_backend: |\n  local\n',
+                             'control_backend: [local]\n'):
+                self.assertIn('march7_local_backend_required',
+                              self._prepare_with_config(root, row, spelling), spelling)
+            # Escaped keys name the same setting; a space before the colon is
+            # the same key; a merge key brings the setting to the top level.
+            for spelling in ('"control\\u005fbackend": adb\n', 'control_backend : adb\n',
+                             'z: &z\n  control_backend: adb\n<<: *z\n'):
+                self.assertIn('march7_local_backend_required',
+                              self._prepare_with_config(root, row, spelling), spelling)
+            # A whole-document flow mapping is real YAML: all nine keys are
+            # read out of it and the guards fire like on the block form.
+            config.write_text('{game_path: ' + json.dumps(str(root / 'StarRail.exe'))
+                              + ', cloud_game_enable: false, after_finish: Exit, auto_update: true,'
+                                ' log_level: INFO, control_backend: adb, ui_profile: pc_1080,'
+                                ' local_control_mode: foreground, no_run_immediately: false}\n',
+                              encoding='utf-8')
+            with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                 patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                 patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                self.assertIn('march7_local_backend_required', march7.prepare(row)['blockers'])
             # A needed key inside a multi-line flow belongs to that flow, not
             # to the top level; upstream stores it nested, so nothing blocks.
             prepared = self._prepare_full_with_config(root, row, 'webhook: [a,\n  control_backend: adb\n]\n')
             self.assertNotIn('march7_local_backend_required', prepared['blockers'])
             self.assertNotIn('march7_config_entry_unreadable', prepared['blockers'])
             self.assertIsNone(prepared['unreadable_config_key'])
-            # An unterminated quote leaves the document structure unknown:
-            # no single setting can be named, so the structure code is used.
-            prepared = self._prepare_full_with_config(root, row, "note: \"never closed\n")
-            self.assertIn('march7_config_structure_unreadable', prepared['blockers'])
-            self.assertIsNone(prepared['unreadable_config_key'])
+            # Values the loader returns but the guards cannot use stay
+            # fail-closed per setting: a nested mapping or a block scalar
+            # under game_path is not a verifiable path.
+            old_path = "game_path: '" + str(root / 'StarRail.exe') + "' # location\n"
+            for spelling in ('game_path:\n  sub: x\n', 'game_path: |\n  C:\\somewhere\n'):
+                self.assertIn('game_path_unverified',
+                              self._prepare_with_config(root, row, '', replace=(old_path, spelling)),
+                              spelling)
+            # Forms the loader refuses block on the structure code: the file
+            # as a whole cannot be read, so no single setting is named.
+            for spelling in ('control_backend :local\n', 'control_backend:#x\n',
+                             'control_backend\n', 'control_backend: *anchor\n',
+                             "note: \"never closed\n", 'a:\n\tb: 1\n', '---\n'):
+                prepared = self._prepare_full_with_config(root, row, spelling)
+                with self.subTest(spelling=spelling.strip()):
+                    self.assertIn('march7_config_structure_unreadable', prepared['blockers'])
+                    self.assertNotIn('march7_config_entry_unreadable', prepared['blockers'])
+                    self.assertIsNone(prepared['unreadable_config_key'])
+                    self.assertFalse(any('无法识别' in b for b in prepared['blockers']), prepared['blockers'])
+            # A top-level document that is not a mapping at all refuses on the
+            # structure code; a missing required key is named because that
+            # setting can be blamed.
+            for content, expected, key in (
+                    ('', 'march7_config_structure_unreadable', None),
+                    (original_body.replace('log_level: INFO\n', ''),
+                     'march7_config_entry_unreadable', 'log_level')):
+                config.write_text(content, encoding='utf-8')
+                with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                     patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                     patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                    prepared = march7.prepare(row)
+                with self.subTest(expected=expected):
+                    self.assertIn(expected, prepared['blockers'])
+                    self.assertEqual(prepared['unreadable_config_key'], key)
 
     def test_activity_progress_line_stands_alone_without_a_claim(self):
         body = ('| 开始运行 |\n16:34:30 | INFO | 每日实训活跃度 {score}\n'
