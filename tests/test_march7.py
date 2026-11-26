@@ -429,17 +429,23 @@ class March7Tests(unittest.TestCase):
         surrogate = chr(0xD800)
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); row = self.installation(root)
+            # Every scenario replaces from the same pristine text: a previous
+            # scenario must not leak into the next one's configuration.
+            pristine = (root / 'config.yaml').read_text(encoding='utf-8')
 
             def run_scenario(saved, bad_char, escape, extra_patches=(), bind=False):
                 # The raw character reaches the loader only as the YAML
                 # \u-escape, so no fixture file ever carries it; the loader
                 # decodes it into the value exactly like the assistant does.
                 config = root / 'config.yaml'
-                original = config.read_text(encoding='utf-8')
                 old_path = "game_path: '" + str(root / 'StarRail.exe') + "' # location\n"
-                config.write_text(original.replace(
+                config.write_text(pristine.replace(
                     old_path, 'game_path: "' + saved.replace(bad_char, escape) + '"\n'),
                     encoding='utf-8')
+                # The scenario's saved value is what the loader must see; a
+                # replacement that missed its anchor would hide here.
+                loaded = march7.metadata_from_text(config.read_text(encoding='utf-8'))
+                self.assertEqual(loaded['game_path'], saved)
                 with contextlib.ExitStack() as stack:
                     stack.enter_context(patch(
                         'gachaops.march7.elevation_report', return_value={'elevated': True}))
