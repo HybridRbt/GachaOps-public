@@ -86,6 +86,17 @@ def details_for(result, summary_path=None):
                   '• 助手可能有其他弹窗，或当前配置需要处理。',
                   '以上是可能原因，并非已确认的诊断。',
                   '处理后退出助手，再尝试运行 GachaOps；清理未确认时，仍需先核对并解除隔离。']
+    routine = completion.get('routine_errors') or []
+    if routine:
+        # Routine log noise never failed this run; show it as a note with
+        # per-template counts so a long fight stays one line.
+        counts = {}
+        for item in routine:
+            key = str(item.get('message', item))
+            counts[key] = counts.get(key, 0) + 1
+        lines += ['', f'另有 {len(routine)} 条例行提示（不影响本次结果）：']
+        lines += [f'• {message}' + (f' ×{count}' if count > 1 else '')
+                  for message, count in counts.items()]
     recovered = completion.get('recovered_warnings') or []
     if recovered:
         lines += ['', '已恢复的警告（不作为最终失败依据）：', *map(str, recovered)]
