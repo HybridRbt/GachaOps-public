@@ -7,7 +7,7 @@
 
 ## 精确 MXU 接入范围
 
-后续源码新增 GF2 资源 v2.8.3 / MXU 框架 v2.8.1 的离线契约。两者版本维度不同，不能只看目录名或任一版本字符串放行。已从[官方 GF2 v2.8.3 归档](https://github.com/DarkLingYun/MaaGF2Exilium/releases/tag/v2.8.3)核对主程序、MaaFramework、Python 入口及 agent 主脚本的完整摘要；CLI/配置/日志协议依据 [MXU v2.8.1 固定源码](https://github.com/MaaXYZ/MXU/tree/dbce2f2e124a67d5df9e481730e801fd1dfe2469)。其他 MXU 字节及 v2.8.0 继续阻断。
+后续源码按「每个官方发布组合一套基线」接入，各组合的组件摘要都取自发布方自己的产物，两个组合可并存放行，互相混用按尚未适配阻断。已审阅的组合：GF2 资源 v2.8.3 / MXU 框架 v2.8.1（[官方 GF2 v2.8.3 归档](https://github.com/DarkLingYun/MaaGF2Exilium/releases/tag/v2.8.3)，SHA256 a7c813ef0392cd563ed75c4a254954ed043ecf320ce7d509c961cdc9709b4a2c；CLI/配置/日志协议依据 [MXU v2.8.1 固定源码](https://github.com/MaaXYZ/MXU/tree/dbce2f2e124a67d5df9e481730e801fd1dfe2469)）；GF2 资源 v2.8.8 / MXU 框架 v2.11.2（[官方发布包 MaaGF2ExiliumGUI-win-x86_64-v2.8.8.zip](https://github.com/DarkLingYun/MaaGF2Exilium/releases/tag/v2.8.8)，SHA256 6abf1199ea4d5c7dcf9fb835cda93beaa917d2ce01e5a32747088b11fc372aa1；入口 EXE ProductName=mxu、FileVersion 2.11.2，agent 主脚本字节与 v2.8.3 完全一致，MaaFramework 的任务事件日志格式经 [MXU v2.11.2 源码](https://github.com/MaaXYZ/MXU/tree/v2.11.2)与该发布包自身日志核为未变）。两者版本维度不同，不能只看目录名或任一版本字符串放行；仅资源版本字符串相符而组件摘要不符仍按尚未适配阻断。v2.8.8/2.11.2 为离线审阅结论，实机验收待做。其他 MXU 字节及 v2.8.0 继续阻断。
 
 更新后的助手构建（组件、资源或框架任一维度偏离上述已审阅基线）一律按「此版本尚未适配」阻止：检查面板只说明哪里不对、该怎么办（取消勾选并等待 GachaOps 更新适配），不出现哈希或版本号，也不预设漂移原因——检查本身分辨不出助手更新与本地改动。开发排查用的结构化诊断随现有诊断导出走：逐项列出漂移组件的包内相对名与当前/基线摘要各前 12 位，以及读到的资源/入口版本号，不含任何完整本机路径或完整摘要。
 

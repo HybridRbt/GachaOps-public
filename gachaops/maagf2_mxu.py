@@ -14,16 +14,46 @@ from .preflight import desktop_report
 from .recovery import save
 from .windows_observation import elevation_report, find_matching_processes
 
-# Read from the official v2.8.3 archive, SHA256 a7c813ef0392cd563ed75c4a254954ed
-# 043ecf320ce7d509c961cdc9709b4a2c. The MXU framework itself is v2.8.1.
-EXPECTED_COMPONENTS = {
-    'MaaGF2Exilium.exe': 'ec594d4d59912403f409a8ef0681da99a6002131c6568e6b56b768282a6cfc26',
-    'maafw/MaaFramework.dll': '1c5e4112ca1dca12021a847836fbf935c46df334449b9073e4eeff2b0c294fd4',
-    'python/python.exe': '8244fbfd1f5bc4ba79309ac0abd0b3a51293ca41bfcad8e080d9480546760fe6',
-    'agent/main.py': '458e2496d30a342e395552f1a60e02d55e6fc462edea941d4c9378b6c09bdbbe',
+# One reviewed admission set per official publisher bundle; every hash below
+# was read from the publisher's own release artifact, never from a user
+# installation. Mixing components across entries is not a reviewed build.
+# - v2.8.3: the official GF2 v2.8.3 archive (SHA256
+#   a7c813ef0392cd563ed75c4a254954ed043ecf320ce7d509c961cdc9709b4a2c),
+#   whose MXU framework is v2.8.1 (fixed source dbce2f2e...).
+# - v2.8.8: the official release asset MaaGF2ExiliumGUI-win-x86_64-v2.8.8.zip
+#   (SHA256 6abf1199ea4d5c7dcf9fb835cda93beaa917d2ce01e5a32747088b11fc372aa1),
+#   bundling MXU framework v2.11.2. Reviewed offline against the MXU
+#   v2.11.2 sources: the CLI flags, saved-config schema fields, trigger
+#   settings and pre-action shapes this adapter reads are unchanged, the
+#   agent entry script is byte-identical, and the MaaFramework task-event
+#   log framing the completion observer parses still appears verbatim in
+#   that bundle's own logs. New framework-side extras (built-in skins,
+#   scheduled update check defaulting off, single-instance activation) do
+#   not start tasks and stay outside this contract.
+SUPPORTED_BUILDS = {
+    'v2.8.3': {
+        'framework_version': '2.8.1',
+        'components': {
+            'MaaGF2Exilium.exe': 'ec594d4d59912403f409a8ef0681da99a6002131c6568e6b56b768282a6cfc26',
+            'maafw/MaaFramework.dll': '1c5e4112ca1dca12021a847836fbf935c46df334449b9073e4eeff2b0c294fd4',
+            'python/python.exe': '8244fbfd1f5bc4ba79309ac0abd0b3a51293ca41bfcad8e080d9480546760fe6',
+            'agent/main.py': '458e2496d30a342e395552f1a60e02d55e6fc462edea941d4c9378b6c09bdbbe',
+        },
+    },
+    'v2.8.8': {
+        'framework_version': '2.11.2',
+        'components': {
+            'MaaGF2Exilium.exe': '86f86e51e77918cfa8f90cd024954705f1efed6e85e61cd13944253d8fa92568',
+            'maafw/MaaFramework.dll': '18e8127cf8e44744c5b465f2ac14aa6228767b44c83c1403e22ed0711321cd7f',
+            'python/python.exe': '8244fbfd1f5bc4ba79309ac0abd0b3a51293ca41bfcad8e080d9480546760fe6',
+            'agent/main.py': '458e2496d30a342e395552f1a60e02d55e6fc462edea941d4c9378b6c09bdbbe',
+        },
+    },
 }
-RESOURCE_VERSION = 'v2.8.3'
-FRAMEWORK_VERSION = '2.8.1'
+# Every reviewed bundle carries the same component layout, so the drift
+# re-fingerprint covers one stable name set regardless of the matched build.
+COMPONENT_NAMES = frozenset(name for build in SUPPORTED_BUILDS.values()
+                            for name in build['components'])
 
 # User-facing blocker texts answer exactly two questions: what is wrong and
 # what to do about it. They deliberately carry no hashes, no version numbers
@@ -175,7 +205,7 @@ def installation_metadata(root, config_file, game_path):
     """Hash opaque native data; never copy account values into the descriptor."""
     root = Path(root).resolve(strict=True)
     paths = {_inside(root, config_file), _inside(root, 'interface.json')}
-    paths.update(_inside(root, name) for name in EXPECTED_COMPONENTS)
+    paths.update(_inside(root, name) for name in COMPONENT_NAMES)
     # Include imported task/option definitions, Python code and all resources;
     # limiting the guard to EXE/interface/config misses native startup changes.
     pending = [root / name for name in ('agent', 'python', 'maafw', 'resource', 'tasks', 'options')
@@ -281,45 +311,52 @@ def prepare(row, *, root, exe, launcher_sha256):
         raise ValueError(PATH_ANOMALY_TEXT)
     consumed = {}
     # Order matters: prove this is a reviewed build before trusting anything
-    # it contains. Every expected component is hashed first (interface.json
-    # included); only a fully matching set proceeds to the version, project
-    # and configuration checks that read the installation's own content.
-    mismatches = []
-    for name, expected in EXPECTED_COMPONENTS.items():
+    # it contains. Components are hashed first and matched against the
+    # reviewed bundles as a whole; only one fully matching set proceeds to
+    # the version, project and configuration checks that read the
+    # installation's own content. A mixture of two reviewed bundles matches
+    # neither and is not adapted.
+    actual_digests = {}
+    for name in sorted(COMPONENT_NAMES):
         # A missing expected component is drift too (an old or foreign layout,
         # not necessarily a broken install); only its expected prefix is known.
         # _present walks every level first, so a link or redirect on the way
         # is reported as a path anomaly even when its target is gone.
-        if not _present(root, name):
-            mismatches.append({'component': name,
-                               'actual_sha256': None,
-                               'expected_sha256': expected[:12]})
-            continue
-        actual = _digest(_inside(root, name))
-        if actual != expected:
-            mismatches.append({'component': name,
-                               'actual_sha256': actual[:12],
-                               'expected_sha256': expected[:12]})
+        actual_digests[name] = _digest(_inside(root, name)) if _present(root, name) else None
     if not _present(root, 'interface.json'):
         # Core metadata missing outranks drift: reinstalling fixes both, while
         # waiting for an adaptation cannot bring a missing file back.
         raise ValueError(INCOMPLETE_TEXT)
-    if mismatches:
-        # Any drift from the reviewed baseline means this build is not yet
-        # adapted: say that to the user, list every drifted component for the
-        # diagnostics channel, and never carry a stale version constant. The
-        # entry EXE's version is safe to read here; it never gates a decision.
+    matches = []
+    closest = None
+    for version, build in sorted(SUPPORTED_BUILDS.items()):
+        mismatches = [{'component': name,
+                       'actual_sha256': (actual_digests[name][:12] if actual_digests[name] else None),
+                       'expected_sha256': digest[:12]}
+                      for name, digest in build['components'].items()
+                      if actual_digests[name] != digest]
+        if not mismatches:
+            matches.append((version, build))
+        elif closest is None or len(mismatches) < len(closest[2]):
+            closest = (version, build, mismatches)
+    if len(matches) != 1:
+        # Any drift from the reviewed bundles means this build is not yet
+        # adapted: say that to the user, list the drifted components against
+        # the closest reviewed bundle for the diagnostics channel, and never
+        # carry a stale version constant. The entry EXE's version is safe to
+        # read here; it never gates a decision.
         raise BuildIdentityError(NOT_ADAPTED_TEXT,
                                  {'reason': 'component_or_version_mismatch',
-                                  'components': mismatches,
+                                  'components': closest[2] if closest else [],
                                   'versions': {'entry_file_version': _pe_file_version(exe)}})
+    resource_version, build = matches[0]
     interface = _json(root, 'interface.json', consumed)
-    resource_version = interface.get('version')
+    declared_version = interface.get('version')
     project = interface.get('name')
-    if (resource_version != RESOURCE_VERSION or interface.get('interface_version') != 2
+    if (declared_version != resource_version or interface.get('interface_version') != 2
             or not isinstance(project, str) or not re.fullmatch(r'[^<>:"/\\|?*\x00-\x1f]{1,100}', project)):
         versions = {key: value for key, value in
-                    {'resource_interface': resource_version, 'entry_file_version': _pe_file_version(exe)}.items()
+                    {'resource_interface': declared_version, 'entry_file_version': _pe_file_version(exe)}.items()
                     if isinstance(value, str)}
         raise BuildIdentityError(NOT_ADAPTED_TEXT,
                                  {'reason': 'component_or_version_mismatch',
@@ -418,14 +455,14 @@ def prepare(row, *, root, exe, launcher_sha256):
         blockers.append('existing_runner_or_game_not_exclusive')
     metadata = installation_metadata(root, config_file, device['connectedProgramPath'])
     actual = {record['path']: record['sha256'] for record in metadata['files']}
-    if any(actual.get(name) != digest for name, digest in {**EXPECTED_COMPONENTS, **consumed}.items()):
+    if any(actual.get(name) != digest for name, digest in {**build['components'], **consumed}.items()):
         raise ValueError('MXU files changed during preparation; 请重新检查')
     return {'installation_root': str(root), 'cwd': str(root), 'launcher': str(exe),
             'launcher_sha256': launcher_sha256,
             'argv_candidate': [str(exe), '--autostart', '--instance', instance['name'], '--quit-after-run'],
             'game_path': str(game), 'observation_targets': targets, 'official_launcher': launcher_path,
             'game_start': 'assistant', 'borrowed_game': [],
-            'runner_version': RESOURCE_VERSION, 'mxu_framework_version': FRAMEWORK_VERSION,
+            'runner_version': resource_version, 'mxu_framework_version': build['framework_version'],
             'completion_kind': 'maa-gf2-mxu', 'instance_id': instance['id'], 'instance_name': instance['name'],
             'mxu_agent_image': str(root / 'python/python.exe'),
             'controller_name': controller['name'], 'blockers': sorted(set(blockers)),
