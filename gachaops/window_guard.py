@@ -26,10 +26,18 @@ GUARD_NAME = 'GachaOps.Window.v1'
 # the guard to be released instead of refusing the takeover.
 HANDOFF_WAIT_SECONDS = 10.0
 POLL_INTERVAL_SECONDS = 0.2
-# A just-acquired guard may belong to a window that has not appeared yet;
-# retry activation briefly before telling the user to switch manually.
-ACTIVATION_ATTEMPTS = 6
+# A just-acquired guard may belong to a window that has not appeared yet
+# (double-clicking twice in quick succession); wait on the same scale as
+# the elevation handoff before telling the user to switch manually, and
+# stay silent while waiting.
+ACTIVATION_ATTEMPTS = 25
 ACTIVATION_INTERVAL_SECONDS = 0.4
+# The existing window is identified by its executable image and a title
+# starting with GachaOps: the main window is 'GachaOps — 助手编排' and the
+# startup-failure message box is 'GachaOps 无法打开'. The title condition
+# also excludes unrelated windows when running from source (python.exe)
+# and the app's own dropdown popups and tooltips.
+ACTIVATION_TITLE_PREFIX = 'GachaOps'
 
 
 class WindowGuard:
@@ -127,6 +135,19 @@ def own_image_name():
     return os.path.normcase(os.path.basename(sys.executable))
 
 
+def window_matches(image_name, title, own_image):
+    """Whether a candidate top-level window is the existing GachaOps GUI:
+    the executable image's file name equals our own (the enumeration
+    reports a full image path, so compare basenames — the existing window
+    may well come from a different install location) and the title starts
+    with GachaOps. The title condition is what keeps an unrelated Python
+    program's window (source runs have python.exe as their image) from
+    being fronted, and excludes the app's own dropdown popups and
+    tooltips, which carry other titles."""
+    return (os.path.normcase(os.path.basename(image_name)) == os.path.normcase(own_image)
+            and title.startswith(ACTIVATION_TITLE_PREFIX))
+
+
 def _find_own_window():
     """The first visible top-level window of a same-image process, or 0.
 
@@ -176,14 +197,14 @@ def _find_own_window():
                 return True
         finally:
             kernel.CloseHandle(handle)
-        if os.path.normcase(os.path.basename(image.value)) == mine:
-            title = ctypes.create_unicode_buffer(256)
-            api.GetWindowTextW(hwnd, title, len(title))
-            found.append((int(hwnd), title.value))
+        title = ctypes.create_unicode_buffer(256)
+        api.GetWindowTextW(hwnd, title, len(title))
+        if window_matches(image.value, title.value, mine):
+            found.append(int(hwnd))
         return True
 
     api.EnumWindows(collect, 0)
-    return found[0][0] if found else 0
+    return found[0] if found else 0
 
 
 def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,

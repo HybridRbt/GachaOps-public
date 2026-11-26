@@ -2514,11 +2514,10 @@ def main():
                     '同一台机器同时只允许一个 GachaOps 窗口。')
             return 0
     try:
-        window = Window(); window.show()
-    except (OSError, ValueError) as error:
-        if guard is not None: guard.release()
-        QMessageBox.critical(None, 'GachaOps 无法打开', str(error)); return 2
-    try:
+        try:
+            window = Window(); window.show()
+        except (OSError, ValueError) as error:
+            QMessageBox.critical(None, 'GachaOps 无法打开', str(error)); return 2
         if '--recover' in sys.argv and elevation_report().get('elevated') is True:
             QTimer.singleShot(0, window.begin_recovery)
         if preview_factory is not None:
@@ -2534,6 +2533,10 @@ def main():
             QTimer.singleShot(800, smoke)
         return app.exec()
     finally:
+        # One release for every exit, including SystemExit out of the
+        # startup gate (the user declining migration or recovery) — the
+        # kernel would reclaim the handle at process exit anyway, but a
+        # same-process reuse must not inherit an unreleased guard.
         if guard is not None:
             guard.release()
 
