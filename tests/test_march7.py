@@ -392,6 +392,29 @@ class March7Tests(unittest.TestCase):
                                                           'game_path:'))
             self.assertIn('game_path_unverified', blockers)
 
+    def test_non_string_game_path_stays_inside_prepare(self):
+        # The real loader returns ruamel's own types. A game path that is not
+        # a usable string must not leak past prepare into the observation
+        # targets or the prepared result: it is dropped here, the blocker
+        # stays, and everything returned stays JSON-serializable.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); row = self.installation(root)
+            config = root / 'config.yaml'
+            original = config.read_text(encoding='utf-8')
+            old_path = "game_path: '" + str(root / 'StarRail.exe') + "' # location\n"
+            for spelling in ('game_path: [a, b]\n', 'game_path: {a: b}\n',
+                             'game_path: !!str C:/somewhere\n', 'game_path: 2026-01-01\n'):
+                config.write_text(original.replace(old_path, spelling), encoding='utf-8')
+                with patch('gachaops.march7.elevation_report', return_value={'elevated': True}), \
+                     patch('gachaops.march7.desktop_report', return_value={'status': 'observed_available'}), \
+                     patch('gachaops.march7.find_matching_processes', return_value={'status': 'observed', 'matches': []}):
+                    prepared = march7.prepare(row)
+                with self.subTest(spelling=spelling.strip()):
+                    self.assertIn('game_path_unverified', prepared['blockers'])
+                    self.assertIsNone(prepared['game_path'])
+                    self.assertEqual(len(prepared['observation_targets']), 3)
+                    json.dumps(prepared)
+
     def test_uniform_indent_spaced_colon_and_crlf_are_resolved(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); row = self.installation(root)

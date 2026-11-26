@@ -5,7 +5,7 @@ GachaOps 自有代码和 OneDragon 桥接采用 AGPL-3.0-only，copyright Hybrid
 | 组件 | 版本与用途 | 许可和材料 |
 |---|---|---|
 | CPython | 3.12.14，冻结运行时 | PSF 及所含组件许可；installed/CPython-3.12.14/LICENSE.txt 与上游保守告知全集 |
-| ruamel.yaml | 0.19.1，核心配置读取器（与三月七助手相同的 YAML 加载器，纯 Python） | MIT，Copyright (c) 2014-2026 Anthon van der Neut, Ruamel bvba；原文在 dependency-licenses/installed/ruamel.yaml-0.19.1.dist-info/ |
+| ruamel.yaml | 0.19.1，核心配置读取器（与三月七助手相同的 YAML 加载器，纯 Python） | MIT，Copyright (c) 2014-2026 Anthon van der Neut, Ruamel bvba；原文在 dependency-licenses/installed/ruamel_yaml-0.19.1.dist-info/ |
 | Qt / PySide6-Essentials / Shiboken6 | 6.10.2，动态库、插件、翻译、绑定 | 本包采用 LGPLv3 路径，附 GPLv3/LGPLv3 原文与版本源码；Qt Copyright The Qt Company Ltd. and other contributors，逐组件年份及作者见原文 |
 | Mesa / LLVM 软件 OpenGL | Qt 供应方运行库 | MIT、Boost、LLVM/NCSA 及所含组件原始告知；THIRD_PARTY_LICENSES/upstream/mesa-11.2.2/ 与 THIRD_PARTY_LICENSES/upstream/llvm-3.6.2.src/ 保存许可 |
 | PyInstaller | 6.22.0，bootloader 与打包工具 | GPLv2-or-later，含 bootloader exception；完整 COPYING.txt 在 installed/pyinstaller-6.22.0.dist-info/ |

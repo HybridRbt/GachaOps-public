@@ -51,11 +51,11 @@
       "scope": "application_source_and_build_inputs"
     },
     {
-      "source": "docs/release/source-delivery/archives/ruamel.yaml-0.19.1.tar.gz",
-      "file": "ruamel.yaml-0.19.1.tar.gz",
+      "source": "docs/release/source-delivery/archives/ruamel_yaml-0.19.1.tar.gz",
+      "file": "ruamel_yaml-0.19.1.tar.gz",
       "sha256": "53eb66cd27849eff968ebf8f0bf61f46cdac2da1d1f3576dd4ccee9b25c31993",
       "bytes": 142709,
-      "url": "https://files.pythonhosted.org/packages/c7/3b/ebda527b56beb90cb7652cb1c7e4f91f48649fbcd8d2eb2fb6e77cd3329b/ruamel.yaml-0.19.1.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/c7/3b/ebda527b56beb90cb7652cb1c7e4f91f48649fbcd8d2eb2fb6e77cd3329b/ruamel_yaml-0.19.1.tar.gz",
       "scope": "runtime_dependency_source"
     }
   ],

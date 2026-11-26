@@ -146,12 +146,20 @@ def prepare(row):
         if meta['log_level'] not in ('INFO', 'DEBUG'):
             blockers.append('march7_info_logging_required')
         game = meta['game_path']
-        if not isinstance(game, str) or not Path(game).is_absolute() or not Path(game).is_file():
+        if isinstance(game, str) and Path(game).is_absolute() and Path(game).is_file():
+            targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe'), game]
+        else:
+            # A value the loader returned but that is not a usable path (a
+            # list, mapping, tag or date) must not leak past prepare: it
+            # would only fail later inside observation with a TypeError, so
+            # it is dropped here and the blocker states the fact instead.
             blockers.append('game_path_unverified')
-        targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe'), game]
+            game = None
+            targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe')]
     else:
         # The config could not be read; the named-setting blocker above is the
         # actionable message, and the game path is simply unknown.
+        game = None
         targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe')]
     if elevation_report()['elevated'] is not True:
         blockers.append('supervisor_elevation_required')
@@ -163,7 +171,7 @@ def prepare(row):
         blockers.append('existing_runner_or_game_not_exclusive')
     return {'installation_root': str(root), 'cwd': str(root), 'launcher': str(launcher),
             'argv_candidate': [str(exe), 'main'],
-            'game_path': meta.get('game_path') if meta else None,
+            'game_path': game,
             'observation_targets': targets, 'runner_version': version,
             'config_sha256': hashlib.sha256(config.read_bytes()).hexdigest(),
             'completion_kind': 'march7', 'blockers': blockers,
