@@ -2511,8 +2511,9 @@ def main():
                 return 3
             if not window_guard.activate_existing_window():
                 QMessageBox.information(None, 'GachaOps 已在运行',
-                    '本机已有一个 GachaOps 窗口在运行（可能在另一个登录会话，或正在退出），'
-                    '请从任务栏切换到它；同一台机器同时只允许一个 GachaOps 窗口。')
+                    '本机已有一个 GachaOps 窗口在运行。如果没看到它，请从任务栏切换过去'
+                    '（它可能在另一个登录会话里，或正在退出）；同一台机器同时只允许一个 '
+                    'GachaOps 窗口。')
             return 0
     try:
         try:

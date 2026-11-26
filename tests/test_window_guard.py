@@ -131,6 +131,47 @@ class WindowGuardTests(unittest.TestCase):
         # An image whose file name differs is refused, frozen or not.
         self.assertFalse(match(r'C:\Tools\gachaops2.exe', '任意标题', own, frozen=True))
 
+    def test_bring_to_front_restores_and_reports_real_foreground(self):
+        from gachaops import window_guard
+        hwnd = 4321
+
+        class FakeApi:
+            def __init__(self, iconic, foreground):
+                self.iconic = iconic
+                self.foreground = foreground
+                self.calls = []
+
+            def IsIconic(self, hwnd):
+                self.calls.append('IsIconic')
+                return self.iconic
+
+            def ShowWindow(self, hwnd, command):
+                self.calls.append(('ShowWindow', command))
+                return True
+
+            def SetForegroundWindow(self, hwnd):
+                self.calls.append('SetForegroundWindow')
+                return True
+
+            def GetForegroundWindow(self):
+                self.calls.append('GetForegroundWindow')
+                return self.foreground
+
+        # Minimized: restored with SW_RESTORE (9), then set foreground, and
+        # the real foreground read confirms the switch.
+        restored = FakeApi(iconic=True, foreground=hwnd)
+        self.assertTrue(window_guard._bring_to_front(restored, hwnd))
+        self.assertIn(('ShowWindow', 9), restored.calls)
+        self.assertIn('SetForegroundWindow', restored.calls)
+        # Already on screen: foregrounded without a restore call.
+        onscreen = FakeApi(iconic=False, foreground=hwnd)
+        self.assertTrue(window_guard._bring_to_front(onscreen, hwnd))
+        self.assertNotIn(('ShowWindow', 9), onscreen.calls)
+        # The switch was denied — another window holds the foreground — so
+        # the result reads False and the caller points at the taskbar.
+        denied = FakeApi(iconic=False, foreground=9999)
+        self.assertFalse(window_guard._bring_to_front(denied, hwnd))
+
     def test_find_own_window_matches_by_real_enumeration(self):
         # Real enumeration against two zero-size offscreen top-level windows
         # created in this process (predefined STATIC class, WS_POPUP visible,
@@ -228,7 +269,11 @@ class WindowGuardTests(unittest.TestCase):
                 self.assertEqual(desktop.main(), 0)
             self.assertEqual(len(boxes), 1)
             self.assertIn('GachaOps', boxes[0][1])
-            self.assertIn('任务栏', boxes[0][2])
+            # One sentence that fits both "not found" and "found but not
+            # switched": switch from the taskbar, single-window rule.
+            self.assertIn('任务栏切换过去', boxes[0][2])
+            self.assertIn('另一个登录会话', boxes[0][2])
+            self.assertIn('同时只允许一个', boxes[0][2])
             self.assertEqual(list(root.iterdir()), [])
 
     def test_handoff_launch_waits_for_guard_release_then_continues(self):
@@ -309,26 +354,22 @@ class WindowGuardTests(unittest.TestCase):
         self.addCleanup(stop_child, child)
         child.wait(timeout=10)
         self.assertEqual(child.returncode, 3)
-        # The raw wait observes exactly WAIT_ABANDONED (0x80) once: the
-        # takeover contract this guard deliberately differs on.
-        if os.name == 'nt':
-            probe = ctypes.WinDLL('kernel32', use_last_error=True)
-            probe.CreateMutexW.argtypes = [ctypes.c_void_p, w.BOOL, w.LPCWSTR]
-            probe.CreateMutexW.restype = w.HANDLE
-            probe.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
-            probe.WaitForSingleObject.restype = w.DWORD
-            handle = probe.CreateMutexW(None, False, 'Global\\' + name)
-            self.assertTrue(handle)
-            try:
-                self.assertEqual(probe.WaitForSingleObject(handle, 0), 0x80)
-            finally:
-                probe.CloseHandle(handle)
+        # Take over from this thread and read the recorded result — the
+        # guard's own observation, not a raw wait here: a raw one would
+        # hand ownership to the test thread and let a guard that refuses
+        # WAIT_ABANDONED slip through same-thread reentrancy.
         guard = window_guard.WindowGuard(name)
         self.assertTrue(guard.acquire())
+        if os.name == 'nt':
+            self.assertEqual(guard.wait_result, 0x80)
         guard.release()
-        # And the name stays usable after a clean release.
+        # And the name stays usable after a clean release: a properly
+        # released mutex is no longer abandoned, so this acquire is a
+        # plain take — only the result being owned matters here.
         again = window_guard.WindowGuard(name)
         self.assertTrue(again.acquire())
+        if os.name == 'nt':
+            self.assertEqual(again.wait_result, 0)
         again.release()
 
     def test_normal_exit_releases_the_window_guard(self):

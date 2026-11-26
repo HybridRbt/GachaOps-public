@@ -32,11 +32,11 @@ POLL_INTERVAL_SECONDS = 0.2
 # stay silent while waiting.
 ACTIVATION_ATTEMPTS = 25
 ACTIVATION_INTERVAL_SECONDS = 0.4
-# The existing window is identified by its executable image and a title
-# starting with GachaOps: the main window is 'GachaOps — 助手编排' and the
-# startup-failure message box is 'GachaOps 无法打开'. The title condition
-# also excludes unrelated windows when running from source (python.exe)
-# and the app's own dropdown popups and tooltips.
+# window_matches decides how the existing window is recognized: frozen
+# builds (GachaOps.exe) match on the image alone — no lookalike problem,
+# so startup-gate dialogs with other titles can be fronted too — while
+# source runs (python.exe is shared) additionally require the title to
+# start with GachaOps. This prefix feeds that title condition.
 ACTIVATION_TITLE_PREFIX = 'GachaOps'
 
 
@@ -54,6 +54,12 @@ class WindowGuard:
         self.handle = None
         self.api = None
         self.stream = None
+        # The raw WaitForSingleObject result of the last acquisition (None
+        # on POSIX and before the first acquire). Recorded so a test can
+        # assert the abandoned takeover without making its own raw wait —
+        # which would hand ownership to the waiting thread and let a guard
+        # that refuses WAIT_ABANDONED slip through same-thread reentrancy.
+        self.wait_result = None
 
     def acquire(self):
         """Take the guard without waiting; False when it is held elsewhere."""
@@ -70,13 +76,16 @@ class WindowGuard:
                 getattr(self.api, key).restype = result
             self.handle = self.api.CreateMutexW(None, False, 'Global\\' + self.name)
             if not self.handle:
+                self.wait_result = None
                 return False
             result = self.api.WaitForSingleObject(self.handle, 0)
+            self.wait_result = result
             # WAIT_OBJECT_0 or WAIT_ABANDONED: owned. Abandoned means the
             # previous window died holding it — exactly the case a relaunch
             # must recover from, so it is taken over, unlike the execution
             # lock which fails closed.
             return result in (0, 0x80)
+        self.wait_result = None
         import fcntl
         digest = hashlib.sha256(self.name.encode()).hexdigest()
         path = Path(tempfile.gettempdir()) / ('gachaops-window-' + digest + '.lock')
@@ -219,6 +228,17 @@ def _find_own_window():
     return found[0] if found else 0
 
 
+def _bring_to_front(api, hwnd):
+    """Restore the window if minimized, set it foreground, and return
+    whether it really sits in the foreground afterwards — a denial reads
+    as False so the caller can point the user at the taskbar instead of
+    exiting silently."""
+    if api.IsIconic(hwnd):
+        api.ShowWindow(hwnd, 9)  # SW_RESTORE; no synthetic input
+    api.SetForegroundWindow(hwnd)
+    return api.GetForegroundWindow() == hwnd
+
+
 def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
                              interval=ACTIVATION_INTERVAL_SECONDS):
     """Restore and foreground the existing window, retrying briefly.
@@ -226,8 +246,7 @@ def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
     Returns whether a matching window was found and actually sits in the
     foreground now. The guard holder may still be between acquiring the
     guard and showing its window, so a few bounded retries precede the
-    manual-switch report; a foreground denial reads as False so the
-    caller can point the user at the taskbar instead of exiting silently.
+    manual-switch report.
     """
     if os.name != 'nt':
         return False
@@ -243,9 +262,6 @@ def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
     for _ in range(attempts):
         hwnd = _find_own_window()
         if hwnd:
-            if api.IsIconic(hwnd):
-                api.ShowWindow(hwnd, 9)  # SW_RESTORE; no synthetic input
-            api.SetForegroundWindow(hwnd)
-            return api.GetForegroundWindow() == hwnd
+            return _bring_to_front(api, hwnd)
         time.sleep(interval)
     return False
