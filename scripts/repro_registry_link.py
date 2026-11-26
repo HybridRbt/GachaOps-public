@@ -1251,12 +1251,21 @@ def main():
     if not arguments.all:
         parser.error('choose --scenario NAME or --all')
     system_temp = tempfile.gettempdir()
+    # One mask table for every stderr exit in this loop: system temp, repo
+    # and interpreter prefixes, each in every textual form.
+    masks = [(system_temp, '<systmp>'), (str(REPO), '<repo>'),
+             (str(Path(sys.executable).resolve().parent), '<python>')]
     merged = {}
     failed = []
     for name in sorted(SCENARIOS):
         fresh = Path(arguments.out).with_name(f'{Path(arguments.out).stem}-{name}.this-run.json')
-        if fresh.exists():
-            fresh.unlink()  # never accept a stale result file as this run's output
+        try:
+            if fresh.exists():
+                fresh.unlink()  # never accept a stale result file as this run's output
+        except OSError:
+            print('stale result file could not be removed; close whatever holds it and rerun',
+                  file=sys.stderr)
+            return 1
         try:
             completed = subprocess.run(
                 [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()),
@@ -1264,9 +1273,7 @@ def main():
                 cwd=str(REPO), capture_output=True, text=True, timeout=240,
                 encoding='utf-8', errors='replace')
             returncode, timed_out = completed.returncode, False
-            stderr = mask_text(completed.stderr[-2000:], [
-                (tempfile.gettempdir(), '<systmp>'), (str(REPO), '<repo>'),
-                (str(Path(sys.executable).resolve().parent), '<python>')])
+            stderr = mask_text(completed.stderr[-2000:], masks)
         except subprocess.TimeoutExpired:
             returncode, timed_out, stderr = None, True, f'scenario {name} timed out after 240s'
         entry = {'returncode': returncode, 'timed_out': timed_out, 'stderr': stderr}
@@ -1282,17 +1289,23 @@ def main():
             failed.append(name)
         entry['verdict'] = 'FAIL' if name in failed else 'PASS'
         merged[name] = entry
-        fresh.unlink(missing_ok=True)
+        try:
+            fresh.unlink(missing_ok=True)
+        except OSError:
+            print('result file could not be removed; close whatever holds it and rerun',
+                  file=sys.stderr)
+            return 1
     summary = {'verdict': {name: entry['verdict'] for name, entry in merged.items()},
                'all_passed': not failed, 'scenarios': merged}
     # The aggregated output — including FAIL verdicts and stderr excerpts — is
-    # scanned with the system temp prefix in every textual form before publish.
+    # scanned with the repo, interpreter and system temp prefixes in every
+    # textual form before publish.
     try:
         assert_no_leak(summary, [system_temp, str(REPO),
                                  str(Path(sys.executable).resolve().parent)])
         Path(arguments.out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
     except AssertionError as error:
-        print(mask_text(str(error), [(system_temp, '<tmp>')]), file=sys.stderr)
+        print(mask_text(str(error), masks), file=sys.stderr)
         return 1
     except Exception:
         # Fixed text only: the raw error could name unmasked paths.
