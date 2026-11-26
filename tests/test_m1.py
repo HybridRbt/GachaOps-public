@@ -8,7 +8,7 @@ import time
 import unittest
 import uuid
 
-from gachaops.execution_lock import ExecutionBusy, ExecutionLock
+from gachaops.execution_lock import BUSY_MESSAGE, ExecutionBusy, ExecutionLock
 from gachaops.ok_completion import capture_cursor, evaluate, observe
 from gachaops.ok_inventory import inspect_installation
 from gachaops.planner import load
@@ -19,6 +19,18 @@ START = "2026-09-30 18:33:00,000 INFO ok.core.start_controller start_controller:
 DONE = "2026-09-30 18:41:00,000 INFO TaskExecutor DailyTask:Daily Task Completed"
 EXIT = "2026-09-30 18:41:01,000 INFO TaskExecutor TaskExecutor:Successfully Executed Task, Exiting Game and App!"
 FAIL = "2026-09-30 18:40:59,416 ERROR TaskExecutor DailyTask:MergeEchoTask Failed Traceback (most recent call last):"
+
+
+def contend_for_default_lock():
+    """Hold the default execution lock in this process and contend from a
+    real second GachaOps process; returns the child's CompletedProcess so
+    tests assert on the exact stderr a user's second window produces."""
+    with tempfile.TemporaryDirectory() as directory, ExecutionLock():
+        return subprocess.run(
+            [sys.executable, "-m", "gachaops", "simulate",
+             "--config", str(ROOT / "config" / "simulation.json"),
+             "--output", str(Path(directory) / "out")],
+            cwd=ROOT, capture_output=True, text=True, timeout=60)
 
 
 class ExecutionTests(unittest.TestCase):
@@ -49,9 +61,11 @@ class ExecutionTests(unittest.TestCase):
                 try:
                     child.kill()
                     child.wait(timeout=10)
-                    with self.assertRaisesRegex(ExecutionBusy, "abandoned"):
+                    with self.assertRaises(ExecutionBusy) as abandoned:
                         with ExecutionLock(name):
                             pass
+                    self.assertIn("abandoned", str(abandoned.exception))
+                    self.assertNotEqual(str(abandoned.exception), BUSY_MESSAGE)
                 finally:
                     api.CloseHandle(handle)
             finally:
@@ -60,24 +74,33 @@ class ExecutionTests(unittest.TestCase):
                 child.wait(timeout=10)
 
     def test_other_process_cannot_acquire_same_lock(self):
-        name = "GachaOps.test." + uuid.uuid4().hex
-        code = ("from gachaops.execution_lock import ExecutionLock; "
-                "import sys; lock=ExecutionLock(sys.argv[1]); lock.__enter__()")
-        with ExecutionLock(name):
-            result = subprocess.run([sys.executable, "-c", code, name], cwd=ROOT,
-                                    capture_output=True, text=True, timeout=10)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("ExecutionBusy", result.stderr)
-        with ExecutionLock(name):
-            pass
+        # A real second process, not a hand-written log line: the child runs
+        # the CLI against a held default lock, and its stderr must be exactly
+        # the line a user's second window would produce.
+        result = contend_for_default_lock()
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("gachaops: " + BUSY_MESSAGE, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    @unittest.skipUnless(os.name == "nt", "kernel object name rules")
+    def test_invalid_mutex_name_is_not_reported_as_busy(self):
+        # A backslash makes CreateMutexW fail outright; that is a system
+        # failure, not another GachaOps holding the lock, so the message
+        # must stay distinguishable from BUSY_MESSAGE.
+        with self.assertRaises(ExecutionBusy) as rejected:
+            with ExecutionLock("GachaOps.test\\bad." + uuid.uuid4().hex):
+                pass
+        self.assertNotEqual(str(rejected.exception), BUSY_MESSAGE)
+        self.assertIn("execution mutex inaccessible", str(rejected.exception))
 
     def test_exception_releases_lock_and_reentrant_call_is_rejected(self):
         name = "GachaOps.test." + uuid.uuid4().hex
         with self.assertRaises(ValueError):
             with ExecutionLock(name):
-                with self.assertRaises(ExecutionBusy):
+                with self.assertRaises(ExecutionBusy) as busy:
                     with ExecutionLock(name):
                         pass
+                self.assertEqual(str(busy.exception), BUSY_MESSAGE)
                 raise ValueError("fixture")
         with ExecutionLock(name):
             pass

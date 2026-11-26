@@ -1,5 +1,7 @@
+import contextlib
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -414,6 +416,100 @@ class March7Tests(unittest.TestCase):
                     self.assertIsNone(prepared['game_path'])
                     self.assertEqual(len(prepared['observation_targets']), 3)
                     json.dumps(prepared)
+
+    def test_unencodable_game_path_is_rejected_before_launch_descriptor(self):
+        # A saved game_path can carry a character the UTF-8 launch descriptor
+        # cannot encode. Windows names allow unpaired surrogates and the
+        # assistant hands such values over via the "x\uD800.exe" spelling;
+        # POSIX file systems reject that character, but there the real defect
+        # arrives as a non-UTF-8 byte decoded through surrogateescape. Either
+        # way the value cannot be written back, so prepare() must call it
+        # unusable instead of failing later inside observation or the
+        # launch-descriptor write.
+        surrogate = chr(0xD800)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); row = self.installation(root)
+            # Every scenario replaces from the same pristine text: a previous
+            # scenario must not leak into the next one's configuration.
+            pristine = (root / 'config.yaml').read_text(encoding='utf-8')
+
+            def run_scenario(saved, bad_char, escape, extra_patches=(), bind=False):
+                # The raw character reaches the loader only as the YAML
+                # \u-escape, so no fixture file ever carries it; the loader
+                # decodes it into the value exactly like the assistant does.
+                config = root / 'config.yaml'
+                old_path = "game_path: '" + str(root / 'StarRail.exe') + "' # location\n"
+                config.write_text(pristine.replace(
+                    old_path, 'game_path: "' + saved.replace(bad_char, escape) + '"\n'),
+                    encoding='utf-8')
+                # The scenario's saved value is what the loader must see; a
+                # replacement that missed its anchor would hide here.
+                loaded = march7.metadata_from_text(config.read_text(encoding='utf-8'))
+                self.assertEqual(loaded['game_path'], saved)
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(patch(
+                        'gachaops.march7.elevation_report', return_value={'elevated': True}))
+                    stack.enter_context(patch(
+                        'gachaops.march7.desktop_report', return_value={'status': 'observed_available'}))
+                    stack.enter_context(patch(
+                        'gachaops.march7.find_matching_processes',
+                        return_value={'status': 'observed', 'matches': []}))
+                    for item in extra_patches:
+                        stack.enter_context(item)
+                    prepared = march7.prepare(row)
+                self.assertIn('game_path_unverified', prepared['blockers'])
+                self.assertIsNone(prepared['game_path'])
+                self.assertEqual(len(prepared['observation_targets']), 3)
+                json.dumps(prepared)
+                if bind:
+                    out = root / ('out-' + escape.strip('\\u'))
+                    out.mkdir()
+                    descriptor, cursor = march7.bind_execution(prepared, out)
+                    written = json.loads((out / 'march7-launch.json').read_text(encoding='utf-8'))
+                    self.assertEqual(written['token'], cursor.token)
+                    self.assertIsNone(written['game_path'])
+
+            if os.name == 'nt':
+                # Windows keeps the fixture real: the file exists and the
+                # guard's is_file() answers a real stat.
+                game_file = root / ('x' + surrogate + '.exe')
+                game_file.write_bytes(b'fixture')
+                run_scenario(str(game_file).replace('\\', '/'), surrogate, '\\uD800', bind=True)
+            else:
+                # POSIX cannot even open a path containing this character:
+                # os.stat encodes the string with the file-system encoding
+                # and raises UnicodeEncodeError, which is the crash under
+                # test rather than the judgment. The existence answer is
+                # replaced for exactly this one path, so both the old and the
+                # fixed product are compared on encodability alone; the fixed
+                # guard never reaches is_file (its encodability check
+                # short-circuits first), so the stub is inert when green.
+                saved = Path(temp).as_posix() + '/x' + surrogate + '.exe'
+                real_is_file = Path.is_file
+
+                def only_the_saved_path(path):
+                    if str(path) == saved:
+                        return True
+                    return real_is_file(path)
+
+                run_scenario(saved, surrogate, '\\uD800',
+                             extra_patches=[patch.object(Path, 'is_file', only_the_saved_path)],
+                             bind=True)
+            # The POSIX shape of the same defect: a real file whose name
+            # carries a non-UTF-8 byte; the string OS APIs return decodes it
+            # to a surrogate (\udc80) that strict UTF-8 also refuses. Where
+            # the OS accepts creating such a name, exercise the real file;
+            # where it refuses (macOS rejects invalid UTF-8 names outright,
+            # and os.open on Windows strict-decodes the bytes path), the
+            # scenario above already covers the judgment.
+            byte_name = os.path.join(os.fsencode(temp), b'x\x80.exe')
+            try:
+                handle = os.open(byte_name, os.O_CREAT | os.O_WRONLY, 0o600)
+                os.close(handle)
+            except (OSError, ValueError):
+                byte_name = None
+            if byte_name is not None:
+                run_scenario(os.fsdecode(byte_name), chr(0xDC80), '\\uDC80')
 
     def test_uniform_indent_spaced_colon_and_crlf_are_resolved(self):
         with tempfile.TemporaryDirectory() as temp:

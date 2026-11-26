@@ -16,6 +16,7 @@ from .desktop_model import (NAMES, STATUS, selected_configuration, save_configur
                             elevation_command, bettergi_inspection, compose_snapshot, write_handoff,
                             read_handoff, desktop_command)
 from .assistants import load_assistants
+from .execution_lock import BUSY_MESSAGE
 from .windows_observation import elevation_report
 from .result_details import details_for
 from .recovery import read_state, RecoveryRequired
@@ -510,7 +511,12 @@ def main():
             self.check_report = None
             self.log_seen = 0
             self.started = None
-            self.run_confirm_timer = None
+            # One deferred "start not confirmed" timer for the window's
+            # lifetime; begin() restarts it, so repeated runs do not
+            # accumulate Qt children.
+            self.run_confirm_timer = QTimer(self)
+            self.run_confirm_timer.setSingleShot(True)
+            self.run_confirm_timer.timeout.connect(self._run_confirm_timeout)
             self.run_confirm_timeout_ms = RUN_CONFIRM_TIMEOUT_MS
             self.run_confirmed_minimized = False
             self.run_confirm_warned = False
@@ -2039,9 +2045,6 @@ def main():
                         # minimizing there cannot hide a gate refusal. If the
                         # worker neither confirms the flow nor exits in time,
                         # the timeout keeps the window visible and says so.
-                        self.run_confirm_timer = QTimer(self)
-                        self.run_confirm_timer.setSingleShot(True)
-                        self.run_confirm_timer.timeout.connect(self._run_confirm_timeout)
                         self.run_confirm_timer.start(self.run_confirm_timeout_ms)
                     process.started.connect(handoff)
                 self.refresh_controls(); self.refresh_checklist()
@@ -2438,7 +2441,14 @@ def main():
                                 error = stream.read().decode('utf-8', errors='replace').strip()
                         except OSError:
                             pass
-                    if 'previous execution has unverified cleanup; manual inspection required' in error:
+                    if BUSY_MESSAGE in error:
+                        # The English worker line stays in the error field
+                        # for diagnostics; the panel names the situation and
+                        # the remedy like every other blocker. The lock is
+                        # machine-wide, so the wording does not assume the
+                        # holder is another window.
+                        explanation = '另一个 GachaOps 正在运行，请等它结束，或关闭它后再试。'
+                    elif 'previous execution has unverified cleanup; manual inspection required' in error:
                         from .recovery_check import recovery_instructions
                         explanation = recovery_instructions(self.workspace, NAMES)
                     else:

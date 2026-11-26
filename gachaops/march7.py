@@ -55,6 +55,18 @@ class March7ConfigUnreadable(ValueError):
         self.key = key
 
 
+def _encodes_utf8(text):
+    """True when the string survives the UTF-8 write the launch descriptor
+    performs. Windows APIs accept names with unpaired surrogates, so such a
+    path can be saved and even exist, but the JSON write would fail later;
+    it is unusable for a run and must be re-saved in the assistant."""
+    try:
+        text.encode('utf-8')
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def metadata_from_text(text):
     """Load the lifecycle values exactly like the assistant itself does.
 
@@ -146,13 +158,16 @@ def prepare(row):
         if meta['log_level'] not in ('INFO', 'DEBUG'):
             blockers.append('march7_info_logging_required')
         game = meta['game_path']
-        if isinstance(game, str) and Path(game).is_absolute() and Path(game).is_file():
+        if (isinstance(game, str) and _encodes_utf8(game)
+                and Path(game).is_absolute() and Path(game).is_file()):
             targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe'), game]
         else:
             # A value the loader returned but that is not a usable path (a
-            # list, mapping, tag or date) must not leak past prepare: it
-            # would only fail later inside observation with a TypeError, so
-            # it is dropped here and the blocker states the fact instead.
+            # list, mapping, tag or date, or a string containing an unpaired
+            # surrogate: Windows names allow it, UTF-8 does not) must not
+            # leak past prepare: it would only fail later, inside
+            # observation or the launch-descriptor write, so it is dropped
+            # here and the blocker states the fact instead.
             blockers.append('game_path_unverified')
             game = None
             targets = [str(exe), str(launcher), str(root / 'March7th Updater.exe')]
