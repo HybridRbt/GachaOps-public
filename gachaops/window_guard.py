@@ -1,16 +1,19 @@
 """Single GUI window guard, independent of the execution lock.
 
 A named kernel mutex (Windows) or a lock file under the system temp
-directory (POSIX) admits exactly one GachaOps graphical window per
-machine, regardless of data directory — with one honest exception: the
-POSIX lock file lives where tempfile.gettempdir() points, which is
-machine-level on Windows/Linux setups but per-user on macOS, so there
-the guard holds per user rather than per machine. Unlike the execution
-lock, abandoned ownership is taken over: a crashed prior window must
-never keep the next launch from opening. The guard is held in the GUI
-process from before the window's startup gate until process exit;
-automation launches (--smoke-test, layout previews) never take it, and
-command-line/worker processes are never touched by it.
+directory (POSIX) admits exactly one GachaOps graphical window,
+regardless of data directory. The scope is stated as it really is: the
+Windows mutex is machine-global (Global\\), while the POSIX lock file
+lives in a per-user directory (gachaops-window-<uid>, created 0700), so
+the guard holds per machine on Windows and per user on Linux and macOS —
+a shared 0600 lock file would stay unopenable for the next user after
+the first window exits, and the failed open would read as "already
+running", locking that user out of their own window. Unlike the
+execution lock, abandoned ownership is taken over: a crashed prior
+window must never keep the next launch from opening. The guard is held
+in the GUI process from before the window's startup gate until process
+exit; automation launches (--smoke-test, layout previews) never take
+it, and command-line/worker processes are never touched by it.
 """
 import ctypes
 import errno
@@ -42,6 +45,22 @@ ACTIVATION_INTERVAL_SECONDS = 0.4
 # source runs (python.exe is shared) additionally require the title to
 # start with GachaOps. This prefix feeds that title condition.
 ACTIVATION_TITLE_PREFIX = 'GachaOps'
+
+
+def posix_lock_path(name):
+    """The per-user lock file path for a guard name on POSIX.
+
+    The file lives under tempfile.gettempdir() inside a per-user
+    directory gachaops-window-<uid> (created 0700; no subdirectory where
+    os.getuid() does not exist). The file name itself stays derived from
+    the guard name. Tests use this helper to compute the same path.
+    """
+    digest = hashlib.sha256(name.encode()).hexdigest()
+    parent = Path(tempfile.gettempdir())
+    getuid = getattr(os, 'getuid', None)
+    if getuid is not None:
+        parent = parent / ('gachaops-window-' + str(getuid()))
+    return parent / ('gachaops-window-' + digest + '.lock')
 
 
 class WindowGuard:
@@ -91,8 +110,17 @@ class WindowGuard:
             return result in (0, 0x80)
         self.wait_result = None
         import fcntl
-        digest = hashlib.sha256(self.name.encode()).hexdigest()
-        path = Path(tempfile.gettempdir()) / ('gachaops-window-' + digest + '.lock')
+        path = posix_lock_path(self.name)
+        if path.parent.is_symlink():
+            # A planted symlink at the per-user directory would redirect
+            # the lock file entirely: refuse instead of following it.
+            return False
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        except PermissionError:
+            # The temp area is not writable for us: without our own lock
+            # file we cannot own the window either.
+            return False
         flags = os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0)
         try:
             self.stream = os.fdopen(os.open(path, flags, 0o600), 'r+')
@@ -189,7 +217,7 @@ def _find_own_window():
     back to telling the user. Windows: ctypes only, no synthetic input.
     """
     if os.name != 'nt':
-        return 0
+        return []
     mine = own_image_name()
     frozen = bool(getattr(sys, 'frozen', False))
     api = ctypes.WinDLL('user32', use_last_error=True)
@@ -281,9 +309,11 @@ def activate_existing_window(attempts=ACTIVATION_ATTEMPTS,
     guard and showing its window, so a few bounded retries precede the
     manual-switch report.
     """
-    if os.name != 'nt':
-        return False
     if api is None:
+        # Only the real activation needs the platform API; an injected
+        # fake (tests) runs the same candidate walk on every platform.
+        if os.name != 'nt':
+            return False
         api = _user32_activation_api()
     for _ in range(attempts):
         # Candidates are z-ordered topmost-first; the topmost one may not
