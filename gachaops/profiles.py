@@ -1,4 +1,4 @@
-"""Local user profiles with UUID storage, backups and explicit import previews.
+"""Local user profiles: combination storage and management with UUID keys and backups.
 
 Schema 2 profiles keep run settings only (order, selection, game start,
 timeout, repeat limit); installation paths live in the global registration
@@ -283,18 +283,3 @@ class ProfileStore:
             except OSError:
                 return {'cleanup_complete': False, 'residual_path': str(pending)}
             return {'cleanup_complete': True, 'residual_path': None}
-
-    def preview_import(self, path):
-        source = Path(path).resolve(strict=True)
-        raw = source.read_bytes()
-        return {'source': str(source), 'sha256': hashlib.sha256(raw).hexdigest(),
-                'configuration': deepcopy(validate_assistants(json.loads(raw.decode('utf-8-sig'))))}
-
-    def import_profile(self, name, preview):
-        if self.preview_import(preview['source']) != preview:
-            raise ValueError('import source changed; preview again')
-        return self.create_profile(name, preview['configuration'])
-
-
-def list_profiles(data_root):
-    return ProfileStore(data_root).list_profiles()

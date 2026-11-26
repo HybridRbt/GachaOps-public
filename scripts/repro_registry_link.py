@@ -126,6 +126,14 @@ def path_variants(needle):
     return [needle, forward, doubled, doubled.replace('/', backslash * 2)]
 
 
+def foreign_masks():
+    """The machine-identifying prefixes every stderr excerpt masks: system
+    temp, repository checkout and interpreter directory, each in every
+    textual form."""
+    return [(tempfile.gettempdir(), '<systmp>'), (str(REPO), '<repo>'),
+            (str(Path(sys.executable).resolve().parent), '<python>')]
+
+
 def run_projection(source_rows):
     """The run fields one legacy row must contribute, projected once here."""
     return [{'id': row['id'], 'adapter': row['adapter'],
@@ -1064,7 +1072,10 @@ def run_r6(out, state):
             # repository and runner paths all sit outside the scenario
             # masks, so only fixed text may describe this failure.
             check(False, 'reopen process timed out after 240s')
-        check(completed.returncode == 0, f"reopen process failed: {completed.stderr[-500:]}")
+        # Mask the full stderr before cutting the excerpt: a tail slice can
+        # begin inside a path, and a cut-up prefix matches no full mask.
+        check(completed.returncode == 0,
+              "reopen process failed: " + mask_text(completed.stderr, foreign_masks())[-500:])
         recorded = json.loads(reopen_out.read_text(encoding='utf-8'))
         check(recorded['pid'] != os.getpid(), f"reopen ran in the parent PID {recorded['pid']}")
         snapshot = recorded['snapshot']
@@ -1119,21 +1130,23 @@ def mask_tree(obj, masks):
     return obj
 
 
-def assert_no_leak(obj, needles, path='out'):
+def assert_no_leak(obj, needles, masks, path='out'):
     """Single leak exit: raw, forward-slash, doubled-backslash (repr-escaped)
-    and case-insensitive forms are all refused."""
+    and case-insensitive forms are all refused. The diagnostic excerpt is
+    masked before it is cut, so a prefix cut at the excerpt edge cannot
+    escape unmasked."""
     if isinstance(obj, str):
         lowered = obj.lower()
         for needle in needles:
             for variant in path_variants(needle):
                 check(variant.lower() not in lowered,
-                      f'path leak at {path}: {obj[:120]!r}')
+                      f'path leak at {path}: {mask_text(obj, masks)[:120]!r}')
     elif isinstance(obj, dict):
         for key, value in obj.items():
-            assert_no_leak(value, needles, f'{path}.{key}')
+            assert_no_leak(value, needles, masks, f'{path}.{key}')
     elif isinstance(obj, (list, tuple)):
         for index, value in enumerate(obj):
-            assert_no_leak(value, needles, f'{path}[{index}]')
+            assert_no_leak(value, needles, masks, f'{path}[{index}]')
 
 
 def run_scenario_in_process(name, out_path):
@@ -1210,14 +1223,13 @@ def run_scenario_in_process(name, out_path):
     # (where the reopen runner lives), the repository checkout and the
     # interpreter directory all identify the machine and must not survive
     # into any failure text, stderr excerpt or result file.
-    foreign = [(tempfile.gettempdir(), '<systmp>'), (str(REPO), '<repo>'),
-               (str(Path(sys.executable).resolve().parent), '<python>')]
+    foreign = foreign_masks()
     needles += [prefix for prefix, _label in foreign]
     masks += [(prefix, label) for prefix, label in foreign if prefix]
     try:
         out = mask_tree(out, masks)
         if private['tmp']:
-            assert_no_leak(out, needles)
+            assert_no_leak(out, needles, masks)
         failure = mask_text(failure, masks) if failure else failure
         Path(out_path).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding='utf-8')
         if failure:
@@ -1251,12 +1263,28 @@ def main():
     if not arguments.all:
         parser.error('choose --scenario NAME or --all')
     system_temp = tempfile.gettempdir()
+    # One shared mask table for every stderr exit in this loop: system temp,
+    # repo and interpreter prefixes, each in every textual form.
+    masks = foreign_masks()
+    out_base = Path(arguments.out)
+    if out_base.name in ('', '..'):
+        # A filesystem root and '.' have no file name at all, and '..' names
+        # the parent directory itself; with_name below would raise with the
+        # raw path in its traceback. Fixed text only.
+        print('the --out path must name a result file, not a filesystem root',
+              file=sys.stderr)
+        return 1
     merged = {}
     failed = []
     for name in sorted(SCENARIOS):
-        fresh = Path(arguments.out).with_name(f'{Path(arguments.out).stem}-{name}.this-run.json')
-        if fresh.exists():
-            fresh.unlink()  # never accept a stale result file as this run's output
+        fresh = out_base.with_name(f'{out_base.stem}-{name}.this-run.json')
+        try:
+            if fresh.exists():
+                fresh.unlink()  # never accept a stale result file as this run's output
+        except OSError:
+            print('stale result file could not be removed; close whatever holds it and rerun',
+                  file=sys.stderr)
+            return 1
         try:
             completed = subprocess.run(
                 [sys.executable, '-X', 'utf8', str(Path(__file__).resolve()),
@@ -1264,17 +1292,29 @@ def main():
                 cwd=str(REPO), capture_output=True, text=True, timeout=240,
                 encoding='utf-8', errors='replace')
             returncode, timed_out = completed.returncode, False
-            stderr = mask_text(completed.stderr[-2000:], [
-                (tempfile.gettempdir(), '<systmp>'), (str(REPO), '<repo>'),
-                (str(Path(sys.executable).resolve().parent), '<python>')])
+            stderr = mask_text(completed.stderr, masks)[-2000:]
         except subprocess.TimeoutExpired:
             returncode, timed_out, stderr = None, True, f'scenario {name} timed out after 240s'
+        except OSError:
+            # A failed start raises with the interpreter, script and working
+            # directory in its message and traceback; only fixed text may
+            # leave, and no later scenario can start either.
+            print(f'scenario {name} could not start: interpreter or working directory unavailable',
+                  file=sys.stderr)
+            return 1
         entry = {'returncode': returncode, 'timed_out': timed_out, 'stderr': stderr}
+        entry['result'] = None
         try:
-            entry['result'] = json.loads(fresh.read_text(encoding='utf-8'))
+            loaded = json.loads(fresh.read_text(encoding='utf-8'))
         except (ValueError, OSError):
-            entry['result'] = None
             entry['stderr'] = f'no fresh result file written this run; {stderr}'
+        else:
+            # Valid JSON that is not an object carries no result; the schema
+            # check below must not raise on it.
+            if isinstance(loaded, dict):
+                entry['result'] = loaded
+            else:
+                entry['stderr'] = f'result file did not contain a result document; {stderr}'
         schema_ok = bool(entry['result']) and entry['result'].get('scenario') == name \
             and 'launches' in entry['result'] and entry['result'].get('exit_code') == 0 \
             and entry['result'].get('ok') is True
@@ -1282,17 +1322,23 @@ def main():
             failed.append(name)
         entry['verdict'] = 'FAIL' if name in failed else 'PASS'
         merged[name] = entry
-        fresh.unlink(missing_ok=True)
+        try:
+            fresh.unlink(missing_ok=True)
+        except OSError:
+            print('result file could not be removed; close whatever holds it and rerun',
+                  file=sys.stderr)
+            return 1
     summary = {'verdict': {name: entry['verdict'] for name, entry in merged.items()},
                'all_passed': not failed, 'scenarios': merged}
     # The aggregated output — including FAIL verdicts and stderr excerpts — is
-    # scanned with the system temp prefix in every textual form before publish.
+    # scanned with the repo, interpreter and system temp prefixes in every
+    # textual form before publish.
     try:
         assert_no_leak(summary, [system_temp, str(REPO),
-                                 str(Path(sys.executable).resolve().parent)])
+                                 str(Path(sys.executable).resolve().parent)], masks)
         Path(arguments.out).write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
     except AssertionError as error:
-        print(mask_text(str(error), [(system_temp, '<tmp>')]), file=sys.stderr)
+        print(mask_text(str(error), masks), file=sys.stderr)
         return 1
     except Exception:
         # Fixed text only: the raw error could name unmasked paths.
