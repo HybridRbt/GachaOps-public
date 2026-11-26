@@ -1,4 +1,10 @@
-"""Read-only OK-WW v3.6.7 log contract. Never imports or starts the assistant.
+"""Read-only OK-WW log contract for v3.6.7 and v3.8.9. Never imports or starts the assistant.
+
+v3.8.9 (reviewed offline against ok-ww v3.8.9 with ok-script 3.0.7) only
+changes the first completion line through i18n: DailyTask logs
+tr('Daily Task Completed') and the zh_CN catalog renders the exact string
+「每日任务已完成」. The start line, init line, LINE format, the executor
+exit line and the midnight dated rotation are unchanged.
 
 An exit code and a *new* task start are required. Caught additional-task failures
 remain partial_failure even when the runner subsequently announces completion.
@@ -18,6 +24,34 @@ import time
 LINE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} "
                   r"(?P<level>\w+) (?P<thread>\S+) (?P<source>[^:]+):(?P<message>.*)$")
 START = re.compile(r"^enabled task <src\.task\.DailyTask\.DailyTask object at 0x[0-9A-Fa-f]+>$")
+# Both spellings are exact strings, never substrings: the same DailyTask
+# thread also logs sub-task lines such as 「每周乐园任务已完成, 已达到上限」
+# that must not count as the run completion. The English form keeps older
+# builds (and non-zh catalogs) decidable.
+TASK_COMPLETED_MESSAGES = frozenset({'Daily Task Completed', '每日任务已完成'})
+# Routine ERROR lines, classified by source plus an anchored message
+# template. They accompany healthy runs and must not turn one into a
+# failure; they are kept in the result as routine_errors instead. Each
+# entry: (log source name, anchored template, exempt window in seconds
+# after the task start, or None for no window). Add or remove entries only
+# here. Sources verified against ok-ww v3.8.9 and ok-script 3.0.7:
+ROUTINE_ERROR_PATTERNS = (
+    # src/combat/CombatCheck.py:185 -- mid-fight target acquisition retries.
+    ('CombatCheck', re.compile(r'target_enemy failed, try recheck break out of combat'), None),
+    # src/task/BaseCombatTask.py:1003 (raise_not_in_combat) -- recheck after
+    # slipping out of combat; repeated inside healthy fights.
+    ('BaseCombatTask', re.compile(r'combat check not in combat'), None),
+    # src/char/BaseChar.py:639 shared liberation retry, surfaced through the
+    # character's own logger (observed source: Hiyuki).
+    ('Hiyuki', re.compile(r'clicked liberation but no effect'), None),
+    # ok-script ok/device/capture_methods/bitblt_utils.py:90 -- transient
+    # BitBlt capture failures while the game window is coming up; observed
+    # within seconds 17-21 of a task start, window bounded at 60.
+    ('bitblt_utils', re.compile(r'capture_by_bitblt exception:.*'), 60),
+    # ok-script ok/device/interaction_methods/post_message.py:115 -- invalid
+    # handle while the window is not ready yet; same bounded window.
+    ('post_message', re.compile(r'PostMessage error.*'), 60),
+)
 
 
 @dataclass(frozen=True)
@@ -161,12 +195,40 @@ def correlated_lines(cursor, root_pid):
                        'baseline_prefix_sha256': cursor.prefix_sha256}
 
 
+def _stamp(line):
+    """Local-time epoch of a log line's timestamp, or None when unparseable."""
+    try:
+        return datetime.strptime(line[:23], '%Y-%m-%d %H:%M:%S,%f').timestamp()
+    except ValueError:
+        return None
+
+
+def classify_routine(source, message, stamp, start_stamp):
+    """True when an ERROR line matches a routine template.
+
+    Windowed templates are exempt only inside their seconds budget after the
+    task start; an unparseable timestamp never exempts."""
+    for routine_source, pattern, window in ROUTINE_ERROR_PATTERNS:
+        if source == routine_source and pattern.match(message):
+            if window is None:
+                return True
+            if stamp is None or start_stamp is None:
+                return False
+            return 0 <= stamp - start_stamp <= window
+    return False
+
+
 def evaluate(lines, exit_code, *, writer_verified=False):
-    """Classify a single newly started DailyTask; no exit means still unconfirmed."""
+    """Classify a single newly started DailyTask; no exit means still unconfirmed.
+
+    Routine ERROR noise is moved to ``routine_errors`` only while the run is
+    clean -- exactly one task start, both completion markers, exit code 0.
+    Any other outcome keeps every ERROR in ``failures``; none is dropped."""
     starts = 0
     completed = False
     executor_completed = False
-    failures = []
+    start_stamp = None
+    errors = []
     for number, line in enumerate(lines, 1):
         match = LINE.fullmatch(line)
         if not match:
@@ -174,18 +236,26 @@ def evaluate(lines, exit_code, *, writer_verified=False):
         level, thread, source, message = (match[k] for k in ("level", "thread", "source", "message"))
         if level == "INFO" and source == "start_controller" and START.fullmatch(message):
             starts += 1
+            if start_stamp is None:
+                start_stamp = _stamp(line)
         if not starts:
             continue
-        if thread == "TaskExecutor" and source == "DailyTask":
-            if level == "INFO" and message == "Daily Task Completed":
-                completed = True
-            if level == "ERROR":
-                failures.append({"line": number, "message": message})
-        if level == "ERROR" and source == "TaskExecutor" and "exception stopped" in message:
-            failures.append({"line": number, "message": message})
+        if thread == "TaskExecutor" and source == "DailyTask" \
+                and level == "INFO" and message in TASK_COMPLETED_MESSAGES:
+            completed = True
         if (level == "INFO" and thread == "TaskExecutor" and source == "TaskExecutor"
                 and message == "Successfully Executed Task, Exiting Game and App!" and completed):
             executor_completed = True
+        if level == "ERROR":
+            errors.append((number, source, message, _stamp(line)))
+    clean = starts == 1 and completed and executor_completed and exit_code == 0
+    failures = []
+    routine_errors = []
+    for number, source, message, stamp in errors:
+        if clean and classify_routine(source, message, stamp, start_stamp):
+            routine_errors.append({"line": number, "message": message})
+        else:
+            failures.append({"line": number, "message": message})
     confirmed = writer_verified and starts == 1 and exit_code is not None
     status = "completion_unconfirmed"
     if confirmed and exit_code != 0:
@@ -196,7 +266,8 @@ def evaluate(lines, exit_code, *, writer_verified=False):
         status = "failed"
     return {"status": status, "exit_code": exit_code, "task_starts": starts,
             "task_completed": completed, "executor_completed": executor_completed,
-            "writer_verified": writer_verified, "failures": failures}
+            "writer_verified": writer_verified, "failures": failures,
+            "routine_errors": routine_errors}
 
 
 def observe(cursor, exit_code, *, writer_verified=False):

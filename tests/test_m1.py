@@ -114,9 +114,15 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual(evaluate([START, error, DONE, EXIT], 0, writer_verified=True)["status"], "partial_failure")
 
     def test_unrelated_and_out_of_order_markers_do_not_succeed(self):
-        for lines in [[START, EXIT, DONE], [START, DONE.replace("DailyTask:", "OtherTask:"), EXIT],
-                      [START, DONE, EXIT.replace(" INFO ", " ERROR ")]]:
-            self.assertEqual(evaluate(lines, 0, writer_verified=True)["status"], "completion_unconfirmed")
+        self.assertEqual(evaluate([START, EXIT, DONE], 0, writer_verified=True)["status"], "completion_unconfirmed")
+        self.assertEqual(
+            evaluate([START, DONE.replace("DailyTask:", "OtherTask:"), EXIT], 0, writer_verified=True)["status"],
+            "completion_unconfirmed")
+        # An ERROR-level executor exit line is a real failure under the
+        # tiering boundary: the task never completed, so nothing is exempt.
+        result = evaluate([START, DONE, EXIT.replace(" INFO ", " ERROR ")], 0, writer_verified=True)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(len(result["failures"]), 1)
 
     def test_old_success_is_ignored_and_new_success_is_observed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -157,6 +163,89 @@ class CompletionTests(unittest.TestCase):
             with path.open("ab") as stream:
                 stream.write((START + "\n" + DONE + "\n" + EXIT).encode())
             self.assertEqual(observe(cursor, 0, writer_verified=True)["status"], "completion_unconfirmed")
+
+    def test_v3_8_9_chinese_completion_marker_is_accepted(self):
+        zh = DONE.replace("Daily Task Completed", "每日任务已完成")
+        result = evaluate([START, zh, EXIT], 0, writer_verified=True)
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["task_completed"])
+        # The notify variant with a suffix is a different message and must
+        # not complete the run.
+        notify = DONE.replace("Daily Task Completed", "每日任务已完成，开始传送并刷取4C声骸")
+        self.assertEqual(evaluate([START, notify, EXIT], 0, writer_verified=True)["status"],
+                         "completion_unconfirmed")
+
+    def test_english_completion_marker_still_accepted(self):
+        # Older builds (and non-zh catalogs) log the English line; the exact
+        # set keeps them decidable for rollback.
+        self.assertEqual(evaluate([START, DONE, EXIT], 0, writer_verified=True)["status"], "success")
+
+    def test_subtask_completion_text_is_not_the_run_marker(self):
+        subtask = DONE.replace("Daily Task Completed", "每周乐园任务已完成, 已达到上限")
+        self.assertEqual(evaluate([START, subtask, EXIT], 0, writer_verified=True)["status"],
+                         "completion_unconfirmed")
+        self.assertFalse(evaluate([START, subtask, EXIT], 0, writer_verified=True)["task_completed"])
+
+    def test_executor_line_before_completion_and_two_starts_stay_unconfirmed(self):
+        self.assertEqual(evaluate([START, EXIT, DONE], 0, writer_verified=True)["status"],
+                         "completion_unconfirmed")
+        self.assertEqual(evaluate([START, DONE, EXIT, START], 0, writer_verified=True)["status"],
+                         "completion_unconfirmed")
+
+    def test_routine_combat_errors_are_notes_not_failures_on_a_clean_run(self):
+        combat = "2026-09-30 18:36:00,000 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat"
+        recheck = "2026-09-30 18:36:10,000 ERROR TaskExecutor BaseCombatTask:combat check not in combat"
+        liberation = "2026-09-30 18:37:00,000 ERROR TaskExecutor Hiyuki:clicked liberation but no effect"
+        result = evaluate([START, combat, recheck, liberation, DONE, EXIT], 0, writer_verified=True)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["failures"], [])
+        self.assertEqual(len(result["routine_errors"]), 3)
+        self.assertEqual(result["routine_errors"][0]["message"],
+                         "target_enemy failed, try recheck break out of combat")
+
+    def test_startup_capture_noise_within_window_is_a_note(self):
+        bitblt = "2026-09-30 18:33:20,000 ERROR MainThread bitblt_utils:capture_by_bitblt exception: BitBlt failed"
+        handle = "2026-09-30 18:33:21,000 ERROR MainThread post_message:PostMessage error 12345: 无效的窗口句柄"
+        result = evaluate([START, bitblt, handle, DONE, EXIT], 0, writer_verified=True)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["failures"], [])
+        self.assertEqual(len(result["routine_errors"]), 2)
+
+    def test_late_capture_failure_still_fails_the_run(self):
+        late = "2026-09-30 18:36:20,000 ERROR MainThread bitblt_utils:capture_by_bitblt exception: BitBlt failed"
+        result = evaluate([START, late, DONE, EXIT], 0, writer_verified=True)
+        self.assertEqual(result["status"], "partial_failure")
+        self.assertEqual(len(result["failures"]), 1)
+        self.assertEqual(result["routine_errors"], [])
+
+    def test_exception_stopped_is_a_real_failure_and_routine_noise_is_not_exempt(self):
+        combat = "2026-09-30 18:36:00,000 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat"
+        stopped = "2026-09-30 18:38:00,000 ERROR TaskExecutor TaskExecutor:Daily Task exception stopped ValueError('x')"
+        result = evaluate([START, combat, stopped], 0, writer_verified=True)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(len(result["failures"]), 2)
+        self.assertEqual(result["routine_errors"], [])
+
+    def test_resolution_error_is_a_real_failure_even_on_a_completed_run(self):
+        resolution = "2026-09-30 18:35:00,000 ERROR TaskExecutor TaskExecutor:resolution error 1280x720 False"
+        result = evaluate([START, resolution, DONE, EXIT], 0, writer_verified=True)
+        self.assertEqual(result["status"], "partial_failure")
+        self.assertIn("resolution error", result["failures"][0]["message"])
+
+    def test_nonzero_exit_counts_every_error_including_routine_ones(self):
+        combat = "2026-09-30 18:36:00,000 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat"
+        result = evaluate([START, combat, DONE, EXIT], 7, writer_verified=True)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(len(result["failures"]), 1)
+        self.assertIn("target_enemy failed", result["failures"][0]["message"])
+        self.assertEqual(result["routine_errors"], [])
+
+    def test_chinese_completion_without_executor_line_stays_unconfirmed(self):
+        zh = DONE.replace("Daily Task Completed", "每日任务已完成")
+        self.assertEqual(evaluate([START, zh], 0, writer_verified=True)["status"],
+                         "completion_unconfirmed")
+
+
 
 
 class InventoryTests(unittest.TestCase):

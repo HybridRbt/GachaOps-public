@@ -71,6 +71,7 @@ RUN_UNCONFIRMED_TEXT = '尚未确认开始运行（可能在检查上一轮恢�
 BLOCKER_TEXT = {
     'not_registered': '尚未接入（无全局登记路径）',
     'version_unsupported': '版本或启动协议尚未核验',
+    'unsupported_or_mismatched_version': 'OK-WW 此版本 GachaOps 尚未核验，暂时无法运行；请先取消勾选此助手，等待 GachaOps 更新支持后重新检查。',
     'permission_or_desktop': '权限或桌面状态需要处理',
     'native_setup_required': '原助手安装或原生设置需要处理',
     'maagf2_mxu_unsafe_native_action': '少前2预设含未核验的 MXU 特殊动作，请在原助手处理',
@@ -95,6 +96,7 @@ BLOCKER_TEXT = {
     'march7_complete_native_first_setup': '请先打开三月七原生 GUI 完成首次设置',
     'march7_info_logging_required': '请在三月七助手中启用 INFO 或 DEBUG 日志'}
 BLOCKER_SUGGESTIONS = {
+    'unsupported_or_mismatched_version': '取消勾选鸣潮 OK-WW 助手即可照常使用其它助手；本应用更新兼容支持后，这里会提示重新检查。',
     'not_registered': '点击“去接入”登记安装路径；此接入设置对所有组合生效。',
     'maagf2_mxu_unsafe_native_action': '在少前2原助手中关闭按名称结束进程、外部程序、关机等特殊任务，保存并退出后重新检查；GachaOps 不会代改预设。',
     'maagf2_mxu_disable_external_triggers': '在少前2原助手中关闭定时策略、Web 控制、全局热键和独立自动运行，保存并退出后重新检查，由 GachaOps 统一开始。',

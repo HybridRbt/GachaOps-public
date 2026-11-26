@@ -10,6 +10,14 @@ from .preflight import desktop_report
 from .windows_observation import elevation_report, find_matching_processes
 
 
+# Reviewed admission set. v3.8.9 was reviewed offline against the published
+# ok-ww v3.8.9 sources with the ok-script 3.0.7 framework it pins: the launch
+# entry/argv, PyAppify layout, preset binding, log path/format, init and
+# start lines, dated rotation and Job cleanup surface are unchanged; only the
+# first completion line is i18n-translated. Other versions (e.g. v3.8.4,
+# v3.8.5) stay outside this set until reviewed.
+SUPPORTED_OK_VERSIONS = frozenset({'v3.6.7', 'v3.8.9'})
+
 PYTHON_SETTINGS = {"PYTHONHOME", "PYTHONSTARTUP", "VIRTUAL_ENV", "PYTHONPATH", "PYTHONUSERBASE",
                    "PYTHONCASEOK", "PYTHONHASHSEED", "PYTHONOPTIMIZE", "PYTHONVERBOSE", "PYTHONDEBUG",
                    "PYTHONWARNINGS", "PYTHONIOENCODING", "PYTHONINSPECT"}
@@ -86,7 +94,9 @@ def prepare(root):
     privilege, desktop = elevation_report(), desktop_report()
     processes = find_matching_processes([inventory["runtime"], inventory["launcher"], game_path])
     blockers = ["daily_preset_not_authorized", "real_entry_not_verified", "game_job_inheritance_not_verified"]
-    if inventory["code_version"] != "v3.6.7" or inventory["metadata_version"] != "v3.6.7":
+    if (inventory["code_version"] not in SUPPORTED_OK_VERSIONS
+            or inventory["metadata_version"] not in SUPPORTED_OK_VERSIONS
+            or inventory["code_version"] != inventory["metadata_version"]):
         blockers.append("unsupported_or_mismatched_version")
     if inventory["task_index_observed"] is None:
         blockers.append("daily_task_binding_missing")
