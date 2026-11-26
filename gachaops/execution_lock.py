@@ -16,6 +16,12 @@ class ExecutionBusy(RuntimeError):
     pass
 
 
+# One message for the machine-wide lock being held by another GachaOps
+# chain. The desktop matches on it to name the situation for the user, so
+# the wording lives here and nowhere else.
+BUSY_MESSAGE = "another GachaOps chain owns the execution lock"
+
+
 _guard = threading.Lock()
 _held = set()
 
@@ -30,7 +36,7 @@ class ExecutionLock:
     def __enter__(self):
         with _guard:
             if self.name in _held:
-                raise ExecutionBusy("another GachaOps chain owns the execution lock")
+                raise ExecutionBusy(BUSY_MESSAGE)
             _held.add(self.name)
         try:
             if os.name == "nt":

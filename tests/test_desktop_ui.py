@@ -644,12 +644,13 @@ class DesktopUiTests(unittest.TestCase):
         from PySide6.QtCore import QProcess
         from PySide6.QtWidgets import QApplication
         from gachaops import desktop
+        from gachaops.execution_lock import BUSY_MESSAGE
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve(); path = root / 'fixture.json'
             path.write_text(json.dumps(dict(schema_version=1, assistants=[dict(
                 id='fixture', adapter='ok-ww', installation_root=str(root), enabled=True)])), encoding='utf-8')
             session = root / 'session'; session.mkdir()
-            raw = 'gachaops: another GachaOps chain owns the execution lock'
+            raw = 'gachaops: ' + BUSY_MESSAGE
             (session / 'worker.log').write_text(raw + '\n', encoding='utf-8')
 
             def exercise(window):
@@ -658,15 +659,15 @@ class DesktopUiTests(unittest.TestCase):
                 with patch.object(window, 'set_problems') as problems:
                     window.finished(2, QProcess.ExitStatus.NormalExit)
                     problem = problems.call_args.args[0][0]
-                self.assertIn('另一个 GachaOps 窗口正在运行', problem['detail'])
-                self.assertNotIn('another GachaOps chain owns', problem['detail'])
+                self.assertIn('另一个 GachaOps 正在运行', problem['detail'])
+                self.assertNotIn(BUSY_MESSAGE, problem['detail'])
                 self.assertIn(raw, problem.get('error', ''))
                 # An unrelated failure keeps its reason untouched.
                 (session / 'worker.log').write_text('gachaops: config file rejected\n', encoding='utf-8')
                 with patch.object(window, 'set_problems') as problems:
                     window.finished(2, QProcess.ExitStatus.NormalExit)
                     unrelated = problems.call_args.args[0][0]
-                self.assertNotIn('另一个 GachaOps 窗口正在运行', unrelated['detail'])
+                self.assertNotIn('另一个 GachaOps 正在运行', unrelated['detail'])
                 self.assertIn('当前轮未启动', unrelated['detail'])
                 window.close()
 

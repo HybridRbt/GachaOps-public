@@ -16,6 +16,7 @@ from .desktop_model import (NAMES, STATUS, selected_configuration, save_configur
                             elevation_command, bettergi_inspection, compose_snapshot, write_handoff,
                             read_handoff, desktop_command)
 from .assistants import load_assistants
+from .execution_lock import BUSY_MESSAGE
 from .windows_observation import elevation_report
 from .result_details import details_for
 from .recovery import read_state, RecoveryRequired
@@ -2440,11 +2441,13 @@ def main():
                                 error = stream.read().decode('utf-8', errors='replace').strip()
                         except OSError:
                             pass
-                    if 'another GachaOps chain owns the execution lock' in error:
+                    if BUSY_MESSAGE in error:
                         # The English worker line stays in the error field
                         # for diagnostics; the panel names the situation and
-                        # the remedy like every other blocker.
-                        explanation = '另一个 GachaOps 窗口正在运行，请等它结束或关闭后再试。'
+                        # the remedy like every other blocker. The lock is
+                        # machine-wide, so the wording does not assume the
+                        # holder is another window.
+                        explanation = '另一个 GachaOps 正在运行，请等它结束，或关闭它后再试。'
                     elif 'previous execution has unverified cleanup; manual inspection required' in error:
                         from .recovery_check import recovery_instructions
                         explanation = recovery_instructions(self.workspace, NAMES)
