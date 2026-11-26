@@ -886,6 +886,30 @@ class ManifestRowPathValidationTests(unittest.TestCase):
             self.assertEqual(outside.read_bytes(), b'linked payload')
             self.assertEqual(read_journal(root)['state'], 'prepared')
 
+    def test_manifest_row_dot_component_is_refused_before_any_read(self):
+        # '.' has no parts in pathlib's view, so a row naming a directory -
+        # itself or through a 'sub/.' spelling - must be refused here: such
+        # a row can only end in a digest mismatch that echoes the row path,
+        # or a bare PermissionError from read_bytes on a directory.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.prepare_interrupted(root)
+            manifest_path = next(backup_root(root).glob('*/manifest.json'))
+            guard, reads = self._recording_reads()
+            with guard:
+                for spelling in ('.', 'sub/.'):
+                    with self.subTest(spelling=spelling):
+                        self._rewrite_manifest(
+                            root, lambda m, s=spelling: m['targets'][0].update(
+                                {'path': s, 'sha256': '0' * 64}))
+                        with self.assertRaisesRegex(ConfigError, '非法备份路径'):
+                            continue_registration_transaction(root)
+            # The manifest itself is read for validation; no staged source or
+            # target file ever is.
+            self.assertTrue(reads)
+            self.assertTrue(all(read == manifest_path.resolve() for read in reads))
+            self.assertEqual(read_journal(root)['state'], 'prepared')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -431,15 +431,16 @@ def _staged_path(backup_dir, subdirectory, relative):
 
     The manifest is a local, forgeable file — its digest proves only that it
     was not changed, never that it is trustworthy — so every row path must
-    be a relative spelling with no drive, no '..' and no empty component,
-    every level from the backup's own subdirectory down must be a real
-    directory (no symlinks), and the location must resolve inside that
-    subdirectory. Checked once here, so the integrity and publish loops
-    only ever walk validated rows."""
+    name one concrete file: a relative spelling with no drive, no empty,
+    '.' or '..' component under either separator, and every level from the
+    backup's own subdirectory down must be a real directory (no symlinks),
+    with the location resolving inside that subdirectory. Checked once
+    here, so the integrity and publish loops only ever walk validated
+    rows."""
     if (not isinstance(relative, str) or not relative
             or Path(relative).drive or Path(relative).is_absolute()
-            or '..' in Path(relative).parts
-            or any(part == '' for part in relative.split('/'))):
+            or any(part in ('', '.', '..')
+                   for part in relative.replace('\\', '/').split('/'))):
         raise ConfigError('事务清单内出现非法备份路径，停止继续')
     base = backup_dir / subdirectory
     if base.is_symlink():
