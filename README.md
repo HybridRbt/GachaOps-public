@@ -52,7 +52,7 @@ python -m gachaops check-assistants --config config/assistants.example.json
 python -m gachaops doctor
 ```
 
-Windows 中文路径测试使用 UTF-8 模式，TEMP 指向源码树外可写目录。Qt fixture 必须注明实际执行或跳过；Linux/macOS仅验证适用核心，不代表可运行游戏。发行构建、日志/校验和及签名状态见 [发布手册](docs/release/RELEASE_RUNBOOK.md)。当前候选未签名，不代表已受 Windows 信任。
+Windows 中文路径测试使用 UTF-8 模式，TEMP 指向源码树外可写目录。Qt fixture 必须注明实际执行或跳过；测试只在 Windows 上运行，游戏与助手只在该平台运行。发行构建、日志/校验和及签名状态见 [发布手册](docs/release/RELEASE_RUNBOOK.md)。当前候选未签名，不代表已受 Windows 信任。
 
 任务内容由用户在原助手中管理。保持 `Global\GachaOps.Execution.v1`、共享 journal、Windows Job 所有权及 borrowed_game 边界；归属、排他或收尾不确定停止全链，不按进程名杀进程。重复轮次默认0，只有用户显式设置时生效；不自动重试成功项或切换备用助手。战斗、抽卡、强化、账号切换和原生配置消费不属于编排器。
 
